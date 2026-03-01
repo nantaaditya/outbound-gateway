@@ -1,0 +1,102 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: ${APP_NAME:single-module-reactive}
+  webflux:
+    base-path: ${CONTEXT_PATH:/app}
+  r2dbc:
+    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/boilerplate}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:password}
+    pool:
+      enabled: true
+      initial-size: ${DB_POOL_SIZE:5}
+      max-size: ${DB_MAX_POOL_SIZE:10}
+      max-idle-time: ${DB_IDLE_TIME:30s}
+      max-life-time: ${DB_LIFE_TIME:60S}
+      validation-query: SELECT 1
+      validation-depth: remote
+  flyway:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/boilerplate}
+    user: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:password}
+    enabled: ${FLYWAY_ENABLED:false}
+    validate-on-migrate: ${FLYWAY_VALIDATION_ENABLED:false}
+    locations: classpath:db/migration
+
+management:
+  server:
+    port: ${ACTUATOR_PORT:1000}
+  endpoint:
+    shutdown.access: ${ACTUATOR_SHUTDOWN:none}
+    health.show-details: ${HEALTH_DETAIL:always}
+  endpoints:
+    web:
+      exposure.include: ${ACTUATOR_EXPOSED:*}
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    baggage:
+      remote-fields:
+        - x-client-id
+        - x-request-id
+      correlation:
+        fields:
+          - x-client-id
+          - x-request-id
+
+logging:
+  level:
+    root: ${ROOT_LOG_LEVEL:INFO}
+    com.nantaaditya: ${APP_LOG_LEVEL:INFO}
+    org.zalando.logbook: ${ZALANDO_LOG_LEVEL:TRACE}
+  file:
+    path: ${LOG_PATH:logs/}
+  config: classpath:log4j2-spring-${apps.log.log-format:json}.xml
+
+apps:
+  version: ${APP_VERSION:1.0.0}
+  log:
+    enable-trace-log: ${ENABLE_TRACE_LOG:true}
+    ignored-trace-log-path: ${IGNORED_TRACE_LOG_PATH:*/swagger-ui,*/swagger-ui/*,*/v3/api-docs,*/v3/api-docs/*}
+    sensitive-field: ${SENSITIVE_FIELDS:x-client-id}
+    log-format: ${APPS_LOG_FORMAT:json}
+  async:
+    configurations:
+      default:
+        core-pool-size: ${DEFAULT_TASK_CORE_POOL_SIZE:5}
+        max-pool-size: ${DEFAULT_TASK_MAX_POOL_SIZE:20}
+        queue-capacity: ${DEFAULT_TASK_QUEUE:100}
+        keep-alive-seconds: ${DEFAULT_TASK_KEEP_ALIVE:60}
+        thread-name-prefix: ${DEFAULT_TASK_THREAD_NAME:default-task-}
+        retry-rejected-task-enabled: ${DEFAULT_TASK_RETRY_REJECTED_TASK_ENABLED:true}
+        enable-virtual-thread: ${DEFAULT_TASK_VIRTUAL_THREAD_ENABLE:true}
+      rejected-task:
+        core-pool-size: ${REJECTED_TASK_CORE_POOL_SIZE:5}
+        max-pool-size: ${REJECTED_TASK_MAX_POOL_SIZE:20}
+        queue-capacity: ${REJECTED_TASK_QUEUE:100}
+        keep-alive-seconds: ${REJECTED_TASK_KEEP_ALIVE:60}
+        thread-name-prefix: ${REJECTED_TASK_THREAD_NAME:retry-reject-task-}
+        retry-rejected-task-enabled: false
+        enable-virtual-thread: ${REJECTED_TASK_VIRTUAL_THREAD_ENABLE:true}
+    max-retry-rejected-task: ${MAX_RETRY_REJECTED_TASK:10}
+    retry-rejected-task-interval: ${RETRY_REJECTED_TASK_INTERVAL:60}
+  scheduler.configurations:
+    default-async:
+      scheduler-type: BOUNDED_ELASTIC
+      bounded-elastic:
+        name: default-async
+        daemon: true
+        core-pool-size: 5
+        queue-size: 10
+        ttl-in-seconds: 60
+    retry-listener:
+      scheduler-type: BOUNDED_ELASTIC
+      bounded-elastic:
+        name: retry-listener
+        daemon: true
+        core-pool-size: 10
+        queue-size: 20
+        ttl-in-seconds: 60

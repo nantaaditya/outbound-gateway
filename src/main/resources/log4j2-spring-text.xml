@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="INFO" packages="com.nantaaditya.example.listener">
+
+  <Properties>
+    <Property name="APP_NAME">${spring:spring.application.name}</Property>
+    <Property name="LOG_PATH">${spring:logging.file.path}</Property>
+    <Property name="ROOT_LOG_LEVEL">${spring:logging.level.root}</Property>
+  </Properties>
+
+  <Appenders>
+    <Console
+      name="jsonConsole"
+      target="SYSTEM_OUT"
+    >
+      <TextLogLayout application="${APP_NAME}"/>
+    </Console>
+
+    <RollingFile
+      name="appLog"
+      fileName="${LOG_PATH}/${APP_NAME}.log"
+      filePattern="${LOG_PATH}/${APP_NAME}-%d{yyyy-MM-dd}.log"
+      immediateFlush="true"
+    >
+      <TextLogLayout application="${APP_NAME}"/>
+      <Policies>
+        <TimeBasedTriggeringPolicy
+          interval="1"
+          modulate="true"
+        />
+      </Policies>
+      <DefaultRolloverStrategy max="7">
+        <Delete basePath="${LOG_PATH}">
+          <IfFileName glob="${APP_NAME}-*.log" />
+          <IfLastModified age="P7D" />
+        </Delete>
+      </DefaultRolloverStrategy>
+    </RollingFile>
+
+    <RollingFile
+      name="metricsLog"
+      fileName="${LOG_PATH}/metrics.log"
+      filePattern="${LOG_PATH}/metrics-%d{yyyy-MM-dd}.log"
+      immediateFlush="true"
+    >
+      <TextLogLayout application="${APP_NAME}"/>
+      <Policies>
+        <TimeBasedTriggeringPolicy
+          interval="1"
+          modulate="true"
+        />
+      </Policies>
+      <DefaultRolloverStrategy max="1">
+        <Delete basePath="${LOG_PATH}">
+          <IfFileName glob="metrics-*.log" />
+          <IfLastModified age="P1D" />
+        </Delete>
+      </DefaultRolloverStrategy>
+    </RollingFile>
+
+    <RollingFile
+      name="traceLog"
+      fileName="${LOG_PATH}/trace.log"
+      filePattern="${LOG_PATH}/trace-%d{yyyy-MM-dd}.log"
+      immediateFlush="true"
+    >
+      <TextLogLayout application="${APP_NAME}"/>
+      <Policies>
+        <TimeBasedTriggeringPolicy
+          interval="1"
+          modulate="true"
+        />
+      </Policies>
+      <DefaultRolloverStrategy max="1">
+        <Delete basePath="${LOG_PATH}">
+          <IfFileName glob="trace-*.log" />
+          <IfLastModified age="P1D" />
+        </Delete>
+      </DefaultRolloverStrategy>
+    </RollingFile>
+
+  </Appenders>
+
+  <Loggers>
+    <AsyncLogger name="com.nantaaditya.example.listener.AppObservationListener" additivity="false">
+      <AppenderRef ref="metricsLog"/>
+    </AsyncLogger>
+    <AsyncLogger name="com.nantaaditya.example.configuration.TraceLogConfiguration" additivity="false">
+      <AppenderRef ref="traceLog"/>
+    </AsyncLogger>
+    <AsyncRoot level="${ROOT_LOG_LEVEL}">
+      <AppenderRef ref="jsonConsole"/>
+      <AppenderRef ref="appLog"/>
+    </AsyncRoot>
+  </Loggers>
+</Configuration>

@@ -1,0 +1,100 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: app-test
+  webflux:
+    base-path: ${CONTEXT_PATH:}
+  r2dbc:
+    url: r2dbc:h2:mem:///test_db
+    pool:
+      enabled: true
+      initial-size: 5
+      max-size: 10
+      validation-query: SELECT 1
+  flyway:
+    url: jdbc:h2:mem:test_db
+    enabled: false
+  sql:
+    init:
+      mode: always
+
+management:
+  server:
+    port: 8080
+  endpoint:
+    shutdown.access: none
+    health.show-details: always
+  endpoints:
+    web:
+      exposure.include: '*'
+  tracing:
+    sampling:
+      probability: 1.0
+    baggage:
+      remote-fields:
+        - x-client-id
+        - x-request-id
+      correlation:
+        fields:
+          - x-client-id
+          - x-request-id
+
+logging:
+  level:
+    root: INFO
+    com.nantaaditya: INFO
+    org.zalando.logbook: TRACE
+    io.r2dbc.h2.client: DEBUG
+    io.r2dbc.h2: DEBUG
+    io.r2dbc.spi: DEBUG
+    org.springframework.r2dbc.core: DEBUG
+  file:
+    path: ${LOG_PATH:logs/}
+  config: classpath:log4j2-spring-${apps.log.log-format:json}.xml
+
+apps:
+  version: 1.0.0
+  log:
+    enable-trace-log: true
+    ignored-trace-log-path: ${IGNORED_TRACE_LOG_PATH:*/swagger-ui,*/swagger-ui/*,*/v3/api-docs,*/v3/api-docs/*}
+    sensitive-field: ${SENSITIVE_FIELDS:x-client-id}
+    log-format: json
+  scheduler.configurations:
+    default-async:
+      scheduler-type: BOUNDED_ELASTIC
+      bounded-elastic:
+        name: default-async
+        daemon: true
+        core-pool-size: 5
+        queue-size: 10
+        ttl-in-seconds: 60
+    retry-listener:
+      scheduler-type: BOUNDED_ELASTIC
+      bounded-elastic:
+        name: retry-listener
+        daemon: true
+        core-pool-size: 10
+        queue-size: 20
+        ttl-in-seconds: 60
+  async:
+    configurations:
+      default:
+        core-pool-size: 5
+        max-pool-size: 20
+        queue-capacity: 100
+        keep-alive-seconds: 60
+        thread-name-prefix: default-task-
+        retry-rejected-task-enabled: true
+        enable-virtual-thread: true
+      rejected-task:
+        core-pool-size: 5
+        max-pool-size: 20
+        queue-capacity: 100
+        keep-alive-seconds: 60
+        thread-name-prefix: retry-reject-task-
+        retry-rejected-task-enabled: false
+        enable-virtual-thread: true
+    max-retry-rejected-task: 10
+    retry-rejected-task-interval: 60
