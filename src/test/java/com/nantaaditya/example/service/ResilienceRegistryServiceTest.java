@@ -4,17 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.service.impl.ResilienceRegistryService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class ResilienceRegistryServiceTest {
 
+  private SimpleMeterRegistry meterRegistry;
   private ResilienceRegistryService service;
 
   @BeforeEach
   void setUp() {
-    service = new ResilienceRegistryService();
+    meterRegistry = new SimpleMeterRegistry();
+    service = new ResilienceRegistryService(meterRegistry);
   }
 
   private OutboundResilienceConfiguration defaultConfig() {
@@ -93,5 +96,38 @@ class ResilienceRegistryServiceTest {
 
     var cb2 = service.getOrCreateCircuitBreaker("xendit", config);
     assertThat(cb1).isNotSameAs(cb2);
+  }
+
+  @Test
+  @DisplayName("getOrCreateCircuitBreaker binds resilience4j.circuitbreaker metrics to MeterRegistry")
+  void getOrCreateCircuitBreaker_bindsMetricsToRegistry() {
+    service.getOrCreateCircuitBreaker("xendit", defaultConfig());
+
+    assertThat(meterRegistry.find("resilience4j.circuitbreaker.state").gauges()).isNotEmpty();
+  }
+
+  @Test
+  @DisplayName("getOrCreateBulkhead binds resilience4j.bulkhead metrics to MeterRegistry")
+  void getOrCreateBulkhead_bindsMetricsToRegistry() {
+    service.getOrCreateBulkhead("midtrans", defaultConfig());
+
+    assertThat(meterRegistry.find("resilience4j.bulkhead.available.concurrent.calls").gauges()).isNotEmpty();
+  }
+
+  @Test
+  @DisplayName("getOrCreateRateLimiter binds resilience4j.ratelimiter metrics to MeterRegistry")
+  void getOrCreateRateLimiter_bindsMetricsToRegistry() {
+    service.getOrCreateRateLimiter("stripe", defaultConfig());
+
+    assertThat(meterRegistry.find("resilience4j.ratelimiter.available.permissions").gauges()).isNotEmpty();
+  }
+
+  @Test
+  @DisplayName("getOrCreateRetry binds resilience4j.retry metrics to MeterRegistry")
+  void getOrCreateRetry_bindsMetricsToRegistry() {
+    service.getOrCreateRetry("paypal", defaultConfig());
+
+    // Resilience4j 2.x registers retry metrics as FunctionCounters — use meters() not counters()
+    assertThat(meterRegistry.find("resilience4j.retry.calls").meters()).isNotEmpty();
   }
 }

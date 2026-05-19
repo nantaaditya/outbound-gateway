@@ -8,19 +8,20 @@ import io.github.resilience4j.bulkhead.BulkheadRegistry;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.github.resilience4j.micrometer.tagged.TaggedBulkheadMetrics;
+import io.github.resilience4j.micrometer.tagged.TaggedCircuitBreakerMetrics;
+import io.github.resilience4j.micrometer.tagged.TaggedRateLimiterMetrics;
+import io.github.resilience4j.micrometer.tagged.TaggedRetryMetrics;
 import io.github.resilience4j.ratelimiter.RateLimiter;
 import io.github.resilience4j.ratelimiter.RateLimiterConfig;
 import io.github.resilience4j.ratelimiter.RateLimiterRegistry;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.retry.RetryRegistry;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
 
@@ -28,36 +29,50 @@ import org.springframework.stereotype.Service;
 @Service
 public class ResilienceRegistryService {
 
-  private final Map<String, CircuitBreaker> circuitBreakers = new ConcurrentHashMap<>();
-  private final Map<String, Bulkhead> bulkheads = new ConcurrentHashMap<>();
-  private final Map<String, RateLimiter> rateLimiters = new ConcurrentHashMap<>();
-  private final Map<String, Retry> retries = new ConcurrentHashMap<>();
+  private final CircuitBreakerRegistry circuitBreakerRegistry;
+  private final BulkheadRegistry bulkheadRegistry;
+  private final RateLimiterRegistry rateLimiterRegistry;
+  private final RetryRegistry retryRegistry;
+
+  public ResilienceRegistryService(MeterRegistry meterRegistry) {
+    this.circuitBreakerRegistry = CircuitBreakerRegistry.ofDefaults();
+    this.bulkheadRegistry = BulkheadRegistry.ofDefaults();
+    this.rateLimiterRegistry = RateLimiterRegistry.ofDefaults();
+    this.retryRegistry = RetryRegistry.ofDefaults();
+
+    // Bind all resilience4j registries to Micrometer so every instance created
+    // via getOrCreate* is automatically tracked without manual registration.
+    TaggedCircuitBreakerMetrics.ofCircuitBreakerRegistry(circuitBreakerRegistry).bindTo(meterRegistry);
+    TaggedBulkheadMetrics.ofBulkheadRegistry(bulkheadRegistry).bindTo(meterRegistry);
+    TaggedRateLimiterMetrics.ofRateLimiterRegistry(rateLimiterRegistry).bindTo(meterRegistry);
+    TaggedRetryMetrics.ofRetryRegistry(retryRegistry).bindTo(meterRegistry);
+  }
 
   public CircuitBreaker getOrCreateCircuitBreaker(String name, OutboundResilienceConfiguration config) {
-    return circuitBreakers.computeIfAbsent(name, k -> buildCircuitBreaker(k, config));
+    return circuitBreakerRegistry.circuitBreaker(name, buildCbConfig(config));
   }
 
   public Bulkhead getOrCreateBulkhead(String name, OutboundResilienceConfiguration config) {
-    return bulkheads.computeIfAbsent(name, k -> buildBulkhead(k, config));
+    return bulkheadRegistry.bulkhead(name, buildBhConfig(config));
   }
 
   public RateLimiter getOrCreateRateLimiter(String name, OutboundResilienceConfiguration config) {
-    return rateLimiters.computeIfAbsent(name, k -> buildRateLimiter(k, config));
+    return rateLimiterRegistry.rateLimiter(name, buildRlConfig(config));
   }
 
   public Retry getOrCreateRetry(String name, OutboundResilienceConfiguration config) {
-    return retries.computeIfAbsent(name, k -> buildRetry(k, config));
+    return retryRegistry.retry(name, buildRetryConfig(config));
   }
 
   public void reload(String name) {
-    circuitBreakers.remove(name);
-    bulkheads.remove(name);
-    rateLimiters.remove(name);
-    retries.remove(name);
+    circuitBreakerRegistry.remove(name);
+    bulkheadRegistry.remove(name);
+    rateLimiterRegistry.remove(name);
+    retryRegistry.remove(name);
   }
 
-  private CircuitBreaker buildCircuitBreaker(String name, OutboundResilienceConfiguration cfg) {
-    CircuitBreakerConfig config = CircuitBreakerConfig.custom()
+  private CircuitBreakerConfig buildCbConfig(OutboundResilienceConfiguration cfg) {
+    return CircuitBreakerConfig.custom()
         .failureRateThreshold(cfg.getCbFailureRateThreshold())
         .slowCallRateThreshold(cfg.getCbSlowCallRateThreshold())
         .slowCallDurationThreshold(Duration.ofMillis(cfg.getCbSlowCallDurationMs()))
@@ -65,29 +80,26 @@ public class ResilienceRegistryService {
         .slidingWindowSize(cfg.getCbSlidingWindowSize())
         .waitDurationInOpenState(Duration.ofMillis(cfg.getCbWaitDurationOpenMs()))
         .build();
-    return CircuitBreakerRegistry.of(config).circuitBreaker(name);
   }
 
-  private Bulkhead buildBulkhead(String name, OutboundResilienceConfiguration cfg) {
-    BulkheadConfig config = BulkheadConfig.custom()
+  private BulkheadConfig buildBhConfig(OutboundResilienceConfiguration cfg) {
+    return BulkheadConfig.custom()
         .maxConcurrentCalls(cfg.getBhMaxConcurrentCalls())
         .maxWaitDuration(Duration.ofMillis(cfg.getBhMaxWaitDurationMs()))
         .build();
-    return BulkheadRegistry.of(config).bulkhead(name);
   }
 
-  private RateLimiter buildRateLimiter(String name, OutboundResilienceConfiguration cfg) {
-    RateLimiterConfig config = RateLimiterConfig.custom()
+  private RateLimiterConfig buildRlConfig(OutboundResilienceConfiguration cfg) {
+    return RateLimiterConfig.custom()
         .limitForPeriod(cfg.getRlLimitForPeriod())
         .limitRefreshPeriod(Duration.ofMillis(cfg.getRlLimitRefreshPeriodMs()))
         .timeoutDuration(Duration.ofMillis(cfg.getRlTimeoutDurationMs()))
         .build();
-    return RateLimiterRegistry.of(config).rateLimiter(name);
   }
 
-  private Retry buildRetry(String name, OutboundResilienceConfiguration cfg) {
+  private RetryConfig buildRetryConfig(OutboundResilienceConfiguration cfg) {
     Set<Integer> retryStatuses = parseStatusCodes(cfg.getRetryOnStatusCodes());
-    RetryConfig config = RetryConfig.custom()
+    return RetryConfig.custom()
         .maxAttempts(cfg.getRetryMaxAttempts())
         .waitDuration(Duration.ofMillis(cfg.getRetryWaitDurationMs()))
         .retryOnResult(response -> {
@@ -97,7 +109,6 @@ public class ResilienceRegistryService {
           return false;
         })
         .build();
-    return RetryRegistry.of(config).retry(name);
   }
 
   private Set<Integer> parseStatusCodes(String codes) {

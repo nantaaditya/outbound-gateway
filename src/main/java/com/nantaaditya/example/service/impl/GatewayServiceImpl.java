@@ -9,6 +9,7 @@ import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.helper.JsltResponseMapper;
 import com.nantaaditya.example.helper.JsonHelper;
+import com.nantaaditya.example.helper.OutboundMetricsRecorder;
 import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
@@ -67,6 +68,7 @@ public class GatewayServiceImpl implements GatewayService {
   private final EncryptionHelper encryptionHelper;
   private final JsltResponseMapper jsltResponseMapper;
   private final JsonHelper jsonHelper;
+  private final OutboundMetricsRecorder metricsRecorder;
 
   private final ConcurrentMap<String, OutboundSystemContext> contextCache = new ConcurrentHashMap<>();
 
@@ -82,6 +84,7 @@ public class GatewayServiceImpl implements GatewayService {
         .flatMap(context -> {
           if (hasIdempotencyKey(idempotencyKey)) {
             return checkIdempotency(context, idempotencyKey)
+                .doOnNext(r -> metricsRecorder.recordIdempotencyHit(code))
                 .switchIfEmpty(Mono.defer(
                     () -> executeWithResilience(context, callerService, idempotencyKey, request)));
           }
@@ -185,15 +188,17 @@ public class GatewayServiceImpl implements GatewayService {
     // so doOnSuccess fires for every execution path and history is always saved.
     return execution
         .onErrorResume(e -> Mono.just(toInternalRejectResponse(context, e)))
-        .doOnSuccess(response ->
-            saveHistory(context, callerService, idempotencyKey, request, response, System.currentTimeMillis() - startTime)
-                .subscribe(
-                    v -> {
-                    },
-                    err -> log.warn(
-                        AppLogMessage.message("#GATEWAY - failed to save history for {}: {}", code(context), err.getMessage()).error(err))
-                )
-        );
+        .doOnSuccess(response -> {
+          long durationMs = System.currentTimeMillis() - startTime;
+          metricsRecorder.recordCall(code(context), response.status(), callerService, durationMs);
+          saveHistory(context, callerService, idempotencyKey, request, response, durationMs)
+              .subscribe(
+                  v -> {
+                  },
+                  err -> log.warn(
+                      AppLogMessage.message("#GATEWAY - failed to save history for {}: {}", code(context), err.getMessage()).error(err))
+              );
+        });
   }
 
   private Mono<GatewayResponse> buildExecution(OutboundSystemContext context,

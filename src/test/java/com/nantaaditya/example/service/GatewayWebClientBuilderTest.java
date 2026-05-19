@@ -7,6 +7,7 @@ import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.service.impl.GatewayWebClientBuilder;
 import com.nantaaditya.example.service.impl.ResilienceRegistryService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,7 @@ class GatewayWebClientBuilderTest {
   void setUp() {
     builder = new GatewayWebClientBuilder(
         WebClient.builder(),
-        new ResilienceRegistryService(),
+        new ResilienceRegistryService(new SimpleMeterRegistry()),
         Logbook.builder().build()
     );
   }
