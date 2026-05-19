@@ -56,6 +56,10 @@ logging:
     path: ${LOG_PATH:logs/}
   config: classpath:log4j2-spring-${apps.log.log-format:json}.xml
 
+gateway:
+  encryption:
+    key: ${GATEWAY_ENCRYPTION_KEY}
+
 apps:
   version: ${APP_VERSION:1.0.0}
   log:
@@ -71,18 +75,7 @@ apps:
         queue-capacity: ${DEFAULT_TASK_QUEUE:100}
         keep-alive-seconds: ${DEFAULT_TASK_KEEP_ALIVE:60}
         thread-name-prefix: ${DEFAULT_TASK_THREAD_NAME:default-task-}
-        retry-rejected-task-enabled: ${DEFAULT_TASK_RETRY_REJECTED_TASK_ENABLED:true}
         enable-virtual-thread: ${DEFAULT_TASK_VIRTUAL_THREAD_ENABLE:true}
-      rejected-task:
-        core-pool-size: ${REJECTED_TASK_CORE_POOL_SIZE:5}
-        max-pool-size: ${REJECTED_TASK_MAX_POOL_SIZE:20}
-        queue-capacity: ${REJECTED_TASK_QUEUE:100}
-        keep-alive-seconds: ${REJECTED_TASK_KEEP_ALIVE:60}
-        thread-name-prefix: ${REJECTED_TASK_THREAD_NAME:retry-reject-task-}
-        retry-rejected-task-enabled: false
-        enable-virtual-thread: ${REJECTED_TASK_VIRTUAL_THREAD_ENABLE:true}
-    max-retry-rejected-task: ${MAX_RETRY_REJECTED_TASK:10}
-    retry-rejected-task-interval: ${RETRY_REJECTED_TASK_INTERVAL:60}
   scheduler.configurations:
     default-async:
       scheduler-type: BOUNDED_ELASTIC

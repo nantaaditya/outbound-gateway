@@ -33,7 +33,7 @@ public class AsyncTaskConfiguration {
     Map<String, Semaphore> throttlers = new ConcurrentHashMap<>();
     AsyncExecutorHelperFactory factory = new AsyncExecutorHelperFactory();
     AsyncMDCTaskDecorator asyncMDCTaskDecorator = new AsyncMDCTaskDecorator();
-    TaskExecutorHelper taskExecutorHelper = new TaskExecutorHelper(asyncMDCTaskDecorator, asyncProperties);
+    TaskExecutorHelper taskExecutorHelper = new TaskExecutorHelper();
 
     if (asyncProperties.configurations() == null || asyncProperties.configurations().isEmpty()) {
       log.warn(AppLogMessage.message("#AsyncExecutor - no bean defined"));

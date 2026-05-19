@@ -3,6 +3,7 @@ package com.nantaaditya.example.entity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nantaaditya.example.model.request.RetryRequest;
 import io.r2dbc.spi.Row;
+import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -30,10 +31,7 @@ public class DeadLetterProcess extends BaseEntity<Long> {
   public static DeadLetterProcess create(RetryRequest retryRequest, Throwable throwable, ObjectMapper objectMapper) {
     return DeadLetterProcess.builder()
         .createdBy(retryRequest.processName())
-        .createdDate(System.currentTimeMillis())
         .updatedBy(retryRequest.processName())
-        .updatedDate(System.currentTimeMillis())
-        .version(0l)
         .processType(retryRequest.processType())
         .processName(retryRequest.processName())
         .lastError(throwable.getMessage())
@@ -45,9 +43,9 @@ public class DeadLetterProcess extends BaseEntity<Long> {
     return DeadLetterProcess.builder()
         .id(row.get("id", Long.class))
         .createdBy(row.get("created_by", String.class))
-        .createdDate(row.get("created_date", Long.class))
+        .createdDate(row.get("created_date", LocalDateTime.class))
         .updatedBy(row.get("updated_by", String.class))
-        .updatedDate(row.get("updated_date", Long.class))
+        .updatedDate(row.get("updated_date", LocalDateTime.class))
         .version(row.get("version", Long.class))
         .processType(row.get("process_type", String.class))
         .processName(row.get("process_name", String.class))

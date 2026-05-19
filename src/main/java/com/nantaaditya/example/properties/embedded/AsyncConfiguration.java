@@ -6,7 +6,6 @@ public record AsyncConfiguration(
     int queueCapacity,
     int keepAliveSeconds,
     String threadNamePrefix,
-    boolean retryRejectedTaskEnabled,
     boolean enableVirtualThread
 ) {
 

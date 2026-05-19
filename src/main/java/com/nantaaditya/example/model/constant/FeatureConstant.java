@@ -12,7 +12,10 @@ public enum FeatureConstant {
   GET_EXAMPLE(HttpMethod.GET, "/api/example"),
   POST_EXAMPLE(HttpMethod.POST, "/api/example"),
   REMOVE_OBSOLETE_EVENT_LOG(HttpMethod.DELETE, "/internal-api/event_log"),
-  REMOVE_OBSOLETE_DEAD_LETTER_PROCESS(HttpMethod.DELETE, "/internal-api/dead_letter_process"),;
+  REMOVE_OBSOLETE_DEAD_LETTER_PROCESS(HttpMethod.DELETE, "/internal-api/dead_letter_process"),
+  OUTBOUND_HISTORIES(HttpMethod.GET, "/gateway/histories"),
+  CHECK_IDEMPOTENT_REQUEST(HttpMethod.GET, "/gateway/histories/*"),
+  OUTBOUND_CALL(HttpMethod.POST, "/gateway/execute/*"),;
 
   private HttpMethod method;
   private String path;

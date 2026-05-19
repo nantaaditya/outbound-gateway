@@ -1,4 +1,4 @@
-package com.nantaaditya.example.service.strategy;
+package com.nantaaditya.example.service.strategy.schedulers;
 
 import com.nantaaditya.example.properties.embedded.SchedulerConfiguration;
 import com.nantaaditya.example.properties.embedded.SchedulerConfiguration.ExecutorScheduler;

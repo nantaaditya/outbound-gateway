@@ -1,7 +1,6 @@
 package com.nantaaditya.example.service.impl;
 
 import com.nantaaditya.example.helper.CustomQueryHelper;
-import com.nantaaditya.example.helper.DateTimeHelper;
 import com.nantaaditya.example.helper.ReactorHelper;
 import com.nantaaditya.example.helper.RetryProcessorHelper;
 import com.nantaaditya.example.helper.SchedulerHelper;
@@ -29,8 +28,8 @@ public class DeadLetterProcessServiceImpl implements DeadLetterProcessService {
     return Mono.just(Boolean.TRUE)
       .doOnNext(result -> reactorHelper.runBackgroundTask(
         "remove_obsolete_dead_letter_process",
-        () -> deadLetterProcessRepository.deleteByCreatedDateLessThanAndProcessedIsTrue(
-            LocalDateTime.now().atZone(DateTimeHelper.ZONE_ID).minusDays(days).toInstant().toEpochMilli()
+        () -> deadLetterProcessRepository.deleteByCreatedDateBeforeAndProcessedIsTrue(
+            LocalDateTime.now().minusDays(days)
         ),
         schedulerHelper.from("default-async")
       ));

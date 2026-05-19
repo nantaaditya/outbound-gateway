@@ -49,6 +49,7 @@ public class ContextHelper {
   }
 
   public ContextDTO get(String requestId) {
+    if (requestId == null) return null;
     try {
       return contexts.getOrDefault(requestId, null);
     } catch (Exception ex) {
@@ -58,6 +59,7 @@ public class ContextHelper {
   }
 
   public byte[] getAdditionalData(String requestId) {
+    if (requestId == null) return null;
     String json = additionalContexts.getOrDefault(requestId, null);
     if (json == null) return null;
 
@@ -65,8 +67,10 @@ public class ContextHelper {
   }
 
   public void cleanUp(String requestId) {
-    contexts.remove(requestId);
-    additionalContexts.remove(requestId);
+    if (requestId != null) {
+      contexts.remove(requestId);
+      additionalContexts.remove(requestId);
+    }
     MDC.clear();
   }
 

@@ -62,7 +62,7 @@ public abstract class AbstractRetryProcessorService {
   private Mono<DeadLetterProcess> update(DeadLetterProcess deadLetterProcess) {
     deadLetterProcess.setProcessed(true);
     deadLetterProcess.setUpdatedBy(getUpdatedBy());
-    deadLetterProcess.setUpdatedDate(System.currentTimeMillis());
+    deadLetterProcess.setUpdatedDate(java.time.LocalDateTime.now());
     return deadLetterProcessRepository.save(deadLetterProcess);
   }
 

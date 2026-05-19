@@ -9,10 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("apps.async")
 public record AsyncTaskProperties(
-    Map<String, AsyncConfiguration> configurations,
-    int retryRejectedTaskInterval,
-    int maxRetryRejectedTask,
-    int retryRejectedTaskBatchSize
+    Map<String, AsyncConfiguration> configurations
 ) {
 
   @Transient

@@ -1,5 +1,6 @@
 package com.nantaaditya.example.entity;
 
+import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -18,6 +19,10 @@ import org.springframework.data.domain.Persistable;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BaseEntity<T> implements Persistable<T> {
+
+  @Transient
+  protected static final String OBJECT_NOT_VALID_ERROR = "object not valid";
+
   @Id
   T id;
   @CreatedBy
@@ -25,15 +30,15 @@ public class BaseEntity<T> implements Persistable<T> {
   @LastModifiedBy
   private String updatedBy;
   @CreatedDate
-  private long createdDate;
+  private LocalDateTime createdDate;
   @LastModifiedDate
-  private long updatedDate;
+  private LocalDateTime updatedDate;
   @Version
   private long version;
 
   @Override
   @Transient
   public boolean isNew() {
-    return createdDate == updatedDate && version == 0;
+    return id == null;
   }
 }
