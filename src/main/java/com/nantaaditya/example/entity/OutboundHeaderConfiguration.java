@@ -1,0 +1,41 @@
+package com.nantaaditya.example.entity;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.nantaaditya.example.helper.JsonHelper;
+import io.r2dbc.postgresql.codec.Json;
+import java.util.List;
+import java.util.Map;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+import org.springframework.data.relational.core.mapping.Table;
+
+@Data
+@Table(name = "outbound_header_configurations")
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
+@SuppressWarnings("java:S1068")
+public class OutboundHeaderConfiguration extends BaseEntity<Long> {
+  private long outboundSystemId;
+  private Map<String, Object> headers;
+
+  public Map<String, List<String>> getHeaders(JsonHelper jsonHelper) {
+    return jsonHelper.convert(headers, new TypeReference<Map<String, List<String>>>() {});
+  }
+
+  public void setHeaders(JsonHelper jsonHelper, Object headers) {
+    if (headers == null) return;
+
+    if (headers instanceof byte[]) {
+      this.headers = jsonHelper.convert((byte[]) headers, new TypeReference<Map<String, Object>>() {});
+    } else if (headers instanceof Json) {
+      this.headers = jsonHelper.fromJson((Json) headers, new TypeReference<Map<String, Object>>() {});
+    } else if (headers instanceof Map) {
+      this.headers = jsonHelper.convert((Map<String, Object>) headers, new TypeReference<Map<String, Object>>() {});
+    } else {
+      throw new IllegalArgumentException(OBJECT_NOT_VALID_ERROR);
+    }
+  }
+}
