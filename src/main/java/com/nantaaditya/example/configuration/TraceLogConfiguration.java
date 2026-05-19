@@ -10,6 +10,7 @@ import com.nantaaditya.example.model.logger.JsonLogHttpResponse;
 import com.nantaaditya.example.properties.LogProperties;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -40,7 +41,14 @@ public class TraceLogConfiguration implements HttpExchangeRepository {
   public void add(HttpExchange trace) {
     HttpExchange.Request request = trace.getRequest();
     HttpExchange.Response response = trace.getResponse();
-    String requestId = request.getHeaders().get(HeaderConstant.REQUEST_ID.getHeader()).getFirst();
+
+    Map<String, List<String>> headers = request.getHeaders();
+    if (headers == null || !headers.containsKey(HeaderConstant.REQUEST_ID.getHeader())) {
+      log.warn(AppLogMessage.message("#Trace - no request headers found"));
+      return;
+    }
+
+    String requestId = headers.get(HeaderConstant.REQUEST_ID.getHeader()).getFirst();
 
     if (!logProperties.enableTraceLog()) {
       contextHelper.cleanUp(requestId);
@@ -54,9 +62,9 @@ public class TraceLogConfiguration implements HttpExchangeRepository {
 
     // request
     MultiValueMap<String, String> requestHeaders = new LinkedMultiValueMap<>();
-    for (Entry<String, List<String>> headers : request.getHeaders().entrySet()) {
-      if (isInternalHeader(headers.getKey())) {
-        maskHeader(requestHeaders, headers);
+    for (Entry<String, List<String>> entry : headers.entrySet()) {
+      if (isInternalHeader(entry.getKey())) {
+        maskHeader(requestHeaders, entry);
       }
     }
     JsonLogHttpRequest httpRequest = new JsonLogHttpRequest(
@@ -68,9 +76,9 @@ public class TraceLogConfiguration implements HttpExchangeRepository {
 
     // response
     MultiValueMap<String, String> responseHeaders = new LinkedMultiValueMap<>();
-    for (Entry<String, List<String>> headers : request.getHeaders().entrySet()) {
-      if (isInternalHeader(headers.getKey())) {
-        maskHeader(responseHeaders, headers);
+    for (Entry<String, List<String>> entry : headers.entrySet()) {
+      if (isInternalHeader(entry.getKey())) {
+        maskHeader(responseHeaders, entry);
       }
     }
     JsonLogHttpResponse httpResponse = new JsonLogHttpResponse(

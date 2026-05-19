@@ -60,34 +60,28 @@ public class AppFilter implements WebFilter {
         observationHelper.getObservationRegistry()
     );
 
-    return Mono.usingWhen(
-      Mono.fromCallable(() -> observation.openScope()),
+    return DataBufferUtils.join(request.getBody())
+        .cast(DataBuffer.class)
+        .switchIfEmpty(Mono.fromCallable(() ->
+            exchange.getResponse().bufferFactory().allocateBuffer(0)
+        ))
+        .flatMap(dataBuffer -> {
+          byte[] bodyBytes = new byte[dataBuffer.readableByteCount()];
+          setCachedAttribute(exchange, dataBuffer, bodyBytes);
+          Flux<DataBuffer> cachedBody = getDataBufferFlux(exchange, bodyBytes);
+          ServerHttpRequest mutatedRequest = cachedServerHttpRequest(request, cachedBody);
+          ServerWebExchange mutatedExchange = exchange.mutate().request(mutatedRequest).build();
 
-      scope -> DataBufferUtils.join(request.getBody())
-          .cast(DataBuffer.class)
-          .switchIfEmpty(Mono.fromCallable(() ->
-              exchange.getResponse().bufferFactory().allocateBuffer(0)
-          ))
-          .flatMap(dataBuffer -> {
-            byte[] bodyBytes = new byte[dataBuffer.readableByteCount()];
-            setCachedAttribute(exchange, dataBuffer, bodyBytes);
-            Flux<DataBuffer> cachedBody = getDataBufferFlux(exchange, bodyBytes);
-            ServerHttpRequest mutatedRequest = cachedServerHttpRequest(request, cachedBody);
-            ServerWebExchange mutatedExchange = exchange.mutate().request(mutatedRequest).build();
-
-            return chain.filter(mutatedExchange)
-                .doOnError(error -> doObservationOnError(error, observationContext, observation))
-                .doFinally(signal -> {
-                  eventLogHelper.save(mutatedExchange, contextDTO);
+          return chain.filter(mutatedExchange)
+              .doOnError(error -> doObservationOnError(error, observationContext, observation))
+              .doFinally(signal -> {
+                eventLogHelper.save(mutatedExchange, contextDTO);
+                try {
                   observation.stop();
-                });
-          }),
-
-      scope -> Mono.fromRunnable(scope::close)
-    )
-    .contextWrite(ctx ->
-      ctx.put("context", contextDTO)
-    );
+                } catch (Exception ignored) {}
+              });
+        })
+        .contextWrite(ctx -> ctx.put("context", contextDTO));
   }
 
   private void decorateBaggage(ContextDTO contextDTO) {

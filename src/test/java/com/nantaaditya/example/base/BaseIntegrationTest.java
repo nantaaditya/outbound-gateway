@@ -9,10 +9,11 @@ import com.nantaaditya.example.model.constant.HeaderConstant;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
-import lombok.extern.slf4j.Slf4j;
+import lombok.extern.log4j.Log4j2;
 import org.awaitility.Awaitility;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -23,8 +24,9 @@ import org.springframework.test.web.reactive.server.WebTestClient.RequestBodySpe
 import org.springframework.test.web.reactive.server.WebTestClient.ResponseSpec;
 import org.springframework.util.MultiValueMap;
 import reactor.core.publisher.Hooks;
+import reactor.core.scheduler.Schedulers;
 
-@Slf4j
+@Log4j2
 @SpringBootTest(
     classes = SingleModuleReactiveApplication.class,
     webEnvironment = WebEnvironment.DEFINED_PORT
@@ -39,6 +41,19 @@ public class BaseIntegrationTest {
   @BeforeAll
   static void setup() {
     Hooks.enableAutomaticContextPropagation();
+    Hooks.onErrorDropped(e -> log.warn("#TEST - dropped error: {}", e.getMessage()));
+    Schedulers.onHandleError((thread, error) ->
+        log.warn("#TEST - scheduler error on {}: {}", thread.getName(), error.getMessage(), error));
+  }
+
+  @BeforeEach
+  void injectMandatoryHeaders() {
+    webTestClient = webTestClient.mutate()
+        .defaultHeader(HeaderConstant.CLIENT_ID.getHeader(), "test-client")
+        .defaultHeader(HeaderConstant.REQUEST_ID.getHeader(), TsidHelper.generateStringId())
+        .defaultHeader(HeaderConstant.REQUEST_TIME.getHeader(),
+            DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
+        .build();
   }
 
   protected <S, T> void execute(RestApiRequest<S, T> request) {
