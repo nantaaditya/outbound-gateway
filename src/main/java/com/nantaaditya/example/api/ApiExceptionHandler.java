@@ -125,6 +125,17 @@ public class ApiExceptionHandler {
   }
 
   @ResponseBody
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  @ExceptionHandler(IllegalArgumentException.class)
+  public BaseResponse<Object> illegalArgumentException(IllegalArgumentException ex) {
+    return toBaseErrorResponse(ex, error -> {
+      Map<String, List<String>> errors = Map.of("message", List.of(ex.getMessage()));
+      BaseResponse<Object> response = responseHelper.failed(ResponseCode.BAD_REQUEST, errors);
+      return Tuples.of(errors, response);
+    });
+  }
+
+  @ResponseBody
   @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
   @ExceptionHandler(Throwable.class)
   public BaseResponse<Object> throwable(Throwable ex) {
