@@ -10,4 +10,6 @@ public interface OutboundResilienceConfigurationRepository
     extends ReactiveCrudRepository<OutboundResilienceConfiguration, Long> {
 
   Mono<OutboundResilienceConfiguration> findByOutboundSystemId(long outboundSystemId);
+
+  Mono<Void> deleteByOutboundSystemId(long outboundSystemId);
 }

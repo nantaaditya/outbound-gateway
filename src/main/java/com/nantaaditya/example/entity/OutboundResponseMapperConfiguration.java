@@ -1,6 +1,7 @@
 package com.nantaaditya.example.entity;
 
 import com.nantaaditya.example.model.constant.ConverterType;
+import com.nantaaditya.example.model.request.admin.UpsertResponseMapperRequest;
 import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -33,5 +34,13 @@ public class OutboundResponseMapperConfiguration extends BaseEntity<Long> {
       return originalStatus;
     }
     return mappingStatus.getOrDefault(String.valueOf(originalStatus), originalStatus);
+  }
+  
+  public void update(long outboundSystemId, UpsertResponseMapperRequest request) {
+    this.setOutboundSystemId(outboundSystemId);
+    this.setConverterType(request.converterType());
+    this.setMappingScript(request.mappingScript());
+    this.setMappingStatus(request.getMappingStatus());
+    this.setActive(request.active());
   }
 }

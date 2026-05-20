@@ -54,6 +54,10 @@ logging:
     path: ${LOG_PATH:logs/}
   config: classpath:log4j2-spring-${apps.log.log-format:json}.xml
 
+cron:
+  internal:
+    integration-test: true
+
 gateway:
   encryption:
     key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=  # 32 zero-bytes base64, test only

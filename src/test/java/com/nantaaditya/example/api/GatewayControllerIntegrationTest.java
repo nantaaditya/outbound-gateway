@@ -68,7 +68,7 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("POST /gateway/execute/{code} — wraps external response in BaseResponse envelope")
+  @DisplayName("POST /api/gateway/execute/{code} — wraps external response in BaseResponse envelope")
   void execute_validSystem_returnsSuccessEnvelope() throws Exception {
     wireMock.stubFor(post(urlEqualTo("/v1/charge"))
         .willReturn(aResponse()
@@ -82,7 +82,7 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
     GatewayRequest req = new GatewayRequest(Map.of(), Map.of("amount", 10000));
 
     byte[] body = webTestClient.post()
-        .uri("/gateway/execute/gw-charge")
+        .uri("/api/gateway/execute/gw-charge")
         .contentType(MediaType.APPLICATION_JSON)
         .header("X-Caller-Service", "payment-svc")
         .bodyValue(req)
@@ -100,7 +100,7 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("POST /gateway/execute/{code} — second call with same idempotency key returns fromCache=true")
+  @DisplayName("POST /api/gateway/execute/{code} — second call with same idempotency key returns fromCache=true")
   void execute_sameIdempotencyKey_returnsCachedOnSecondCall() throws Exception {
     wireMock.stubFor(post(urlEqualTo("/v1/idem"))
         .willReturn(aResponse()
@@ -114,7 +114,7 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
 
     // First call — hits WireMock
     webTestClient.post()
-        .uri("/gateway/execute/gw-idem")
+        .uri("/api/gateway/execute/gw-idem")
         .contentType(MediaType.APPLICATION_JSON)
         .header("X-Idempotency-Key", "key-xyz")
         .bodyValue(req)
@@ -126,7 +126,7 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
 
     // Second call — should return from cache
     byte[] body = webTestClient.post()
-        .uri("/gateway/execute/gw-idem")
+        .uri("/api/gateway/execute/gw-idem")
         .contentType(MediaType.APPLICATION_JSON)
         .header("X-Idempotency-Key", "key-xyz")
         .bodyValue(req)
@@ -141,12 +141,12 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("POST /gateway/execute/{code} — unknown code returns HTTP 400")
+  @DisplayName("POST /api/gateway/execute/{code} — unknown code returns HTTP 400")
   void execute_unknownCode_returns400() {
     GatewayRequest req = new GatewayRequest(Map.of(), Map.of());
 
     byte[] body = webTestClient.post()
-        .uri("/gateway/execute/no-such-system")
+        .uri("/api/gateway/execute/no-such-system")
         .contentType(MediaType.APPLICATION_JSON)
         .bodyValue(req)
         .exchange()

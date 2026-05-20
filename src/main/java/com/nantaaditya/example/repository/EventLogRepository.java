@@ -11,4 +11,6 @@ import reactor.core.publisher.Mono;
 public interface EventLogRepository extends ReactiveCrudRepository<EventLog, String> {
   @Transactional
   Mono<Void> deleteByCreatedDateBefore(LocalDateTime date);
+
+  Mono<EventLog> findByRequestId(String requestId);
 }

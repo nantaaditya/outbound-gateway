@@ -1,5 +1,6 @@
 package com.nantaaditya.example.entity;
 
+import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -69,5 +70,39 @@ public class OutboundResilienceConfiguration extends BaseEntity<Long> {
     OutboundResilienceConfiguration cfg = new OutboundResilienceConfiguration();
     cfg.bypassed = true;
     return cfg;
+  }
+  
+  public void update(long outboundSystemId, UpsertResilienceRequest request) {
+    this.setOutboundSystemId(outboundSystemId);
+    this.setReadTimeOutMs(request.readTimeOutMs());
+    if (request.circuitBreaker() != null) {
+      this.setCbFailureRateThreshold(request.circuitBreaker().cbFailureRateThreshold());
+      this.setCbSlowCallRateThreshold(request.circuitBreaker().cbSlowCallRateThreshold());
+      this.setCbSlowCallDurationMs(request.circuitBreaker().cbSlowCallDurationMs());
+      this.setCbPermittedInHalfOpen(request.circuitBreaker().cbPermittedInHalfOpen());
+      this.setCbSlidingWindowSize(request.circuitBreaker().cbSlidingWindowSize());
+      this.setCbWaitDurationOpenMs(request.circuitBreaker().cbWaitDurationOpenMs());
+      this.setCircuitBreakerEnabled(true);
+    }
+
+    if (request.bulkHead() != null) {
+      this.setBhMaxConcurrentCalls(request.bulkHead().bhMaxConcurrentCalls());
+      this.setBhMaxWaitDurationMs(request.bulkHead().bhMaxWaitDurationMs());
+      this.setBulkheadEnabled(true);
+    }
+
+    if (request.rateLimiter() != null) {
+      this.setRlLimitForPeriod(request.rateLimiter().rlLimitForPeriod());
+      this.setRlLimitRefreshPeriodMs(request.rateLimiter().rlLimitRefreshPeriodMs());
+      this.setRlTimeoutDurationMs(request.rateLimiter().rlTimeoutDurationMs());
+      this.setRateLimiterEnabled(true);
+    }
+
+    if (request.retry() != null) {
+      this.setRetryMaxAttempts(request.retry().retryMaxAttempts());
+      this.setRetryWaitDurationMs(request.retry().retryWaitDurationMs());
+      this.setRetryOnStatusCodes(request.retry().getRetryOnStatusCodes());
+      this.setRetryEnabled(true);
+    }
   }
 }

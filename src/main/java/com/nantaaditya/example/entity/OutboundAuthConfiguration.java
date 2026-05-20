@@ -2,6 +2,7 @@ package com.nantaaditya.example.entity;
 
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
+import com.nantaaditya.example.model.request.admin.UpsertAuthRequest;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -38,5 +39,22 @@ public class OutboundAuthConfiguration extends BaseEntity<Long> {
 
   public boolean isTokenExpired() {
     return tokenExpiryTime == null || LocalDateTime.now().isAfter(tokenExpiryTime);
+  }
+  
+  public void update(long outboundSystemId, byte[] apiKey, byte[] clientId, byte[] clientSecret, UpsertAuthRequest request) {
+    this.setOutboundSystemId(outboundSystemId);
+    this.setAuthType(request.authType());
+    this.setApiKey(apiKey);
+    this.setClientId(clientId);
+    this.setClientSecret(clientSecret);
+    this.setAutoRefresh(request.autoRefresh());
+    this.setTokenMethod(request.tokenMethod());
+    this.setTokenUrl(request.tokenUrl());
+    this.setTokenBody(request.tokenBody());
+    this.setTokenPrefix(request.tokenPrefix());
+    this.setTokenInjectLocation(request.tokenInjectLocation());
+    this.setTokenKeyName(request.tokenKeyName());
+    this.setTokenResponsePath(request.tokenResponsePath());
+    this.setTokenResponseExpiryPath(request.tokenResponseExpiryPath());
   }
 }

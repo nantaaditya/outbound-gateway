@@ -50,13 +50,13 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
     systemRepository.deleteAll().block();
   }
 
-  // --- GET /gateway/histories ---
+  // --- GET /api/gateway/histories ---
 
   @Test
-  @DisplayName("GET /gateway/histories — returns paginated list with default params")
+  @DisplayName("GET /api/gateway/histories — returns paginated list with default params")
   void findHistories_defaultParams_returnsPaginatedList() throws Exception {
     byte[] body = webTestClient.get()
-        .uri("/gateway/histories")
+        .uri("/api/gateway/histories")
         .exchange()
         .expectStatus().isOk()
         .expectBody()
@@ -70,10 +70,10 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("GET /gateway/histories — filters by code")
+  @DisplayName("GET /api/gateway/histories — filters by code")
   void findHistories_filterByCode_returnsMatchingRecords() throws Exception {
     byte[] body = webTestClient.get()
-        .uri("/gateway/histories?code=xendit-test")
+        .uri("/api/gateway/histories?code=xendit-test")
         .exchange()
         .expectStatus().isOk()
         .expectBody()
@@ -85,10 +85,10 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("GET /gateway/histories — filters by status")
+  @DisplayName("GET /api/gateway/histories — filters by status")
   void findHistories_filterByStatus_returnsMatchingRecords() throws Exception {
     byte[] body = webTestClient.get()
-        .uri("/gateway/histories?code=xendit-test&status=500")
+        .uri("/api/gateway/histories?code=xendit-test&status=500")
         .exchange()
         .expectStatus().isOk()
         .expectBody()
@@ -101,19 +101,19 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("GET /gateway/histories — unknown code returns HTTP 400")
+  @DisplayName("GET /api/gateway/histories — unknown code returns HTTP 400")
   void findHistories_unknownCode_returns400() {
     webTestClient.get()
-        .uri("/gateway/histories?code=no-such-code")
+        .uri("/api/gateway/histories?code=no-such-code")
         .exchange()
         .expectStatus().isBadRequest();
   }
 
   @Test
-  @DisplayName("GET /gateway/histories — respects page and size params")
+  @DisplayName("GET /api/gateway/histories — respects page and size params")
   void findHistories_withPageAndSize_respectsPagination() throws Exception {
     byte[] body = webTestClient.get()
-        .uri("/gateway/histories?code=xendit-test&page=0&size=1")
+        .uri("/api/gateway/histories?code=xendit-test&page=0&size=1")
         .exchange()
         .expectStatus().isOk()
         .expectBody()
@@ -126,13 +126,13 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
     assertThat(root.path("data").path("totalPages").asInt()).isEqualTo(2);
   }
 
-  // --- GET /gateway/histories/{idempotencyKey} ---
+  // --- GET /api/gateway/histories/{idempotencyKey} ---
 
   @Test
-  @DisplayName("GET /gateway/histories/{key} — returns single history by idempotency key")
+  @DisplayName("GET /api/gateway/histories/{key} — returns single history by idempotency key")
   void findByIdempotencyKey_existingKey_returnsHistory() throws Exception {
     byte[] body = webTestClient.get()
-        .uri("/gateway/histories/idem-001?code=xendit-test")
+        .uri("/api/gateway/histories/idem-001?code=xendit-test")
         .exchange()
         .expectStatus().isOk()
         .expectBody()
@@ -148,19 +148,19 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("GET /gateway/histories/{key} — unknown key returns HTTP 400")
+  @DisplayName("GET /api/gateway/histories/{key} — unknown key returns HTTP 400")
   void findByIdempotencyKey_unknownKey_returns400() {
     webTestClient.get()
-        .uri("/gateway/histories/ghost-key?code=xendit-test")
+        .uri("/api/gateway/histories/ghost-key?code=xendit-test")
         .exchange()
         .expectStatus().isBadRequest();
   }
 
   @Test
-  @DisplayName("GET /gateway/histories/{key} — unknown code returns HTTP 400")
+  @DisplayName("GET /api/gateway/histories/{key} — unknown code returns HTTP 400")
   void findByIdempotencyKey_unknownCode_returns400() {
     webTestClient.get()
-        .uri("/gateway/histories/idem-001?code=no-system")
+        .uri("/api/gateway/histories/idem-001?code=no-system")
         .exchange()
         .expectStatus().isBadRequest();
   }

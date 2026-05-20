@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
 @RestController
-@RequestMapping("/gateway")
+@RequestMapping("/api/gateway")
 @RequiredArgsConstructor
 public class GatewayController {
 

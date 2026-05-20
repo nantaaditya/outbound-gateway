@@ -10,4 +10,6 @@ public interface OutboundAuthConfigurationRepository
     extends ReactiveCrudRepository<OutboundAuthConfiguration, Long> {
 
   Mono<OutboundAuthConfiguration> findByOutboundSystemId(long outboundSystemId);
+
+  Mono<Void> deleteByOutboundSystemId(long outboundSystemId);
 }

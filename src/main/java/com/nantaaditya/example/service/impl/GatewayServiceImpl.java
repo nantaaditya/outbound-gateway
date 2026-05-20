@@ -218,7 +218,7 @@ public class GatewayServiceImpl implements GatewayService {
   private Mono<GatewayResponse> executeHttp(
       OutboundSystemContext context, GatewayRequest request, AuthCredential credential) {
     OutboundSystem system = context.getSystem();
-    HttpMethod httpMethod = HttpMethod.valueOf(system.getHttpMethod().toUpperCase());
+    HttpMethod httpMethod = system.getHttpMethodEnum();
 
     WebClient.RequestBodySpec requestSpec = context.getWebClient()
         .method(httpMethod)

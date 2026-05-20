@@ -18,7 +18,7 @@ All configuration is stored in the database — no restart is needed to add, upd
 | **History** | Every call saved to `outbound_histories` including internal rejects |
 | **Connection pool** | Per-host Reactor Netty pool with configurable size and acquire timeout |
 | **HTTP logging** | Logbook logs all outbound request/response pairs |
-| **Metrics** | Resilience4j metrics + Micrometer + Prometheus |
+| **Metrics** | Custom outbound call/duration/idempotency counters + Resilience4j auto-binding via Micrometer + Prometheus |
 
 ---
 
@@ -396,7 +396,23 @@ GET /actuator/prometheus
 GET /actuator/metrics
 ```
 
+### Custom Outbound Metrics
+
+Recorded by `OutboundMetricsRecorder` into Micrometer on every gateway call:
+
+```
+outbound_calls_total{code, http_status, caller_service}
+outbound_calls_duration_seconds{code, quantile}
+outbound_idempotency_hits_total{code}
+```
+
+- `code` — outbound system code (e.g. `xendit-charge`)
+- `http_status` — actual upstream HTTP status, or `503`/`429`/`504` for internal rejects
+- `caller_service` — from `X-Caller-Service` header; `"unknown"` when absent
+
 ### Resilience4j Prometheus Metrics
+
+All Resilience4j instances are automatically bound to Micrometer via shared registries. Every system that has a mechanism enabled is tracked without manual registration:
 
 ```
 resilience4j_circuitbreaker_state{name="<code>"}
@@ -404,7 +420,7 @@ resilience4j_circuitbreaker_failure_rate{name="<code>"}
 resilience4j_circuitbreaker_calls_total{name="<code>",kind="successful|failed|not_permitted"}
 resilience4j_bulkhead_available_concurrent_calls{name="<code>"}
 resilience4j_ratelimiter_available_permissions{name="<code>"}
-resilience4j_retry_calls_total{name="<code>",kind="successful_without_retry|successful_with_retry|failed_with_retry|failed_without_retry"}
+resilience4j_retry_calls{name="<code>",kind="successful_without_retry|successful_with_retry|failed_with_retry|failed_without_retry"}
 ```
 
 ### HTTP Logging (Logbook)
@@ -593,19 +609,240 @@ Looks up a single history record by idempotency key. `code` is required because 
 
 ### Admin API
 
-```
-POST   /internal/outbound-systems                         create
-GET    /internal/outbound-systems                         list
-GET    /internal/outbound-systems/{code}                  detail
-PUT    /internal/outbound-systems/{code}                  update
-DELETE /internal/outbound-systems/{code}                  delete
+All admin endpoints require the same mandatory request headers as the Gateway API (`X-Client-Id`, `X-Request-Id`, `X-Request-Time`).
 
-POST   /internal/outbound-systems/{code}/resilience       upsert resilience config
-POST   /internal/outbound-systems/{code}/headers          upsert headers
-POST   /internal/outbound-systems/{code}/auth             upsert auth config
-POST   /internal/outbound-systems/{code}/response-mapper  upsert response mapper
+---
 
-POST   /internal/outbound-systems/{code}/reload           hot reload (cache eviction)
-POST   /internal/outbound-systems/{code}/test             test connectivity
-GET    /internal/outbound-systems/{code}/metrics          real-time stats
+#### `POST /internal/outbound-systems`
+
+**Request**
+
+```json
+{
+  "code": "xendit-charge",
+  "name": "Xendit Charge",
+  "description": "Create payment charge",
+  "httpMethod": "POST",
+  "baseUrl": "https://api.xendit.co",
+  "apiPath": "/v2/charges",
+  "isActive": true,
+  "idempotencyTtlHours": 24
+}
 ```
+
+**Response**
+
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": {
+    "id": 1,
+    "code": "xendit-charge",
+    "name": "Xendit Charge",
+    "httpMethod": "POST",
+    "baseUrl": "https://api.xendit.co",
+    "apiPath": "/v2/charges",
+    "isActive": true,
+    "idempotencyTtlHours": 24
+  }
+}
+```
+
+---
+
+#### `GET /internal/outbound-systems`
+
+Returns all registered outbound systems.
+
+---
+
+#### `GET /internal/outbound-systems/{code}`
+
+Returns full detail including all sub-configurations (resilience, headers, auth, response mapper).
+
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": {
+    "id": 1,
+    "code": "xendit-charge",
+    "name": "Xendit Charge",
+    "resilience": { "circuitBreakerEnabled": true, "retryEnabled": true, "retryMaxAttempts": 3 },
+    "headers": { "Content-Type": ["application/json"] },
+    "auth": { "authType": "API_KEY", "tokenKeyName": "Authorization", "tokenInjectLocation": "HEADER" },
+    "responseMapper": { "converterType": "JSLT", "mappingScript": "...", "isActive": true }
+  }
+}
+```
+
+Auth response deliberately omits `api_key`, `client_id`, `client_secret` — encrypted values are never returned.
+
+---
+
+#### `PUT /internal/outbound-systems/{code}`
+
+Updates `name`, `description`, `httpMethod`, `baseUrl`, `apiPath`, `isActive`, `idempotencyTtlHours`.
+
+---
+
+#### `DELETE /internal/outbound-systems/{code}`
+
+Cascade-deletes the system and all sub-configs (resilience, headers, auth, response mapper). Returns `true` on success.
+
+---
+
+#### `POST /internal/outbound-systems/{code}/resilience`
+
+**Request**
+
+```json
+{
+  "readTimeOutMs": 10000,
+  "circuitBreakerEnabled": true,
+  "cbFailureRateThreshold": 50.0,
+  "cbSlidingWindowSize": 50,
+  "cbWaitDurationOpenMs": 30000,
+  "bulkheadEnabled": false,
+  "rateLimiterEnabled": false,
+  "retryEnabled": true,
+  "retryMaxAttempts": 3,
+  "retryWaitDurationMs": 500,
+  "retryOnStatusCodes": "500,502,503"
+}
+```
+
+Returns `true` on success.
+
+---
+
+#### `POST /internal/outbound-systems/{code}/headers`
+
+**Request**
+
+```json
+{
+  "headers": {
+    "Content-Type": ["application/json"],
+    "Accept": ["application/json"]
+  }
+}
+```
+
+Returns `true` on success.
+
+---
+
+#### `POST /internal/outbound-systems/{code}/auth`
+
+Sensitive fields (`apiKey`, `clientId`, `clientSecret`) are AES-256-GCM encrypted by the gateway before storage. Send raw plaintext values — never pre-encrypted bytes.
+
+**Request (API Key)**
+
+```json
+{
+  "authType": "API_KEY",
+  "apiKey": "my-raw-secret-key",
+  "tokenInjectLocation": "HEADER",
+  "tokenKeyName": "Authorization"
+}
+```
+
+**Request (OAuth2 Client Credentials)**
+
+```json
+{
+  "authType": "OAUTH",
+  "clientId": "my-client-id",
+  "clientSecret": "my-client-secret",
+  "isAutoRefresh": true,
+  "tokenMethod": "POST",
+  "tokenUrl": "https://auth.example.com/token",
+  "tokenBody": "grant_type=client_credentials",
+  "tokenPrefix": "Bearer",
+  "tokenInjectLocation": "HEADER",
+  "tokenKeyName": "Authorization",
+  "tokenResponsePath": "$.access_token",
+  "tokenResponseExpiryPath": "$.expires_in"
+}
+```
+
+Returns `true` on success.
+
+---
+
+#### `POST /internal/outbound-systems/{code}/response-mapper`
+
+**Request**
+
+```json
+{
+  "converterType": "JSLT",
+  "mappingScript": "{\"transactionId\": .id, \"amount\": .amount}",
+  "mappingStatus": { "404": 400, "422": 400 },
+  "isActive": true
+}
+```
+
+Returns `true` on success.
+
+---
+
+#### `POST /internal/outbound-systems/{code}/reload`
+
+Evicts the context cache and WebClient pool for the system's host. The next request reloads config from DB and creates a fresh connection pool.
+
+Returns `true` on success.
+
+> Evicting the pool drops **all in-flight connections to that host** — all systems sharing the same `baseUrl` are affected.
+
+---
+
+#### `POST /internal/outbound-systems/{code}/test`
+
+Probes the outbound system's endpoint using the same `GatewayWebClientBuilder` pipeline.
+
+**Response**
+
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": {
+    "reachable": true,
+    "latencyMs": 134,
+    "httpStatus": 200
+  }
+}
+```
+
+---
+
+#### `GET /internal/outbound-systems/{code}/metrics`
+
+Returns real-time call statistics for the past hour from `outbound_histories`. Percentiles are computed with PostgreSQL `percentile_cont` (exact continuous interpolation, not approximation).
+
+**Response**
+
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": {
+    "code": "xendit-charge",
+    "period": "last_1h",
+    "totalCalls": 200,
+    "successRate": 0.992,
+    "errorRate": 0.008,
+    "breakdownByStatus": {
+      "200": { "count": 184, "percentage": 92.0 },
+      "500": { "count": 2,   "percentage": 1.0  }
+    },
+    "avgDurationMs": 234,
+    "p90DurationMs": 890,
+    "p95DurationMs": 1102,
+    "p99DurationMs": 1843,
+    "circuitBreakerState": "CLOSED",
+    "idempotencyHits": 12
+  }
+}
+```
+
+When `totalCalls = 0`, all percentiles return `0`.

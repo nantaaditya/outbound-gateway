@@ -15,7 +15,7 @@ public enum ObservationConstant {
   }
 
   public static ObservationConstant from(String path) {
-    if (path.startsWith("/internal-api")) {
+    if (path.startsWith("/internal-api") || path.startsWith("/internal")) {
       return INTERNAL_API;
     } else if (path.startsWith("/api")) {
       return PUBLIC_API;

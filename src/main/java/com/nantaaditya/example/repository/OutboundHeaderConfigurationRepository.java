@@ -4,10 +4,13 @@ import com.nantaaditya.example.entity.OutboundHeaderConfiguration;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Repository
 public interface OutboundHeaderConfigurationRepository
     extends ReactiveCrudRepository<OutboundHeaderConfiguration, Long> {
 
   Flux<OutboundHeaderConfiguration> findByOutboundSystemId(long outboundSystemId);
+
+  Mono<Void> deleteByOutboundSystemId(long outboundSystemId);
 }

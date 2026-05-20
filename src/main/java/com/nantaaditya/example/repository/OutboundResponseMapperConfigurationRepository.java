@@ -11,4 +11,8 @@ public interface OutboundResponseMapperConfigurationRepository
 
   Mono<OutboundResponseMapperConfiguration> findByOutboundSystemIdAndActiveTrue(
       long outboundSystemId);
+
+  Mono<OutboundResponseMapperConfiguration> findByOutboundSystemId(long outboundSystemId);
+
+  Mono<Void> deleteByOutboundSystemId(long outboundSystemId);
 }
