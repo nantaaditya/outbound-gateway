@@ -71,6 +71,12 @@ public class ResilienceRegistryService {
     retryRegistry.remove(name);
   }
 
+  public String findCircuitBreakerState(String name) {
+    return circuitBreakerRegistry.find(name)
+        .map(cb -> cb.getState().name())
+        .orElse("NONE");
+  }
+
   private CircuitBreakerConfig buildCbConfig(OutboundResilienceConfiguration cfg) {
     return CircuitBreakerConfig.custom()
         .failureRateThreshold(cfg.getCbFailureRateThreshold())

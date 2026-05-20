@@ -75,6 +75,10 @@ public class OutboundResilienceConfiguration extends BaseEntity<Long> {
   public void update(long outboundSystemId, UpsertResilienceRequest request) {
     this.setOutboundSystemId(outboundSystemId);
     this.setReadTimeOutMs(request.readTimeOutMs());
+    this.setCircuitBreakerEnabled(false);
+    this.setBulkheadEnabled(false);
+    this.setRateLimiterEnabled(false);
+    this.setRetryEnabled(false);
     if (request.circuitBreaker() != null) {
       this.setCbFailureRateThreshold(request.circuitBreaker().cbFailureRateThreshold());
       this.setCbSlowCallRateThreshold(request.circuitBreaker().cbSlowCallRateThreshold());

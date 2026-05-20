@@ -16,18 +16,18 @@ public enum FeatureConstant {
   OUTBOUND_HISTORIES(HttpMethod.GET, "/gateway/histories"),
   CHECK_IDEMPOTENT_REQUEST(HttpMethod.GET, "/api/gateway/histories/*"),
   OUTBOUND_CALL(HttpMethod.POST, "/api/gateway/execute/*"),
-  CREATE_OUTBOUND(HttpMethod.POST, "/api/outbound-systems"),
-  LIST_OUTBOUNDS(HttpMethod.GET, "/api/outbounds"),
-  GET_OUTBOUND(HttpMethod.GET, "/api/outbounds/*"),
-  UPDATE_OUTBOUND(HttpMethod.PUT, "/api/outbounds/*"),
-  DELETE_OUTBOUND(HttpMethod.DELETE, "/api/outbounds/*"),
-  UPSERT_RESILIENCE(HttpMethod.POST, "/api/outbounds/*/resilience"),
-  UPSERT_HEADERS(HttpMethod.POST, "/api/outbounds/*/headers"),
-  UPSERT_AUTH(HttpMethod.POST, "/api/outbounds/*/auth"),
-  UPSERT_RESPONSE_MAPPER(HttpMethod.POST, "/api/outbounds/*/response-mapper"),
-  OUTBOUND_RELOAD(HttpMethod.POST, "/api/outbounds/*/reload"),
-  OUTBOUND_TEST(HttpMethod.POST, "/api/outbounds/*/test"),
-  GET_METRICS(HttpMethod.GET, "/api/outbounds/*/metrics"),;
+  CREATE_OUTBOUND(HttpMethod.POST, "/api/outbound"),
+  LIST_OUTBOUNDS(HttpMethod.GET, "/api/outbound"),
+  GET_OUTBOUND(HttpMethod.GET, "/api/outbound/*"),
+  UPDATE_OUTBOUND(HttpMethod.PUT, "/api/outbound/*"),
+  DELETE_OUTBOUND(HttpMethod.DELETE, "/api/outbound/*"),
+  UPSERT_RESILIENCE(HttpMethod.POST, "/api/outbound/*/resilience"),
+  UPSERT_HEADERS(HttpMethod.POST, "/api/outbound/*/headers"),
+  UPSERT_AUTH(HttpMethod.POST, "/api/outbound/*/auth"),
+  UPSERT_RESPONSE_MAPPER(HttpMethod.POST, "/api/outbound/*/response-mapper"),
+  OUTBOUND_RELOAD(HttpMethod.POST, "/api/outbound/*/reload"),
+  OUTBOUND_TEST(HttpMethod.POST, "/api/outbound/*/test"),
+  GET_METRICS(HttpMethod.GET, "/api/outbound/*/metrics"),;
 
   private HttpMethod method;
   private String path;
