@@ -52,7 +52,7 @@ public record UpsertResilienceRequest(
       int retryWaitDurationMs,
       Set<String> retryOnStatusCodes
   ) {
-    public String getRetryOnStatusCodes() {
+    public String toStatusCodeString() {
       if (retryOnStatusCodes == null) return null;
       return retryOnStatusCodes.stream().collect(Collectors.joining(","));
     }

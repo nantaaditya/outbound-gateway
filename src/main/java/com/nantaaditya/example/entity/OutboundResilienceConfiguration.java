@@ -101,7 +101,7 @@ public class OutboundResilienceConfiguration extends BaseEntity<Long> {
     if (request.retry() != null) {
       this.setRetryMaxAttempts(request.retry().retryMaxAttempts());
       this.setRetryWaitDurationMs(request.retry().retryWaitDurationMs());
-      this.setRetryOnStatusCodes(request.retry().getRetryOnStatusCodes());
+      this.setRetryOnStatusCodes(request.retry().toStatusCodeString());
       this.setRetryEnabled(true);
     }
   }

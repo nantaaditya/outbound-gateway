@@ -2,6 +2,7 @@ package com.nantaaditya.example.service.impl;
 
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHeaderConfiguration;
+import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
@@ -19,11 +20,13 @@ import com.nantaaditya.example.model.response.OutboundSystemResponse;
 import com.nantaaditya.example.model.response.TestConnectionResponse;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundHeaderConfigurationRepository;
+import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.OutboundService;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -32,8 +35,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @Log4j2
 @Service
@@ -45,11 +49,16 @@ public class OutboundServiceImpl implements OutboundService {
   private final OutboundHeaderConfigurationRepository headerRepository;
   private final OutboundAuthConfigurationRepository authRepository;
   private final OutboundResponseMapperConfigurationRepository mapperRepository;
+  private final OutboundHostConfigurationRepository hostConfigRepository;
   private final GatewayServiceImpl gatewayService;
+  private final GatewayWebClientBuilder contextBuilder;
   private final EncryptionHelper encryptionHelper;
   private final ResilienceRegistryService resilienceRegistryService;
+  private final TransactionalOperator transactionalOperator;
   private final MeterRegistry meterRegistry;
   private final DatabaseClient databaseClient;
+
+  private static final Duration TEST_CONNECTION_TIMEOUT = Duration.ofSeconds(5);
 
   private static final String CALCULATE_PERCENTILE_QUERY = """
       SELECT
@@ -128,14 +137,14 @@ public class OutboundServiceImpl implements OutboundService {
             Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
         .flatMap(system -> {
           long systemId = system.getId();
-          // TODO: make this as transactional
           return resilienceRepository.deleteByOutboundSystemId(systemId)
               .then(headerRepository.deleteByOutboundSystemId(systemId))
               .then(authRepository.deleteByOutboundSystemId(systemId))
               .then(mapperRepository.deleteByOutboundSystemId(systemId))
               .then(systemRepository.delete(system))
               .doOnSuccess(v -> gatewayService.evictContext(code))
-              .thenReturn(Boolean.TRUE);
+              .thenReturn(Boolean.TRUE)
+              .as(transactionalOperator::transactional);
         });
   }
 
@@ -165,12 +174,12 @@ public class OutboundServiceImpl implements OutboundService {
           if (request.headers() != null) {
             request.headers().forEach(headersAsObjectMap::put);
           }
-          // TODO: make this as transactional
           return headerRepository.deleteByOutboundSystemId(system.getId())
               .then(headerRepository.save(OutboundHeaderConfiguration.builder()
                   .outboundSystemId(system.getId())
                   .headers(headersAsObjectMap)
-                  .build()));
+                  .build()))
+              .as(transactionalOperator::transactional);
         })
         .thenReturn(Boolean.TRUE);
   }
@@ -180,16 +189,24 @@ public class OutboundServiceImpl implements OutboundService {
     return systemRepository.findByCode(code)
         .switchIfEmpty(
             Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
-        .flatMap(system -> authRepository.findByOutboundSystemId(system.getId())
-            .defaultIfEmpty(OutboundAuthConfiguration.builder()
-                .outboundSystemId(system.getId())
-                .build())
-            .flatMap(existing -> {
-              existing.update(system.getId(), encryptIfNotNull(request.apiKey()),
-                  encryptIfNotNull(request.clientId()), encryptIfNotNull(request.clientSecret()),
-                  request);
-              return authRepository.save(existing);
-            }))
+        .flatMap(system ->
+            Mono.fromCallable(() -> new byte[][]{
+                    encryptIfNotNull(request.apiKey()),
+                    encryptIfNotNull(request.clientId()),
+                    encryptIfNotNull(request.clientSecret())
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(encrypted ->
+                    authRepository.findByOutboundSystemId(system.getId())
+                        .defaultIfEmpty(OutboundAuthConfiguration.builder()
+                            .outboundSystemId(system.getId())
+                            .build())
+                        .flatMap(existing -> {
+                          existing.update(system.getId(), encrypted[0], encrypted[1], encrypted[2], request);
+                          return authRepository.save(existing);
+                        })
+                )
+        )
         .thenReturn(Boolean.TRUE);
   }
 
@@ -214,7 +231,10 @@ public class OutboundServiceImpl implements OutboundService {
     return systemRepository.findByCode(code)
         .switchIfEmpty(
             Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
-        .doOnNext(system -> gatewayService.evictContext(code))
+        .doOnNext(system -> {
+          gatewayService.evictContext(code);
+          resilienceRegistryService.reload(code);
+        })
         .thenReturn(Boolean.TRUE);
   }
 
@@ -223,20 +243,37 @@ public class OutboundServiceImpl implements OutboundService {
     return systemRepository.findByCode(code)
         .switchIfEmpty(
             Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
-        .flatMap(system -> {
-          WebClient client = WebClient.builder().build();
-          return client.method(system.getHttpMethodEnum())
-              .uri(system.getFullPath())
-              .exchangeToMono(response -> {
-                int status = response.statusCode().value();
-                return response.bodyToMono(String.class)
-                    .defaultIfEmpty("")
-                    .map(body -> new TestConnectionResponse(status < 500, status, body));
-              })
-              .onErrorResume(e ->
-                  Mono.just(new TestConnectionResponse(false, 0, e.getMessage()))
-              );
-        });
+        .flatMap(system ->
+            hostConfigRepository.findByBaseUrl(system.getBaseUrl())
+                .defaultIfEmpty(defaultHostConfig(system.getBaseUrl()))
+                .flatMap(hostConfig -> {
+                  var client = contextBuilder.getOrCreateWebClient(hostConfig);
+                  return client.method(system.getHttpMethodEnum())
+                      .uri(system.getFullPath())
+                      .exchangeToMono(response -> {
+                        int status = response.statusCode().value();
+                        return response.bodyToMono(String.class)
+                            .defaultIfEmpty("")
+                            .map(body -> new TestConnectionResponse(status < 500, status, body));
+                      })
+                      .timeout(TEST_CONNECTION_TIMEOUT)
+                      .onErrorResume(e ->
+                          Mono.just(new TestConnectionResponse(false, 0, e.getMessage()))
+                      );
+                })
+        );
+  }
+
+  private OutboundHostConfiguration defaultHostConfig(String baseUrl) {
+    return OutboundHostConfiguration.builder()
+        .baseUrl(baseUrl)
+        .connectTimeOutMs(5000)
+        .maxConnections(50)
+        .pendingAcquireMaxCount(100)
+        .pendingAcquireTimeoutMs(5000)
+        .disableSslVerification(false)
+        .useProxy(false)
+        .build();
   }
 
   @Override
