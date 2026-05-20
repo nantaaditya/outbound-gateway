@@ -7,6 +7,7 @@ import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.helper.EncryptionHelper;
+import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.admin.CreateOutboundSystemRequest;
 import com.nantaaditya.example.model.request.admin.UpdateOutboundSystemRequest;
 import com.nantaaditya.example.model.request.admin.UpsertAuthRequest;
@@ -24,7 +25,6 @@ import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
-import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.service.OutboundService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -32,6 +32,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.r2dbc.core.DatabaseClient;
@@ -60,6 +61,7 @@ public class OutboundServiceImpl implements OutboundService {
   private final DatabaseClient databaseClient;
 
   private static final Duration TEST_CONNECTION_TIMEOUT = Duration.ofSeconds(5);
+  private static final int MAX_LIST_SIZE = 1000;
 
   private static final String CALCULATE_PERCENTILE_QUERY = """
       SELECT
@@ -89,42 +91,46 @@ public class OutboundServiceImpl implements OutboundService {
   @Override
   public Mono<List<OutboundSystemResponse>> list() {
     return systemRepository.findAll()
+        .take(MAX_LIST_SIZE)
         .map(OutboundSystemResponse::from)
         .collectList();
   }
 
   @Override
   public Mono<OutboundSystemDetailResponse> getDetail(String code) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .flatMap(system -> {
           long systemId = system.getId();
-          Mono<OutboundResilienceConfiguration> resilienceMono = resilienceRepository.findByOutboundSystemId(
-                  systemId)
-              .defaultIfEmpty(new OutboundResilienceConfiguration());
-          Mono<List<Map<String, Object>>> headersMono = headerRepository.findByOutboundSystemId(
-                  systemId)
+          Mono<Optional<OutboundResilienceConfiguration>> resilienceMono = resilienceRepository
+              .findByOutboundSystemId(systemId)
+              .map(Optional::of)
+              .defaultIfEmpty(Optional.empty());
+          Mono<List<Map<String, Object>>> headersMono = headerRepository.findByOutboundSystemId(systemId)
               .map(h -> h.getHeaders() != null ? h.getHeaders() : Map.<String, Object>of())
               .collectList();
-          Mono<OutboundAuthConfiguration> authMono = authRepository.findByOutboundSystemId(systemId)
-              .defaultIfEmpty(new OutboundAuthConfiguration());
-          Mono<OutboundResponseMapperConfiguration> mapperMono = mapperRepository.findByOutboundSystemId(
-                  systemId)
-              .defaultIfEmpty(new OutboundResponseMapperConfiguration());
+          Mono<Optional<OutboundAuthConfiguration>> authMono = authRepository
+              .findByOutboundSystemId(systemId)
+              .map(Optional::of)
+              .defaultIfEmpty(Optional.empty());
+          Mono<Optional<OutboundResponseMapperConfiguration>> mapperMono = mapperRepository
+              .findByOutboundSystemId(systemId)
+              .map(Optional::of)
+              .defaultIfEmpty(Optional.empty());
 
           return Mono.zip(resilienceMono, headersMono, authMono, mapperMono)
               .map(t -> OutboundSystemDetailResponse.from(
-                  system, t.getT1(), t.getT2(), t.getT3(), t.getT4())
+                  system,
+                  t.getT1().orElse(null),
+                  t.getT2(),
+                  t.getT3().orElse(null),
+                  t.getT4().orElse(null))
               );
         });
   }
 
   @Override
   public Mono<OutboundSystemResponse> update(String code, UpdateOutboundSystemRequest request) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .flatMap(system -> {
           system.update(request);
           return systemRepository.save(system);
@@ -135,9 +141,7 @@ public class OutboundServiceImpl implements OutboundService {
 
   @Override
   public Mono<Boolean> delete(String code) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .flatMap(system -> {
           long systemId = system.getId();
           return resilienceRepository.deleteByOutboundSystemId(systemId)
@@ -156,9 +160,7 @@ public class OutboundServiceImpl implements OutboundService {
 
   @Override
   public Mono<Boolean> upsertResilience(String code, UpsertResilienceRequest request) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .flatMap(system -> resilienceRepository.findByOutboundSystemId(system.getId())
             .defaultIfEmpty(OutboundResilienceConfiguration.builder()
                 .outboundSystemId(system.getId())
@@ -173,9 +175,7 @@ public class OutboundServiceImpl implements OutboundService {
 
   @Override
   public Mono<Boolean> upsertHeaders(String code, UpsertHeadersRequest request) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .flatMap(system -> {
           Map<String, Object> headersAsObjectMap = new HashMap<>();
           if (request.headers() != null) {
@@ -194,9 +194,7 @@ public class OutboundServiceImpl implements OutboundService {
 
   @Override
   public Mono<Boolean> upsertAuth(String code, UpsertAuthRequest request) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .flatMap(system ->
             Mono.fromCallable(() -> new byte[][]{
                     encryptIfNotNull(request.apiKey()),
@@ -221,9 +219,7 @@ public class OutboundServiceImpl implements OutboundService {
 
   @Override
   public Mono<Boolean> upsertResponseMapper(String code, UpsertResponseMapperRequest request) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .flatMap(system -> mapperRepository.findByOutboundSystemId(system.getId())
             .defaultIfEmpty(OutboundResponseMapperConfiguration.builder()
                 .outboundSystemId(system.getId())
@@ -238,9 +234,7 @@ public class OutboundServiceImpl implements OutboundService {
 
   @Override
   public Mono<Boolean> reload(String code) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .doOnNext(system -> {
           gatewayService.evictContext(code);
           resilienceRegistryService.reload(code);
@@ -251,9 +245,7 @@ public class OutboundServiceImpl implements OutboundService {
 
   @Override
   public Mono<TestConnectionResponse> testConnection(String code) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .flatMap(system ->
             hostConfigRepository.findByBaseUrl(system.getBaseUrl())
                 .defaultIfEmpty(defaultHostConfig(system.getBaseUrl()))
@@ -276,23 +268,9 @@ public class OutboundServiceImpl implements OutboundService {
         );
   }
 
-  private OutboundHostConfiguration defaultHostConfig(String baseUrl) {
-    return OutboundHostConfiguration.builder()
-        .baseUrl(baseUrl)
-        .connectTimeOutMs(5000)
-        .maxConnections(50)
-        .pendingAcquireMaxCount(100)
-        .pendingAcquireTimeoutMs(5000)
-        .disableSslVerification(false)
-        .useProxy(false)
-        .build();
-  }
-
   @Override
   public Mono<OutboundMetricsResponse> getMetrics(String code) {
-    return systemRepository.findByCode(code)
-        .switchIfEmpty(
-            Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+    return requireSystem(code)
         .flatMap(system -> {
           long systemId = system.getId();
           LocalDateTime cutoff = LocalDateTime.now().minusHours(1);
@@ -337,7 +315,7 @@ public class OutboundServiceImpl implements OutboundService {
                 long p95 = toLong(agg.get("p95_duration_ms"));
                 long p99 = toLong(agg.get("p99_duration_ms"));
 
-                String cbState = resolveCircuitBreakerState(code);
+                String cbState = resilienceRegistryService.findCircuitBreakerState(code);
                 long idempotencyHits = resolveIdempotencyHits(code);
 
                 return new OutboundMetricsResponse(
@@ -348,8 +326,21 @@ public class OutboundServiceImpl implements OutboundService {
         });
   }
 
-  private String resolveCircuitBreakerState(String code) {
-    return resilienceRegistryService.findCircuitBreakerState(code);
+  private Mono<OutboundSystem> requireSystem(String code) {
+    return systemRepository.findByCode(code)
+        .switchIfEmpty(Mono.error(new IllegalArgumentException("Outbound system not found: " + code)));
+  }
+
+  private OutboundHostConfiguration defaultHostConfig(String baseUrl) {
+    return OutboundHostConfiguration.builder()
+        .baseUrl(baseUrl)
+        .connectTimeOutMs(5000)
+        .maxConnections(50)
+        .pendingAcquireMaxCount(100)
+        .pendingAcquireTimeoutMs(5000)
+        .disableSslVerification(false)
+        .useProxy(false)
+        .build();
   }
 
   private long resolveIdempotencyHits(String code) {

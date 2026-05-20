@@ -2,8 +2,10 @@ package com.nantaaditya.example.model.request.admin;
 
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
+import jakarta.validation.constraints.NotNull;
 
 public record UpsertAuthRequest(
+    @NotNull(message = "NotNull")
     AuthType authType,
     String apiKey,
     String clientId,
