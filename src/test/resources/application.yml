@@ -46,10 +46,10 @@ logging:
     root: INFO
     com.nantaaditya: INFO
     org.zalando.logbook: TRACE
-    io.r2dbc.h2.client: DEBUG
-    io.r2dbc.h2: DEBUG
-    io.r2dbc.spi: DEBUG
-    org.springframework.r2dbc.core: DEBUG
+#    io.r2dbc.h2.client: DEBUG
+#    io.r2dbc.h2: DEBUG
+#    io.r2dbc.spi: DEBUG
+#    org.springframework.r2dbc.core: DEBUG
   file:
     path: ${LOG_PATH:logs/}
   config: classpath:log4j2-spring-${apps.log.log-format:json}.xml

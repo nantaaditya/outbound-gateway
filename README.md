@@ -53,7 +53,7 @@ database "PostgreSQL" {
   [outbound_histories]
 }
 
-[Payment Service] --> [GatewayController] : POST /gateway/execute/{code}
+[Payment Service] --> [GatewayController] : POST /api/gateway/execute/{code}
 [Notification Service] --> [GatewayController]
 [Order Service] --> [GatewayController]
 
@@ -150,6 +150,28 @@ Only mechanisms with their enable flag set to `true` are applied. A system with 
 
 ---
 
+## Tech Stack
+
+| Layer | Library / Version |
+|---|---|
+| **Runtime** | Java 21, Spring Boot 3.5.0 |
+| **Web** | Spring WebFlux (Reactor Netty) |
+| **Database (reactive)** | Spring Data R2DBC, r2dbc-postgresql |
+| **Database (migrations)** | Flyway Core + flyway-database-postgresql |
+| **Database (JDBC)** | PostgreSQL JDBC (Flyway only) |
+| **Resilience** | Resilience4j 2.3.0 (spring-boot3, reactor, micrometer) |
+| **HTTP logging** | Zalando Logbook 3.12.3 (spring-webflux, netty, json) |
+| **Tracing** | Micrometer Tracing (Brave bridge), Zipkin Brave SLF4J |
+| **Metrics** | Micrometer Prometheus registry |
+| **JSON transform** | JSLT 0.1.14 |
+| **ID generation** | TSID Creator 5.2.6 |
+| **Serialization** | Jackson (via Spring Boot), Gson 2.13.2 |
+| **Caching** | Caffeine (via Spring Boot Cache) |
+| **Logging** | Log4j2 (async via LMAX Disruptor 3.4.4) |
+| **Testing** | JUnit 5, Reactor Test, r2dbc-h2, WireMock 3.13.1, Awaitility 4.3.0, Micrometer Observation/Tracing Test |
+
+---
+
 ## How to Setup
 
 ### Prerequisites
@@ -160,15 +182,27 @@ Only mechanisms with their enable flag set to `true` are applied. A system with 
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|---|---|---|
-| `GATEWAY_ENCRYPTION_KEY` | AES-256 key — Base64-encoded 32 bytes | Yes |
-| `SPRING_R2DBC_URL` | R2DBC connection URL for reactive queries | Yes |
-| `SPRING_R2DBC_USERNAME` | DB username | Yes |
-| `SPRING_R2DBC_PASSWORD` | DB password | Yes |
-| `SPRING_FLYWAY_URL` | JDBC URL for Flyway migrations | Yes |
-| `SPRING_FLYWAY_USER` | DB username for Flyway | Yes |
-| `SPRING_FLYWAY_PASSWORD` | DB password for Flyway | Yes |
+> **`GATEWAY_ENCRYPTION_KEY` is the only required variable with no default.** All others have working defaults for local development.
+
+| Variable | Description | Default | Required |
+|---|---|---|---|
+| `GATEWAY_ENCRYPTION_KEY` | AES-256-GCM key — Base64-encoded 32 bytes | — | **Yes** |
+| `R2DBC_URL` | R2DBC connection URL (reactive) | `r2dbc:postgresql://localhost:5432/boilerplate` | No |
+| `DB_USERNAME` | Database username | `user` | No |
+| `DB_PASSWORD` | Database password | `password` | No |
+| `DB_URL` | JDBC URL (used only by Flyway) | `jdbc:postgresql://localhost:5432/boilerplate` | No |
+| `FLYWAY_ENABLED` | Whether Flyway runs migrations on startup | `false` | No |
+| `SERVER_PORT` | Application HTTP port | `8080` | No |
+| `ACTUATOR_PORT` | Management/actuator port | `1000` | No |
+| `CONTEXT_PATH` | WebFlux base path prefix | `/app` | No |
+| `DB_POOL_SIZE` | R2DBC pool initial size | `5` | No |
+| `DB_MAX_POOL_SIZE` | R2DBC pool max size | `10` | No |
+| `TRACING_SAMPLING_PROBABILITY` | Micrometer tracing sample rate (0.0–1.0) | `1.0` | No |
+| `ROOT_LOG_LEVEL` | Root log level | `INFO` | No |
+| `APP_LOG_LEVEL` | Application log level | `INFO` | No |
+| `APPS_LOG_FORMAT` | Log format (`json` or `console`) | `json` | No |
+| `APP_NAME` | Spring application name | `single-module-reactive` | No |
+| `APP_VERSION` | Application version label | `1.0.0` | No |
 
 Generate a 32-byte key:
 ```bash
@@ -178,16 +212,209 @@ openssl rand -base64 32
 ### Run Locally
 
 ```bash
-mvn spring-boot:run
+mvn spring-boot:run -DGATEWAY_ENCRYPTION_KEY=<your-base64-key>
 ```
 
-Flyway runs automatically on startup and applies all pending migrations.
+> **Flyway is disabled by default** (`FLYWAY_ENABLED=false`). To apply migrations on startup, set `FLYWAY_ENABLED=true`. Without it, apply the SQL files in `src/main/resources/db/migration/` manually (V1 through V19).
+
+All API paths are served under the base path configured by `CONTEXT_PATH` (default `/app`). A request to execute a gateway call is:
+
+```
+POST http://localhost:8080/app/api/gateway/execute/{code}
+```
+
+Actuator endpoints are on a **separate port** (default `1000`, controlled by `ACTUATOR_PORT`):
+
+```
+GET http://localhost:1000/actuator/health
+GET http://localhost:1000/actuator/prometheus
+```
 
 ---
 
 ## Configuration Guide
 
-### Step 1 — Register an outbound system
+### Primary: Admin API
+
+The recommended way to configure outbound systems is through the Admin API — the gateway encrypts sensitive fields automatically and validates input before writing to the database.
+
+#### Step 1 — Create an outbound system
+
+```
+POST /api/outbound
+```
+
+```json
+{
+  "code": "xendit-charge",
+  "name": "Xendit Charge",
+  "description": "Create payment charge",
+  "httpMethod": "POST",
+  "baseUrl": "https://api.xendit.co",
+  "apiPath": "/v2/charges",
+  "isActive": true,
+  "idempotencyTtlHours": 24
+}
+```
+
+#### Step 2 — Configure resilience
+
+```
+POST /api/outbound/{code}/resilience
+```
+
+`circuitBreaker`, `bulkHead`, `rateLimiter`, and `retry` are optional sub-objects. Omit (or send `null`) to disable that mechanism. `readTimeOutMs` is always required (minimum 1).
+
+**Circuit Breaker + Retry only**
+
+```json
+{
+  "readTimeOutMs": 10000,
+  "circuitBreaker": {
+    "cbFailureRateThreshold": 50.0,
+    "cbSlowCallRateThreshold": 100.0,
+    "cbSlowCallDurationMs": 5000,
+    "cbPermittedInHalfOpen": 10,
+    "cbSlidingWindowSize": 50,
+    "cbWaitDurationOpenMs": 30000
+  },
+  "retry": {
+    "retryMaxAttempts": 3,
+    "retryWaitDurationMs": 500,
+    "retryOnStatusCodes": ["500", "502", "503"]
+  }
+}
+```
+
+**Bulkhead only**
+
+```json
+{
+  "readTimeOutMs": 10000,
+  "bulkHead": {
+    "bhMaxConcurrentCalls": 20,
+    "bhMaxWaitDurationMs": 0
+  }
+}
+```
+
+**All four mechanisms**
+
+```json
+{
+  "readTimeOutMs": 10000,
+  "circuitBreaker": {
+    "cbFailureRateThreshold": 50.0,
+    "cbSlowCallRateThreshold": 100.0,
+    "cbSlowCallDurationMs": 5000,
+    "cbPermittedInHalfOpen": 10,
+    "cbSlidingWindowSize": 50,
+    "cbWaitDurationOpenMs": 30000
+  },
+  "bulkHead": {
+    "bhMaxConcurrentCalls": 20,
+    "bhMaxWaitDurationMs": 0
+  },
+  "rateLimiter": {
+    "rlLimitForPeriod": 100,
+    "rlLimitRefreshPeriodMs": 1000,
+    "rlTimeoutDurationMs": 0
+  },
+  "retry": {
+    "retryMaxAttempts": 3,
+    "retryWaitDurationMs": 500,
+    "retryOnStatusCodes": ["500", "502", "503"]
+  }
+}
+```
+
+**Read timeout only** — send `readTimeOutMs` with no sub-objects:
+
+```json
+{
+  "readTimeOutMs": 10000
+}
+```
+
+**No resilience at all** — omit the row entirely. The system runs with no operators and no timeout.
+
+#### Step 3 — Configure auth
+
+```
+POST /api/outbound/{code}/auth
+```
+
+Sensitive fields (`apiKey`, `clientId`, `clientSecret`) are AES-256-GCM encrypted by the gateway before storage. Send raw plaintext values — never pre-encrypted bytes.
+
+**API Key**
+
+```json
+{
+  "authType": "API_KEY",
+  "apiKey": "my-raw-secret-key",
+  "tokenInjectLocation": "HEADER",
+  "tokenKeyName": "Authorization"
+}
+```
+
+**OAuth2 Client Credentials**
+
+```json
+{
+  "authType": "OAUTH",
+  "clientId": "my-client-id",
+  "clientSecret": "my-client-secret",
+  "isAutoRefresh": true,
+  "tokenMethod": "POST",
+  "tokenUrl": "https://auth.example.com/token",
+  "tokenBody": "grant_type=client_credentials",
+  "tokenPrefix": "Bearer",
+  "tokenInjectLocation": "HEADER",
+  "tokenKeyName": "Authorization",
+  "tokenResponsePath": "$.access_token",
+  "tokenResponseExpiryPath": "$.expires_in"
+}
+```
+
+#### Step 4 — Configure static headers (optional)
+
+```
+POST /api/outbound/{code}/headers
+```
+
+```json
+{
+  "headers": {
+    "Content-Type": ["application/json"],
+    "Accept": ["application/json"]
+  }
+}
+```
+
+#### Step 5 — Configure response mapping (optional)
+
+```
+POST /api/outbound/{code}/response-mapper
+```
+
+```json
+{
+  "converterType": "JSLT",
+  "mappingScript": "{\"transactionId\": .id, \"amount\": .amount, \"status\": .status}",
+  "mappingStatus": { "404": 400, "422": 400 },
+  "isActive": true
+}
+```
+
+---
+
+### Alternative: Direct SQL
+
+Use this approach for bulk seeding or when the Admin API is unavailable.
+
+> **Warning**: Sensitive fields (`api_key`, `client_id`, `client_secret`, `proxy_username`, `proxy_password`) must be AES-256-GCM encrypted before insertion. JSON config columns (headers, response mapper `mapping_status`) must be cast to `bytea`.
+
+**Register a system**
 
 ```sql
 INSERT INTO outbound_systems (code, name, description, http_method, base_url, api_path, is_active, idempotency_ttl_hours)
@@ -195,7 +422,7 @@ VALUES ('xendit-charge', 'Xendit Charge', 'Create payment charge', 'POST',
         'https://api.xendit.co', '/v2/charges', true, 24);
 ```
 
-### Step 2 — Configure the host connection pool (optional — defaults apply)
+**Configure the host connection pool (optional — defaults apply)**
 
 ```sql
 INSERT INTO outbound_host_configurations
@@ -209,114 +436,7 @@ VALUES ('https://api.xendit.co', 5000, 200, 500, 5000, false, false);
 
 Defaults when no row exists: `connectTimeOutMs=5000`, `maxConnections=500`, `pendingAcquireMaxCount=1000`, `pendingAcquireTimeoutMs=30000`.
 
-### Step 3 — Configure resilience (choose your combination)
-
-Each mechanism is independently opt-in via a boolean flag. Only set `true` for mechanisms you want.
-
-**Circuit Breaker + Retry only**
-
-```sql
-INSERT INTO outbound_resilience_configurations (
-    outbound_system_id, read_time_out_ms,
-    circuit_breaker_enabled,
-    cb_failure_rate_threshold, cb_slow_call_rate_threshold, cb_slow_call_duration_ms,
-    cb_permitted_in_half_open, cb_sliding_window_size, cb_wait_duration_open_ms,
-    bulkhead_enabled,
-    rate_limiter_enabled,
-    retry_enabled,
-    retry_max_attempts, retry_wait_duration_ms, retry_on_status_codes
-) VALUES (
-    (SELECT id FROM outbound_systems WHERE code = 'xendit-charge'),
-    10000,
-    true,  50, 100, 5000, 10, 50, 30000,
-    false,
-    false,
-    true,  3, 500, '500,502,503'
-);
-```
-
-**Bulkhead only**
-
-```sql
-INSERT INTO outbound_resilience_configurations (
-    outbound_system_id, read_time_out_ms,
-    circuit_breaker_enabled,
-    bulkhead_enabled, bh_max_concurrent_calls, bh_max_wait_duration_ms,
-    rate_limiter_enabled,
-    retry_enabled
-) VALUES (
-    (SELECT id FROM outbound_systems WHERE code = 'xendit-charge'),
-    10000, false, true, 20, 0, false, false
-);
-```
-
-**All four mechanisms**
-
-```sql
-INSERT INTO outbound_resilience_configurations (
-    outbound_system_id, read_time_out_ms,
-    circuit_breaker_enabled,
-    cb_failure_rate_threshold, cb_slow_call_rate_threshold, cb_slow_call_duration_ms,
-    cb_permitted_in_half_open, cb_sliding_window_size, cb_wait_duration_open_ms,
-    bulkhead_enabled, bh_max_concurrent_calls, bh_max_wait_duration_ms,
-    rate_limiter_enabled, rl_limit_for_period, rl_limit_refresh_period_ms, rl_timeout_duration_ms,
-    retry_enabled, retry_max_attempts, retry_wait_duration_ms, retry_on_status_codes
-) VALUES (
-    (SELECT id FROM outbound_systems WHERE code = 'xendit-charge'),
-    10000,
-    true,  50, 100, 5000, 10, 50, 30000,
-    true,  20, 0,
-    true,  100, 1000, 0,
-    true,  3, 500, '500,502,503'
-);
-```
-
-**Read timeout only (no resilience operators)**
-
-```sql
-INSERT INTO outbound_resilience_configurations (
-    outbound_system_id, read_time_out_ms,
-    circuit_breaker_enabled, bulkhead_enabled, rate_limiter_enabled, retry_enabled
-) VALUES (
-    (SELECT id FROM outbound_systems WHERE code = 'xendit-charge'),
-    10000, false, false, false, false
-);
-```
-
-**No resilience at all** — omit the row entirely. The system runs with no operators and no timeout.
-
-### Step 4 — Configure auth
-
-**API Key (header injection)**
-
-```sql
--- Sensitive fields must be AES-256-GCM encrypted before insertion.
--- Use the Admin API POST /internal/outbound-systems/{code}/auth to let the gateway encrypt automatically.
-INSERT INTO outbound_auth_configurations
-    (outbound_system_id, auth_type, api_key, token_inject_location, token_key_name)
-VALUES (
-    (SELECT id FROM outbound_systems WHERE code = 'xendit-charge'),
-    'API_KEY', '<encrypted-bytes>', 'HEADER', 'Authorization'
-);
-```
-
-**OAuth2 Client Credentials**
-
-```sql
-INSERT INTO outbound_auth_configurations (
-    outbound_system_id, auth_type, client_id, client_secret,
-    is_auto_refresh, token_method, token_url, token_body,
-    token_prefix, token_inject_location, token_key_name,
-    token_response_path, token_response_expiry_path
-) VALUES (
-    (SELECT id FROM outbound_systems WHERE code = 'xendit-charge'),
-    'OAUTH', '<encrypted-client-id>', '<encrypted-client-secret>',
-    true, 'POST', 'https://api.xendit.co/oauth/token', 'grant_type=client_credentials',
-    'Bearer', 'HEADER', 'Authorization', '$.access_token', '$.expires_in'
-);
-```
-
-### Step 5 — Configure static headers (optional)
+**Configure static headers**
 
 ```sql
 INSERT INTO outbound_header_configurations (outbound_system_id, headers)
@@ -326,7 +446,7 @@ VALUES (
 );
 ```
 
-### Step 6 — Configure response mapping (optional)
+**Configure response mapping**
 
 ```sql
 INSERT INTO outbound_response_mapper_configuration
@@ -371,6 +491,18 @@ All sensitive fields are stored as AES-256-GCM encrypted `bytea`.
 | Read timeout only | | | | |
 | No protection (no row) | | | | |
 
+### Two-Level Bypass Model
+
+| Config state | Behavior |
+|---|---|
+| No row in `outbound_resilience_configurations` | Full bypass — no operators, no timeout |
+| Row exists, all sub-objects omitted/null | Timeout applied; no resilience operators |
+| Row exists, one or more sub-objects present | Full pipeline: RateLimiter → Bulkhead → CB → Retry (only present sub-objects) |
+
+### Retry on Result
+
+Retry triggers on **HTTP status codes** (configured via `retryOnStatusCodes`), not on thrown exceptions. Resilience4j's `retryOnResult` is used — a `503` response from the upstream causes a retry attempt without requiring a thrown exception.
+
 ### Internal Reject Status Codes
 
 | Exception | HTTP Status | Reason |
@@ -390,10 +522,12 @@ All internal rejects are saved to `outbound_histories` with the reject reason as
 
 ### Actuator Endpoints
 
+Actuator runs on a **separate port** (default `1000`, controlled by `ACTUATOR_PORT`):
+
 ```
-GET /actuator/health
-GET /actuator/prometheus
-GET /actuator/metrics
+GET http://localhost:1000/actuator/health
+GET http://localhost:1000/actuator/prometheus
+GET http://localhost:1000/actuator/metrics
 ```
 
 ### Custom Outbound Metrics
@@ -433,6 +567,10 @@ logbook:
   format.style: json
 ```
 
+### Distributed Tracing
+
+`X-Client-Id` and `X-Request-Id` headers are propagated as Brave baggage fields and correlated into every log line. Set `TRACING_SAMPLING_PROBABILITY=0.1` in production to sample 10% of requests instead of all.
+
 ---
 
 ## Operational Rules
@@ -447,7 +585,7 @@ logbook:
 ### Hot Reload
 
 ```
-POST /internal/outbound-systems/{code}/reload
+POST /api/outbound/{code}/reload
 ```
 
 Evicts the context cache and the WebClient pool for the system's host. The next request reloads config from DB and creates a fresh connection pool.
@@ -468,9 +606,24 @@ There is no automatic migration — rotation is a manual data step.
 
 OAuth tokens are cached in memory per auth config and written back to `outbound_auth_configurations.current_token` after each successful refresh. On service restart, the persisted token is loaded from DB, reducing cold-start token fetches for long-lived tokens.
 
-### Security Hardening Applied
+### Context Cache and Thundering-Herd Protection
 
-The following security issues were identified and fixed across multiple code review rounds:
+`GatewayServiceImpl` maintains a two-layer cache:
+
+| Layer | Purpose |
+|---|---|
+| `contextCache` (hot path) | Returns the cached `OutboundSystemContext` immediately for warm keys |
+| `contextLoadCache` (cold path) | Uses `Mono.cache()` to deduplicate concurrent DB loads — only one DB round-trip per key even under burst |
+
+`doFinally` evicts the load cache entry after the DB load completes (success or error), preventing stale `Mono` objects from persisting. The hot cache is evicted explicitly via `POST /api/outbound/{code}/reload`.
+
+### Resilience Config After V18 + V19 Migrations
+
+V18 added four boolean enable flags (`circuit_breaker_enabled`, `bulkhead_enabled`, `rate_limiter_enabled`, `retry_enabled`) defaulting to `false`. V19 renamed those columns (removed the `is_` prefix) to match the R2DBC entity field names.
+
+After these migrations all existing rows have all four flags set to `false`. Previously configured mechanisms are disabled by default. Admins must explicitly re-enable each mechanism. This is intentional — silently applying unvalidated thresholds is worse than running unprotected.
+
+### Security Hardening Applied
 
 | Issue | Fix |
 |---|---|
@@ -481,29 +634,51 @@ The following security issues were identified and fixed across multiple code rev
 | **Reactor Context immutability** | `RetryHelper` and `ReactorJobExecutor` were discarding `context.put()` return values — all contextual keys were silently lost; fixed by chaining puts and returning the new `Context` |
 | **Proxy no-op** | `GatewayWebClientBuilder` proxy lambda was creating a standalone `ProxyProvider.Builder` and discarding it — `useProxy=true` hosts were connecting direct; fixed by chaining on the `TypeSpec` parameter |
 
-### Resilience Config After V18 + V19 Migrations
+---
 
-V18 added four boolean enable flags (`circuit_breaker_enabled`, `bulkhead_enabled`, `rate_limiter_enabled`, `retry_enabled`) defaulting to `false`. V19 renamed those columns (removed the `is_` prefix) to match the R2DBC entity mapping.
+## Database Migrations
 
-After these migrations all existing rows have all four flags set to `false`. Previously configured mechanisms are disabled by default. Admins must explicitly re-enable each mechanism. This is intentional — silently applying unvalidated thresholds is worse than running unprotected.
+Flyway migrations live in `src/main/resources/db/migration/`. Enable with `FLYWAY_ENABLED=true`.
+
+| Version | Description |
+|---|---|
+| V1 | Initial schema — `outbound_systems` |
+| V2–V5 | Sub-config tables: host, resilience, auth, headers |
+| V6 | Response mapper configuration |
+| V7 | `outbound_histories` table |
+| V8–V11 | Index additions and constraint fixes |
+| V12–V14 | Auth fields: `token_prefix`, `token_response_path`, `token_response_expiry_path`, `current_token` |
+| V15–V17 | HMAC/RSA support columns |
+| V18 | Add four boolean enable flags to `outbound_resilience_configurations` (default `false`) |
+| V19 | Rename enable flag columns — remove `is_` prefix to match R2DBC entity field names |
 
 ---
 
 ## API Endpoints
 
-### Gateway API
+> **Base path**: All paths below are relative to the base path. With defaults, prepend `http://localhost:8080/app`.
+> Example: `POST /api/gateway/execute/{code}` → `POST http://localhost:8080/app/api/gateway/execute/{code}`
 
-#### `POST /gateway/execute/{code}`
-
-Executes an outbound HTTP call through the configured outbound system.
-
-**Headers**
+All endpoints require these request headers:
 
 | Header | Required | Description |
 |---|---|---|
-| `X-Client-Id` | Yes | Caller's client ID — used for request tracing and access control |
-| `X-Request-Id` | Yes | Unique ID for this request — used to correlate logs end-to-end |
+| `X-Client-Id` | Yes | Caller's client ID — used for request tracing |
+| `X-Request-Id` | Yes | Unique request ID — used to correlate logs end-to-end |
 | `X-Request-Time` | Yes | Request timestamp in ISO-8601 format (e.g. `2026-05-20T08:00:00+07:00`) |
+
+---
+
+### Gateway API
+
+#### `POST /api/gateway/execute/{code}`
+
+Executes an outbound HTTP call through the configured outbound system.
+
+**Additional Headers**
+
+| Header | Required | Description |
+|---|---|---|
 | `X-Caller-Service` | No | Name of the calling service — saved to history for auditing |
 | `X-Idempotency-Key` | No | If provided, checks history first; returns cached result if found within TTL |
 | `Content-Type` | Yes | `application/json` |
@@ -558,13 +733,13 @@ HTTP 400 when system code is not found or inactive:
 ```json
 {
   "response": { "code": "400", "description": "bad request" },
-  "error": { "violations": { "message": ["Outbound system not found or inactive: unknown-code"] } }
+  "error": { "violations": { "code": ["NotFound"] } }
 }
 ```
 
 ---
 
-#### `GET /gateway/histories`
+#### `GET /api/gateway/histories`
 
 Returns a paginated list of outbound call history.
 
@@ -577,7 +752,7 @@ Returns a paginated list of outbound call history.
 | `endDate` | ISO-8601 datetime | — | Upper bound on `created_date` |
 | `status` | Integer | — | Filter by `response_status` (e.g. `500`) |
 | `page` | Integer | `0` | Zero-based page number |
-| `size` | Integer | `20` | Page size, clamped to 1–100 |
+| `size` | Integer | `20` | Page size |
 
 **Response**
 
@@ -612,64 +787,31 @@ Returns a paginated list of outbound call history.
 
 ---
 
-#### `GET /gateway/histories/{idempotencyKey}?code={code}`
+#### `GET /api/gateway/histories/{idempotencyKey}?code={code}`
 
 Looks up a single history record by idempotency key. `code` is required because idempotency keys are scoped per outbound system.
 
-**Response** — same shape as a single element from the list above (`requestPayload`, `responsePayload`, `convertedResponse` as parsed JSON objects), or HTTP 400 if not found.
+Returns HTTP 400 if not found.
 
 ---
 
 ### Admin API
 
-All admin endpoints require the same mandatory request headers as the Gateway API (`X-Client-Id`, `X-Request-Id`, `X-Request-Time`).
+---
+
+#### `POST /api/outbound`
+
+Creates a new outbound system registration. See [Configuration Guide — Step 1](#step-1--create-an-outbound-system) for request and response shape.
 
 ---
 
-#### `POST /internal/outbound-systems`
-
-**Request**
-
-```json
-{
-  "code": "xendit-charge",
-  "name": "Xendit Charge",
-  "description": "Create payment charge",
-  "httpMethod": "POST",
-  "baseUrl": "https://api.xendit.co",
-  "apiPath": "/v2/charges",
-  "isActive": true,
-  "idempotencyTtlHours": 24
-}
-```
-
-**Response**
-
-```json
-{
-  "response": { "code": "000", "description": "success" },
-  "data": {
-    "id": 1,
-    "code": "xendit-charge",
-    "name": "Xendit Charge",
-    "httpMethod": "POST",
-    "baseUrl": "https://api.xendit.co",
-    "apiPath": "/v2/charges",
-    "isActive": true,
-    "idempotencyTtlHours": 24
-  }
-}
-```
-
----
-
-#### `GET /internal/outbound-systems`
+#### `GET /api/outbound`
 
 Returns all registered outbound systems.
 
 ---
 
-#### `GET /internal/outbound-systems/{code}`
+#### `GET /api/outbound/{code}`
 
 Returns full detail including all sub-configurations (resilience, headers, auth, response mapper).
 
@@ -692,125 +834,53 @@ Auth response deliberately omits `api_key`, `client_id`, `client_secret` — enc
 
 ---
 
-#### `PUT /internal/outbound-systems/{code}`
+#### `PUT /api/outbound/{code}`
 
 Updates `name`, `description`, `httpMethod`, `baseUrl`, `apiPath`, `isActive`, `idempotencyTtlHours`.
 
 ---
 
-#### `DELETE /internal/outbound-systems/{code}`
+#### `DELETE /api/outbound/{code}`
 
 Cascade-deletes the system and all sub-configs (resilience, headers, auth, response mapper). Returns `true` on success.
 
 ---
 
-#### `POST /internal/outbound-systems/{code}/resilience`
+#### `POST /api/outbound/{code}/resilience`
 
-**Request**
-
-```json
-{
-  "readTimeOutMs": 10000,
-  "circuitBreakerEnabled": true,
-  "cbFailureRateThreshold": 50.0,
-  "cbSlidingWindowSize": 50,
-  "cbWaitDurationOpenMs": 30000,
-  "bulkheadEnabled": false,
-  "rateLimiterEnabled": false,
-  "retryEnabled": true,
-  "retryMaxAttempts": 3,
-  "retryWaitDurationMs": 500,
-  "retryOnStatusCodes": "500,502,503"
-}
-```
-
-Returns `true` on success.
+See [Configuration Guide — Step 2](#step-2--configure-resilience) for request shape. Returns `true` on success.
 
 ---
 
-#### `POST /internal/outbound-systems/{code}/headers`
+#### `POST /api/outbound/{code}/headers`
 
-**Request**
-
-```json
-{
-  "headers": {
-    "Content-Type": ["application/json"],
-    "Accept": ["application/json"]
-  }
-}
-```
-
-Returns `true` on success.
+See [Configuration Guide — Step 4](#step-4--configure-static-headers-optional) for request shape. Returns `true` on success.
 
 ---
 
-#### `POST /internal/outbound-systems/{code}/auth`
+#### `POST /api/outbound/{code}/auth`
 
-Sensitive fields (`apiKey`, `clientId`, `clientSecret`) are AES-256-GCM encrypted by the gateway before storage. Send raw plaintext values — never pre-encrypted bytes.
+See [Configuration Guide — Step 3](#step-3--configure-auth) for request shape.
 
-**Request (API Key)**
-
-```json
-{
-  "authType": "API_KEY",
-  "apiKey": "my-raw-secret-key",
-  "tokenInjectLocation": "HEADER",
-  "tokenKeyName": "Authorization"
-}
-```
-
-**Request (OAuth2 Client Credentials)**
-
-```json
-{
-  "authType": "OAUTH",
-  "clientId": "my-client-id",
-  "clientSecret": "my-client-secret",
-  "isAutoRefresh": true,
-  "tokenMethod": "POST",
-  "tokenUrl": "https://auth.example.com/token",
-  "tokenBody": "grant_type=client_credentials",
-  "tokenPrefix": "Bearer",
-  "tokenInjectLocation": "HEADER",
-  "tokenKeyName": "Authorization",
-  "tokenResponsePath": "$.access_token",
-  "tokenResponseExpiryPath": "$.expires_in"
-}
-```
-
-Returns `true` on success.
+Sensitive fields are encrypted by the gateway. Send raw plaintext — never pre-encrypted bytes. Returns `true` on success.
 
 ---
 
-#### `POST /internal/outbound-systems/{code}/response-mapper`
+#### `POST /api/outbound/{code}/response-mapper`
 
-**Request**
-
-```json
-{
-  "converterType": "JSLT",
-  "mappingScript": "{\"transactionId\": .id, \"amount\": .amount}",
-  "mappingStatus": { "404": 400, "422": 400 },
-  "isActive": true
-}
-```
-
-Returns `true` on success.
+See [Configuration Guide — Step 5](#step-5--configure-response-mapping-optional) for request shape. Returns `true` on success.
 
 ---
 
-#### `POST /internal/outbound-systems/{code}/reload`
+#### `POST /api/outbound/{code}/reload`
 
-Evicts the context cache and WebClient pool for the system's host. The next request reloads config from DB and creates a fresh connection pool.
-
-Returns `true` on success.
+Evicts the context cache and WebClient pool for the system's host. The next request reloads config from DB and creates a fresh connection pool. Returns `true` on success.
 
 > Evicting the pool drops **all in-flight connections to that host** — all systems sharing the same `baseUrl` are affected.
 
 ---
 
-#### `POST /internal/outbound-systems/{code}/test`
+#### `POST /api/outbound/{code}/test`
 
 Probes the outbound system's endpoint using the same `GatewayWebClientBuilder` pipeline.
 
@@ -829,7 +899,7 @@ Probes the outbound system's endpoint using the same `GatewayWebClientBuilder` p
 
 ---
 
-#### `GET /internal/outbound-systems/{code}/metrics`
+#### `GET /api/outbound/{code}/metrics`
 
 Returns real-time call statistics for the past hour from `outbound_histories`. Percentiles are computed with PostgreSQL `percentile_cont` (exact continuous interpolation, not approximation).
 
@@ -859,3 +929,29 @@ Returns real-time call statistics for the past hour from `outbound_histories`. P
 ```
 
 When `totalCalls = 0`, all percentiles return `0`.
+
+---
+
+## Error Response Reference
+
+| Exception | HTTP Status | `violations` key | Value |
+|---|---|---|---|
+| `NoResourceFoundException` | 400 | `endpoint` | `["not available"]` |
+| `EmissionException` | 400 | `publisher` | Reactor sink failure reason |
+| `HandlerMethodValidationException` | 400 | parameter name | `["NotValid"]` |
+| `ConstraintViolationException` | 400 | field path | validation message |
+| `OutboundSystemNotFoundException` | 400 | `code` | `["NotFound"]` |
+| `IllegalArgumentException` | 400 | `message` | `["Bad request"]` |
+| `BadSqlGrammarException` | 500 | `exception` | `["database error"]` |
+| Any other `Throwable` | 500 | `exception` | `["Internal server error"]` |
+
+All error responses use the same envelope:
+
+```json
+{
+  "response": { "code": "400", "description": "bad request" },
+  "error": { "violations": { "<key>": ["<message>"] } }
+}
+```
+
+Exception details are logged server-side. No internal message, stack trace, or SQL ever reaches the caller.

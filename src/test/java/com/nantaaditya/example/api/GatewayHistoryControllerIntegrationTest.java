@@ -165,6 +165,81 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
         .expectStatus().isBadRequest();
   }
 
+  @Test
+  @DisplayName("GET /api/gateway/histories — startDate in the past includes all seeded records")
+  void findHistories_filterByStartDateInPast_includesSeededRecords() throws Exception {
+    byte[] body = webTestClient.get()
+        .uri("/api/gateway/histories?code=xendit-test&startDate=2020-01-01T00:00:00")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody().returnResult().getResponseBody();
+
+    JsonNode root = objectMapper.readTree(body);
+    assertThat(root.path("data").path("totalElements").asLong()).isEqualTo(2L);
+  }
+
+  @Test
+  @DisplayName("GET /api/gateway/histories — startDate in the future returns empty result")
+  void findHistories_filterByStartDateInFuture_returnsEmpty() throws Exception {
+    byte[] body = webTestClient.get()
+        .uri("/api/gateway/histories?code=xendit-test&startDate=2099-01-01T00:00:00")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody().returnResult().getResponseBody();
+
+    JsonNode root = objectMapper.readTree(body);
+    assertThat(root.path("data").path("totalElements").asLong()).isEqualTo(0L);
+    assertThat(root.path("data").path("content").size()).isEqualTo(0);
+  }
+
+  @Test
+  @DisplayName("GET /api/gateway/histories — out-of-bounds page returns empty content but correct totalElements")
+  void findHistories_outOfBoundsPage_returnsEmptyContent() throws Exception {
+    byte[] body = webTestClient.get()
+        .uri("/api/gateway/histories?code=xendit-test&page=99&size=10")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody().returnResult().getResponseBody();
+
+    JsonNode root = objectMapper.readTree(body);
+    assertThat(root.path("data").path("totalElements").asLong()).isEqualTo(2L);
+    assertThat(root.path("data").path("content").size()).isEqualTo(0);
+  }
+
+  @Test
+  @DisplayName("GET /api/gateway/histories — status filter without code returns matching records across all systems")
+  void findHistories_filterByStatusOnly_returnsMatchingRecords() throws Exception {
+    byte[] body = webTestClient.get()
+        .uri("/api/gateway/histories?status=200")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody().returnResult().getResponseBody();
+
+    JsonNode root = objectMapper.readTree(body);
+    assertThat(root.path("data").path("totalElements").asLong()).isGreaterThanOrEqualTo(1L);
+    JsonNode first = root.path("data").path("content").get(0);
+    assertThat(first.path("responseStatus").asInt()).isEqualTo(200);
+  }
+
+  @Test
+  @DisplayName("GET /api/gateway/histories/{key} — response includes all expected fields")
+  void findByIdempotencyKey_existingKey_responseContainsAllFields() throws Exception {
+    byte[] body = webTestClient.get()
+        .uri("/api/gateway/histories/idem-002?code=xendit-test")
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody().returnResult().getResponseBody();
+
+    JsonNode data = objectMapper.readTree(body).path("data");
+    assertThat(data.path("idempotencyKey").asText()).isEqualTo("idem-002");
+    assertThat(data.path("responseStatus").asInt()).isEqualTo(500);
+    assertThat(data.path("callerService").asText()).isEqualTo("test-svc");
+    assertThat(data.path("requestMethod").asText()).isEqualTo("POST");
+    assertThat(data.path("durationMs").asInt()).isEqualTo(150);
+    assertThat(data.path("outboundSystemId").asLong()).isEqualTo(systemId);
+    assertThat(data.hasNonNull("createdDate")).isTrue();
+  }
+
   // --- helpers ---
 
   private OutboundHistory history(long sysId, String key, int status) {

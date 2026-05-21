@@ -348,7 +348,7 @@ public class GatewayServiceImpl implements GatewayService {
     }
     if (e instanceof MaxRetriesExceededException) {
       log.warn(AppLogMessage.message("#GATEWAY - max retries exceeded for {}: {}", code(context), e.getMessage()).error(e));
-      return GatewayResponse.internalReject(503, "service unavailable - max retries exceeded");
+      return GatewayResponse.internalReject(502, "service unavailable - max retries exceeded");
     }
     if (e instanceof TimeoutException) {
       log.warn(AppLogMessage.message("#GATEWAY - read timeout for {}: {}", code(context), e.getMessage()).error(e));
