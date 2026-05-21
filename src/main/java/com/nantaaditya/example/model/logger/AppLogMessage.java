@@ -22,7 +22,7 @@ public class AppLogMessage implements Message {
   @JsonProperty("additional_data")
   private Object additionalData;
   @JsonIgnore
-  private Object[] parameters;
+  private Object[] parameters = new Object[0];
 
   private AppLogMessage() {}
 

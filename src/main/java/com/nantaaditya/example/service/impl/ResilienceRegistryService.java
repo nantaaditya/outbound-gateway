@@ -22,6 +22,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
+import com.nantaaditya.example.model.logger.AppLogMessage;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
 
@@ -126,7 +127,7 @@ public class ResilienceRegistryService {
       try {
         result.add(Integer.parseInt(s));
       } catch (NumberFormatException e) {
-        log.warn("Skipping unparseable retry status code: '{}'", s);
+        log.warn(AppLogMessage.message("#ResilienceRegistry - unparseable retry status code '{}'", s));
       }
     }
     return result;

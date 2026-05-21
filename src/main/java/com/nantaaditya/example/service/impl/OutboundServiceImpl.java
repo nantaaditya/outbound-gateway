@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.r2dbc.core.DatabaseClient;
@@ -235,11 +236,11 @@ public class OutboundServiceImpl implements OutboundService {
   @Override
   public Mono<Boolean> reload(String code) {
     return requireSystem(code)
-        .doOnNext(system -> {
+        .flatMap(system -> Mono.fromRunnable(() -> {
           gatewayService.evictContext(code);
           resilienceRegistryService.reload(code);
           log.info(AppLogMessage.message("#OutboundService - reloaded outbound system code={}", code));
-        })
+        }))
         .thenReturn(Boolean.TRUE);
   }
 
@@ -261,9 +262,10 @@ public class OutboundServiceImpl implements OutboundService {
                       })
                       .timeout(TEST_CONNECTION_TIMEOUT)
                       .doOnSuccess(r -> log.info(AppLogMessage.message("#OutboundService - testConnection code={} httpStatus={} success={}", code, r.httpStatus(), r.success())))
-                      .onErrorResume(e ->
-                          Mono.just(new TestConnectionResponse(false, 0, e.getMessage()))
-                      );
+                      .onErrorResume(e -> {
+                        log.warn(AppLogMessage.message("#OutboundService - testConnection failed code={} error={}", code, e.getClass().getSimpleName()).error(e));
+                        return Mono.just(new TestConnectionResponse(false, 0, "Connection failed: " + e.getClass().getSimpleName()));
+                      });
                 })
         );
   }
@@ -350,6 +352,7 @@ public class OutboundServiceImpl implements OutboundService {
           .counter();
       return counter != null ? (long) counter.count() : 0L;
     } catch (Exception e) {
+      log.warn(AppLogMessage.message("#OutboundService - failed to resolve idempotency hits code={}", code).error(e));
       return 0L;
     }
   }
@@ -361,45 +364,19 @@ public class OutboundServiceImpl implements OutboundService {
     return encryptionHelper.encryptString(value);
   }
 
-  private long toLong(Object value) {
-    if (value == null) {
-      return 0L;
-    }
-    if (value instanceof Number n) {
-      return n.longValue();
-    }
+  private <T> T extractNumber(Object value, Function<Number, T> fn, T zero) {
+    if (value == null) return zero;
+    if (value instanceof Number n) return fn.apply(n);
     try {
-      return Long.parseLong(value.toString());
-    } catch (Exception e) {
-      return 0L;
+      return fn.apply(Double.parseDouble(value.toString()));
+    } catch (Exception ignored) {
+      return zero;
     }
   }
 
-  private int toInt(Object value) {
-    if (value == null) {
-      return 0;
-    }
-    if (value instanceof Number n) {
-      return n.intValue();
-    }
-    try {
-      return Integer.parseInt(value.toString());
-    } catch (Exception e) {
-      return 0;
-    }
-  }
+  private long toLong(Object value) { return extractNumber(value, Number::longValue, 0L); }
 
-  private double toDouble(Object value) {
-    if (value == null) {
-      return 0.0;
-    }
-    if (value instanceof Number n) {
-      return n.doubleValue();
-    }
-    try {
-      return Double.parseDouble(value.toString());
-    } catch (Exception e) {
-      return 0.0;
-    }
-  }
+  private int toInt(Object value) { return extractNumber(value, Number::intValue, 0); }
+
+  private double toDouble(Object value) { return extractNumber(value, Number::doubleValue, 0.0); }
 }

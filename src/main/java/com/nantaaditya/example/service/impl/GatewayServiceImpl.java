@@ -185,19 +185,18 @@ public class GatewayServiceImpl implements GatewayService {
     }
 
     // onErrorResume converts ALL resilience/infra exceptions → GatewayResponse.internalReject(),
-    // so doOnSuccess fires for every execution path and history is always saved.
+    // so flatMap fires for every execution path and history is always saved.
     return execution
         .onErrorResume(e -> Mono.just(toInternalRejectResponse(context, e)))
-        .doOnSuccess(response -> {
+        .flatMap(response -> {
           long durationMs = System.currentTimeMillis() - startTime;
           metricsRecorder.recordCall(code(context), response.status(), callerService, durationMs);
-          saveHistory(context, callerService, idempotencyKey, request, response, durationMs)
-              .subscribe(
-                  v -> {
-                  },
-                  err -> log.warn(
-                      AppLogMessage.message("#GATEWAY - failed to save history for {}: {}", code(context), err.getMessage()).error(err))
-              );
+          return saveHistory(context, callerService, idempotencyKey, request, response, durationMs)
+              .onErrorResume(err -> {
+                log.warn(AppLogMessage.message("#GATEWAY - failed to save history for {}: {}", code(context), err.getMessage()).error(err));
+                return Mono.empty();
+              })
+              .thenReturn(response);
         });
   }
 

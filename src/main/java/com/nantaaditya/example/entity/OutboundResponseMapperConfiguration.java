@@ -40,7 +40,7 @@ public class OutboundResponseMapperConfiguration extends BaseEntity<Long> {
     this.setOutboundSystemId(outboundSystemId);
     this.setConverterType(request.converterType());
     this.setMappingScript(request.mappingScript());
-    this.setMappingStatus(request.getMappingStatus());
+    this.setMappingStatus(request.mappingStatus());
     this.setActive(request.active());
   }
 }

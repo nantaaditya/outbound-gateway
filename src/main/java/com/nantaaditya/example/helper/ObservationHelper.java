@@ -37,10 +37,8 @@ public class ObservationHelper {
       return observationContext;
     }
 
-    FeatureConstant feature = FeatureConstant.get(contextDTO.getMethod(), contextDTO.getPath());
-    if (feature != null) {
-      observationContext.addLowCardinalityKeyValue(KeyValue.of("feature", feature.name()));
-    }
+    FeatureConstant.find(contextDTO.getMethod(), contextDTO.getPath())
+        .ifPresent(f -> observationContext.addLowCardinalityKeyValue(KeyValue.of("feature", f.name())));
 
     if (contextDTO.getRequestId() != null) {
       observationContext.addHighCardinalityKeyValue(KeyValue.of("requestId", contextDTO.getRequestId()));

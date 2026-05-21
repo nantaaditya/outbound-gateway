@@ -1,5 +1,6 @@
 package com.nantaaditya.example.model.constant;
 
+import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 import lombok.Getter;
@@ -29,8 +30,8 @@ public enum FeatureConstant {
   OUTBOUND_TEST(HttpMethod.POST, "/api/outbound/*/test"),
   GET_METRICS(HttpMethod.GET, "/api/outbound/*/metrics"),;
 
-  private HttpMethod method;
-  private String path;
+  private final HttpMethod method;
+  private final String path;
 
   private static final AntPathMatcher matcher = new AntPathMatcher();
 
@@ -39,13 +40,12 @@ public enum FeatureConstant {
     this.path = path;
   }
 
-  public static FeatureConstant get(String method, String path) {
+  public static Optional<FeatureConstant> find(String method, String path) {
     Predicate<FeatureConstant> isMatch = (FeatureConstant item)
       -> item.getMethod() == HttpMethod.valueOf(method) && matcher.match(item.getPath(), path);
 
     return Stream.of(values())
         .filter(isMatch)
-        .findFirst()
-        .orElse(null);
+        .findFirst();
   }
 }
