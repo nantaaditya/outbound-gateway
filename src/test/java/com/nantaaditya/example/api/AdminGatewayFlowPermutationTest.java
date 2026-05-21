@@ -538,6 +538,59 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         .until(() -> eventLogRepository.count().block() >= 1L);
   }
 
+  // --- Permutation 6: multi-call via execute API → admin metrics p-values ---
+
+  @Test
+  @DisplayName("Permutation 6: 5 live execute calls — admin metrics reflects correct totalCalls and p-values")
+  void permutation6_metricsAfterLiveExecuteCalls() throws Exception {
+    String code = "perm6-metrics";
+
+    wireMock.stubFor(post(urlEqualTo("/v1/perm6"))
+        .willReturn(aResponse().withStatus(200)
+            .withHeader("Content-Type", "application/json")
+            .withBody("{\"ok\":true}")));
+
+    String baseUrl = "http://localhost:" + wireMock.port();
+    setupSystemInDb(code, baseUrl, "/v1/perm6");
+
+    GatewayRequest req = new GatewayRequest(Map.of(), Map.of("amount", 100));
+
+    // 5 live execute calls
+    for (int i = 0; i < 5; i++) {
+      doPost("/api/gateway/execute/" + code, req, newRequestId()).expectStatus().isOk();
+    }
+
+    // Allow async history saves to complete
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(5))
+        .pollInterval(Duration.ofMillis(100))
+        .until(() -> historyRepository.countByFilters(0, 0, null, null).block() >= 5L);
+
+    String metricsRid = newRequestId();
+    byte[] body = webTestClient.get()
+        .uri("/api/outbound/" + code + "/metrics")
+        .header(HeaderConstant.REQUEST_ID.getHeader(), metricsRid)
+        .header(HeaderConstant.CLIENT_ID.getHeader(), "test-client")
+        .header(HeaderConstant.REQUEST_TIME.getHeader(),
+            DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody().returnResult().getResponseBody();
+
+    JsonNode root = objectMapper.readTree(body);
+    assertThat(root.path("response").path("code").asText()).isEqualTo("000");
+
+    JsonNode data = root.path("data");
+    assertThat(data.path("totalCalls").asLong()).isEqualTo(5L);
+    assertThat(data.path("avgDurationMs").asLong()).isGreaterThanOrEqualTo(0L);
+    assertThat(data.path("p90DurationMs").asLong())
+        .isGreaterThanOrEqualTo(data.path("avgDurationMs").asLong());
+    assertThat(data.path("p99DurationMs").asLong())
+        .isGreaterThanOrEqualTo(data.path("p90DurationMs").asLong());
+
+    awaitEventLog(metricsRid);
+  }
+
   // --- Helpers ---
 
   private void setupSystemInDb(String code, String baseUrl, String apiPath) {
