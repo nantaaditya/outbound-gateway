@@ -150,11 +150,11 @@ public class RetryHelper {
 
   private <S, T, E extends Throwable> Context updateContext(RetryRequest<S, T, E> retryRequest,
       Context context) {
-    context.put(RetryConstant.REQUEST, retryRequest.request());
-    context.put(RetryConstant.REQUEST_ID, tracerHelper.getBaggage(HeaderConstant.REQUEST_ID));
-    context.put(RetryConstant.PROCESS_TYPE, retryRequest.processType());
-    context.put(RetryConstant.PROCESS_NAME, retryRequest.processName());
-    return context;
+    return context
+        .put(RetryConstant.REQUEST, retryRequest.request())
+        .put(RetryConstant.REQUEST_ID, tracerHelper.getBaggage(HeaderConstant.REQUEST_ID))
+        .put(RetryConstant.PROCESS_TYPE, retryRequest.processType())
+        .put(RetryConstant.PROCESS_NAME, retryRequest.processName());
   }
 
 }

@@ -20,7 +20,7 @@ public class ReactorJobExecutor {
   public <S, T> Mono<T> execute(ReactorJobRequest<S, T> request) {
     return Mono.using(
         () -> {
-          log.info("#Reactor - job start {} with time out {}", request.source(), request.timeOut());
+          log.info(AppLogMessage.message("#Reactor - job start {} with time out {}", request.source(), request.timeOut()));
           return request.source();
         },
         source -> Mono.fromCallable(() -> source)
@@ -43,14 +43,14 @@ public class ReactorJobExecutor {
   }
 
   private <S> Context createContext(Context context, S source) {
-    context.put(JobConstant.REQUEST, source);
-    context.put(JobConstant.REQUEST_ID, tracerHelper.getBaggage(HeaderConstant.REQUEST_ID));
-    return context;
+    return context
+        .put(JobConstant.REQUEST, source)
+        .put(JobConstant.REQUEST_ID, tracerHelper.getBaggage(HeaderConstant.REQUEST_ID));
   }
 
   private Context updateContext(Context context, Throwable throwable) {
-    context.put(JobConstant.ERROR_MESSAGE, throwable.getMessage());
-    context.put(JobConstant.ERROR_ROOT_CAUSE,  ErrorHelper.getRootCause(throwable));
-    return context;
+    return context
+        .put(JobConstant.ERROR_MESSAGE, throwable.getMessage())
+        .put(JobConstant.ERROR_ROOT_CAUSE, ErrorHelper.getRootCause(throwable));
   }
 }

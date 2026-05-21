@@ -129,13 +129,11 @@ public class GatewayWebClientBuilder {
       String proxyHost = hostConfig.getProxyHost();
       int proxyPort = hostConfig.getProxyPort();
       httpClient = httpClient.proxy(proxy -> {
-        ProxyProvider.Builder builder = ProxyProvider.builder()
-            .type(ProxyProvider.Proxy.HTTP)
+        var spec = proxy.type(ProxyProvider.Proxy.HTTP)
             .host(proxyHost)
             .port(proxyPort);
         if (hostConfig.getProxyUsername() != null && hostConfig.getProxyPassword() != null) {
-          builder
-              .username(new String(hostConfig.getProxyUsername(), StandardCharsets.UTF_8))
+          spec.username(new String(hostConfig.getProxyUsername(), StandardCharsets.UTF_8))
               .password(p -> new String(hostConfig.getProxyPassword(), StandardCharsets.UTF_8));
         }
       });
