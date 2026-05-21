@@ -42,8 +42,12 @@ public enum FeatureConstant {
   }
 
   public static Optional<FeatureConstant> find(String method, String path) {
-    Predicate<FeatureConstant> isMatch = item ->
-        item.getMethod() == HttpMethod.valueOf(method) && matcher.match(item.getPath(), path);
-    return VALUES.stream().filter(isMatch).findFirst();
+    if (method == null || method.isBlank() || path == null || path.isBlank()) {
+      return Optional.empty();
+    }
+    HttpMethod httpMethod = HttpMethod.valueOf(method.toUpperCase());
+    return VALUES.stream()
+        .filter(item -> item.getMethod().equals(httpMethod) && matcher.match(item.getPath(), path))
+        .findFirst();
   }
 }

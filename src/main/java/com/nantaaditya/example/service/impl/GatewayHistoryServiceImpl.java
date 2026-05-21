@@ -22,6 +22,9 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
   private final OutboundSystemRepository systemRepository;
   private final JsonHelper jsonHelper;
 
+  // BIGSERIAL IDs start at 1, so 0 is a safe sentinel meaning "query across all systems".
+  private static final long ALL_SYSTEMS_ID = 0L;
+
   @Override
   public Mono<PageResponse<GatewayHistoryResponse>> findHistories(
       @Nullable String code,
@@ -59,10 +62,9 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
         );
   }
 
-  // Returns 0L when code is blank — sentinel meaning "all systems" (BIGSERIAL IDs start at 1).
   private Mono<Long> resolveSystemId(@Nullable String code) {
     if (code == null || code.isBlank()) {
-      return Mono.just(0L);
+      return Mono.just(ALL_SYSTEMS_ID);
     }
     return systemRepository.findByCode(code)
         .map(system -> system.getId())

@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.r2dbc.core.DatabaseClient;
@@ -309,17 +310,15 @@ public class OutboundServiceImpl implements OutboundService {
               .all()
               .collectList()
               .map(rows -> {
-                long total = rows.stream()
-                    .mapToLong(r -> toLong(r.get("cnt")))
-                    .sum();
-                Map<Integer, StatusBreakdown> breakdown = new HashMap<>();
-                for (Map<String, Object> row : rows) {
-                  int status = toInt(row.get("response_status"));
-                  long cnt = toLong(row.get("cnt"));
-                  double pct = total > 0 ? (cnt * 100.0 / total) : 0.0;
-                  breakdown.put(status, new StatusBreakdown(cnt, pct));
-                }
-                return breakdown;
+                long total = rows.stream().mapToLong(r -> toLong(r.get("cnt"))).sum();
+                return rows.stream().collect(Collectors.toUnmodifiableMap(
+                    row -> toInt(row.get("response_status")),
+                    row -> {
+                      long cnt = toLong(row.get("cnt"));
+                      double pct = total > 0 ? (cnt * 100.0 / total) : 0.0;
+                      return new StatusBreakdown(cnt, pct);
+                    }
+                ));
               });
 
           return Mono.zip(aggregateMono, breakdownMono)
@@ -360,7 +359,7 @@ public class OutboundServiceImpl implements OutboundService {
       var counter = meterRegistry.find("outbound.idempotency.hits")
           .tag("code", code)
           .counter();
-      return counter != null ? (long) counter.count() : 0L;
+      return counter != null ? Math.round(counter.count()) : 0L;
     } catch (Exception e) {
       log.warn(AppLogMessage.message("#OutboundService - failed to resolve idempotency hits code={}", code).error(e));
       return 0L;

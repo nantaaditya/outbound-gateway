@@ -82,7 +82,9 @@ public class AppFilter implements WebFilter {
                 eventLogHelper.save(mutatedExchange, contextDTO);
                 try {
                   observation.stop();
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                  log.warn(AppLogMessage.message("#Observation - failed to stop observation: {}", e.getMessage()).error(e));
+                }
               });
         })
         .contextWrite(ctx -> ctx.put("context", contextDTO));
