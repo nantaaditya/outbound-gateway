@@ -11,6 +11,7 @@ import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.Observation.Event;
 import java.time.ZonedDateTime;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,7 +23,6 @@ import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
@@ -34,6 +34,12 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 @Order(Ordered.HIGHEST_PRECEDENCE + 2)
 public class AppFilter implements WebFilter {
+
+  private static final Set<String> REFLECT_HEADERS = Set.of(
+      HeaderConstant.REQUEST_ID.getHeader(),
+      HeaderConstant.CLIENT_ID.getHeader(),
+      HeaderConstant.REQUEST_TIME.getHeader()
+  );
 
   @Value("${spring.webflux.base-path}")
   private String contextPath;
@@ -88,11 +94,14 @@ public class AppFilter implements WebFilter {
   }
 
   private void decorateResponseHeaders(ServerHttpRequest request, ServerHttpResponse response) {
-    MultiValueMap<String, String> requestHeaders = request.getHeaders();
-    String receivedTime = DateTimeHelper.getDateInFormat(ZonedDateTime.now(),
-        DateTimeHelper.ISO_8601_GMT7_FORMAT);
-    response.getHeaders().addAll(requestHeaders);
-    response.getHeaders().add(HeaderConstant.RECEIVED_TIME.getHeader(), receivedTime);
+    REFLECT_HEADERS.forEach(name -> {
+      String value = request.getHeaders().getFirst(name);
+      if (value != null) {
+        response.getHeaders().add(name, value);
+      }
+    });
+    response.getHeaders().add(HeaderConstant.RECEIVED_TIME.getHeader(),
+        DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT));
   }
 
   private Flux<DataBuffer> getDataBufferFlux(ServerWebExchange exchange, byte[] bodyBytes) {

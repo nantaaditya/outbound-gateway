@@ -190,7 +190,7 @@ class GatewayHistoryServiceTest {
 
     StepVerifier.create(service.findByIdempotencyKey("xendit", "ghost-key"))
         .expectErrorMatches(e -> e instanceof IllegalArgumentException
-            && e.getMessage().contains("ghost-key"))
+            && e.getMessage().contains("code=xendit"))
         .verify();
   }
 

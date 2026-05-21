@@ -154,12 +154,13 @@ public class OutboundServiceImpl implements OutboundService {
               .then(authRepository.deleteByOutboundSystemId(systemId))
               .then(mapperRepository.deleteByOutboundSystemId(systemId))
               .then(systemRepository.delete(system))
+              .thenReturn(Boolean.TRUE)
+              .as(transactionalOperator::transactional)
               .doOnSuccess(v -> {
                 gatewayService.evictContext(code);
+                resilienceRegistryService.reload(code);
                 log.info(AppLogMessage.message("#OutboundService - deleted outbound system code={}", code));
-              })
-              .thenReturn(Boolean.TRUE)
-              .as(transactionalOperator::transactional);
+              });
         });
   }
 

@@ -12,5 +12,10 @@ public interface GatewayService {
       String idempotencyKey,
       GatewayRequest request);
 
+  /**
+   * Evicts the cached context for the given outbound system code.
+   * MUST NOT perform any I/O — this method is called from doOnSuccess callbacks
+   * on Reactor scheduler threads where blocking is forbidden.
+   */
   void evictContext(String code);
 }

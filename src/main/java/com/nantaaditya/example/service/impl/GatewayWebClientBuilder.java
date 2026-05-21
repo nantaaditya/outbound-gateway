@@ -15,7 +15,6 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import javax.net.ssl.SSLException;
@@ -57,14 +56,10 @@ public class GatewayWebClientBuilder {
   private final ConcurrentMap<String, WebClient> webClientCache = new ConcurrentHashMap<>();
 
   public WebClient getOrCreateWebClient(OutboundHostConfiguration hostConfig) {
-    WebClient existing = webClientCache.get(hostConfig.getBaseUrl());
-    if (existing != null) {
-      return existing;
-    }
-    WebClient candidate = buildWebClient(hostConfig);
-    WebClient won = webClientCache.putIfAbsent(hostConfig.getBaseUrl(), candidate);
-    log.info(AppLogMessage.message("#WEBCLIENT - created for {}", hostConfig.getBaseUrl()));
-    return Optional.ofNullable(won).orElse(candidate);
+    return webClientCache.computeIfAbsent(hostConfig.getBaseUrl(), url -> {
+      log.info(AppLogMessage.message("#WEBCLIENT - created for {}", url));
+      return buildWebClient(hostConfig);
+    });
   }
 
   public void evictWebClient(String baseUrl) {

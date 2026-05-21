@@ -80,7 +80,7 @@ public class ApiExceptionHandler {
   @ExceptionHandler(BadSqlGrammarException.class)
   public BaseResponse<Object> sqlException(BadSqlGrammarException ex) {
     return toBaseErrorResponse(ex, error -> {
-      Map<String, List<String>> errors = Map.of(EXCEPTION_KEY, List.of(ex.getMessage()));
+      Map<String, List<String>> errors = Map.of(EXCEPTION_KEY, List.of("database error"));
       BaseResponse<Object> response = responseHelper.failed(ResponseCode.INTERNAL_ERROR, Collections.emptyMap());
       return Tuples.of(errors, response);
     });
