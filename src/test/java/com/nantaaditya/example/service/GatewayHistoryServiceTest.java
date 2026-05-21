@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.helper.JsonHelper;
+import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.impl.GatewayHistoryServiceImpl;
@@ -88,13 +89,12 @@ class GatewayHistoryServiceTest {
   }
 
   @Test
-  @DisplayName("findHistories with unknown code returns IllegalArgumentException")
+  @DisplayName("findHistories with unknown code returns OutboundSystemNotFoundException")
   void findHistories_unknownCode_returnsError() {
     when(systemRepository.findByCode("unknown")).thenReturn(Mono.empty());
 
     StepVerifier.create(service.findHistories("unknown", null, null, null, 0, 20))
-        .expectErrorMatches(e -> e instanceof IllegalArgumentException
-            && e.getMessage().contains("unknown"))
+        .expectErrorMatches(e -> e instanceof OutboundSystemNotFoundException)
         .verify();
   }
 
@@ -177,8 +177,7 @@ class GatewayHistoryServiceTest {
     when(systemRepository.findByCode("no-system")).thenReturn(Mono.empty());
 
     StepVerifier.create(service.findByIdempotencyKey("no-system", "any-key"))
-        .expectErrorMatches(e -> e instanceof IllegalArgumentException
-            && e.getMessage().contains("no-system"))
+        .expectErrorMatches(e -> e instanceof OutboundSystemNotFoundException)
         .verify();
   }
 

@@ -8,6 +8,7 @@ import com.nantaaditya.example.helper.ResponseHelper;
 import com.nantaaditya.example.helper.TracerHelper;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.ResponseCode;
+import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.response.BaseResponse;
 import jakarta.validation.ConstraintViolation;
@@ -126,10 +127,21 @@ public class ApiExceptionHandler {
 
   @ResponseBody
   @ResponseStatus(HttpStatus.BAD_REQUEST)
+  @ExceptionHandler(OutboundSystemNotFoundException.class)
+  public BaseResponse<Object> outboundSystemNotFoundException(OutboundSystemNotFoundException ex) {
+    return toBaseErrorResponse(ex, error -> {
+      Map<String, List<String>> errors = Map.of("code", List.of("NotFound"));
+      BaseResponse<Object> response = responseHelper.failed(ResponseCode.BAD_REQUEST, errors);
+      return Tuples.of(errors, response);
+    });
+  }
+
+  @ResponseBody
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
   @ExceptionHandler(IllegalArgumentException.class)
   public BaseResponse<Object> illegalArgumentException(IllegalArgumentException ex) {
     return toBaseErrorResponse(ex, error -> {
-      Map<String, List<String>> errors = Map.of("message", List.of(ex.getMessage()));
+      Map<String, List<String>> errors = Map.of("message", List.of("Bad request"));
       BaseResponse<Object> response = responseHelper.failed(ResponseCode.BAD_REQUEST, errors);
       return Tuples.of(errors, response);
     });
@@ -140,7 +152,7 @@ public class ApiExceptionHandler {
   @ExceptionHandler(Throwable.class)
   public BaseResponse<Object> throwable(Throwable ex) {
     return toBaseErrorResponse(ex, error -> {
-      Map<String, List<String>> errors = Map.of(EXCEPTION_KEY, List.of(ex.getMessage()));
+      Map<String, List<String>> errors = Map.of(EXCEPTION_KEY, List.of("Internal server error"));
       BaseResponse<Object> response = responseHelper.failed(ResponseCode.INTERNAL_ERROR, errors);
       return Tuples.of(errors, response);
     });

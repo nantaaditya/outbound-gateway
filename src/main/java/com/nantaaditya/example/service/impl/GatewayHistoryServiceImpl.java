@@ -1,6 +1,7 @@
 package com.nantaaditya.example.service.impl;
 
 import com.nantaaditya.example.helper.JsonHelper;
+import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.response.GatewayHistoryResponse;
 import com.nantaaditya.example.model.response.PageResponse;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
@@ -50,7 +51,7 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
   @Override
   public Mono<GatewayHistoryResponse> findByIdempotencyKey(String code, String idempotencyKey) {
     return systemRepository.findByCode(code)
-        .switchIfEmpty(Mono.error(new IllegalArgumentException("Outbound system not found: " + code)))
+        .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)))
         .flatMap(system ->
             historyRepository.findByOutboundSystemIdAndIdempotencyKey(system.getId(), idempotencyKey)
                 .map(h -> GatewayHistoryResponse.from(h, jsonHelper))
@@ -65,7 +66,6 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
     }
     return systemRepository.findByCode(code)
         .map(system -> system.getId())
-        .switchIfEmpty(Mono.error(new IllegalArgumentException(
-            "Outbound system not found: " + code)));
+        .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }
 }

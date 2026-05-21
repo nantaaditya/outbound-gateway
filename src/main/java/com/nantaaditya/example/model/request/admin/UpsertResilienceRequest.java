@@ -4,7 +4,6 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.hibernate.validator.constraints.Range;
 
 public record UpsertResilienceRequest(
@@ -56,7 +55,7 @@ public record UpsertResilienceRequest(
   ) {
     public String toStatusCodeString() {
       if (retryOnStatusCodes == null || retryOnStatusCodes.isEmpty()) return "";
-      return retryOnStatusCodes.stream().collect(Collectors.joining(","));
+      return String.join(",", retryOnStatusCodes);
     }
   }
 

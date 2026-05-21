@@ -14,6 +14,7 @@ import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
+import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
@@ -157,8 +158,7 @@ public class GatewayServiceImpl implements GatewayService {
               );
         })
         .doOnNext(context -> contextCache.put(code, context))
-        .switchIfEmpty(Mono.error(new IllegalArgumentException(
-            "Outbound system not found or inactive: " + code)));
+        .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }
 
   private Mono<GatewayResponse> executeWithResilience(
@@ -193,7 +193,7 @@ public class GatewayServiceImpl implements GatewayService {
           metricsRecorder.recordCall(code(context), response.status(), callerService, durationMs);
           return saveHistory(context, callerService, idempotencyKey, request, response, durationMs)
               .onErrorResume(err -> {
-                log.warn(AppLogMessage.message("#GATEWAY - failed to save history for {}: {}", code(context), err.getMessage()).error(err));
+                log.error(AppLogMessage.message("#GATEWAY - failed to save history for {}: {}", code(context), err.getMessage()).error(err));
                 return Mono.empty();
               })
               .thenReturn(response);
@@ -304,12 +304,7 @@ public class GatewayServiceImpl implements GatewayService {
         .convertedStatus(response.convertedStatus())
         .convertedResponse(response.convertedResponse())
         .build();
-    return historyRepository.save(history)
-        .then()
-        .onErrorResume(e -> {
-          log.error(AppLogMessage.message("#GATEWAY - history save skipped for {} ({})", code(context), e.getMessage()).error(e));
-          return Mono.empty();
-        });
+    return historyRepository.save(history).then();
   }
 
   private OutboundResponseMapperConfiguration passthroughMapper() {
@@ -319,15 +314,7 @@ public class GatewayServiceImpl implements GatewayService {
   }
 
   private OutboundHostConfiguration defaultHostConfig(String baseUrl) {
-    return OutboundHostConfiguration.builder()
-        .baseUrl(baseUrl)
-        .connectTimeOutMs(5000)
-        .maxConnections(500)
-        .pendingAcquireMaxCount(1000)
-        .pendingAcquireTimeoutMs(30000)
-        .disableSslVerification(false)
-        .useProxy(false)
-        .build();
+    return OutboundHostConfiguration.productionDefault(baseUrl);
   }
 
   /**

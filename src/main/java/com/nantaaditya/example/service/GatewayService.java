@@ -11,4 +11,6 @@ public interface GatewayService {
       String callerService,
       String idempotencyKey,
       GatewayRequest request);
+
+  void evictContext(String code);
 }

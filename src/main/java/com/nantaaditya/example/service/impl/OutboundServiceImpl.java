@@ -25,6 +25,8 @@ import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
+import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
+import com.nantaaditya.example.service.GatewayService;
 import com.nantaaditya.example.service.OutboundService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -53,7 +55,7 @@ public class OutboundServiceImpl implements OutboundService {
   private final OutboundAuthConfigurationRepository authRepository;
   private final OutboundResponseMapperConfigurationRepository mapperRepository;
   private final OutboundHostConfigurationRepository hostConfigRepository;
-  private final GatewayServiceImpl gatewayService;
+  private final GatewayService gatewayService;
   private final GatewayWebClientBuilder contextBuilder;
   private final EncryptionHelper encryptionHelper;
   private final ResilienceRegistryService resilienceRegistryService;
@@ -63,6 +65,8 @@ public class OutboundServiceImpl implements OutboundService {
 
   private static final Duration TEST_CONNECTION_TIMEOUT = Duration.ofSeconds(5);
   private static final int MAX_LIST_SIZE = 1000;
+  private static final int METRICS_WINDOW_HOURS = 1;
+  private static final String METRICS_WINDOW_LABEL = "last_" + METRICS_WINDOW_HOURS + "h";
 
   private static final String CALCULATE_PERCENTILE_QUERY = """
       SELECT
@@ -170,7 +174,11 @@ public class OutboundServiceImpl implements OutboundService {
               existing.update(system.getId(), request);
               return resilienceRepository.save(existing);
             }))
-        .doOnSuccess(s -> log.info(AppLogMessage.message("#OutboundService - upserted resilience config code={}", code)))
+        .doOnSuccess(s -> {
+          resilienceRegistryService.reload(code);
+          gatewayService.evictContext(code);
+          log.info(AppLogMessage.message("#OutboundService - upserted resilience config code={}", code));
+        })
         .thenReturn(Boolean.TRUE);
   }
 
@@ -187,7 +195,10 @@ public class OutboundServiceImpl implements OutboundService {
                   .outboundSystemId(system.getId())
                   .headers(headersAsObjectMap)
                   .build()))
-              .doOnSuccess(s -> log.info(AppLogMessage.message("#OutboundService - upserted headers code={}", code)))
+              .doOnSuccess(s -> {
+                gatewayService.evictContext(code);
+                log.info(AppLogMessage.message("#OutboundService - upserted headers code={}", code));
+              })
               .as(transactionalOperator::transactional);
         })
         .thenReturn(Boolean.TRUE);
@@ -212,7 +223,10 @@ public class OutboundServiceImpl implements OutboundService {
                           existing.update(system.getId(), encrypted[0], encrypted[1], encrypted[2], request);
                           return authRepository.save(existing);
                         })
-                        .doOnSuccess(s -> log.info(AppLogMessage.message("#OutboundService - upserted auth config code={}", code)))
+                        .doOnSuccess(s -> {
+                          gatewayService.evictContext(code);
+                          log.info(AppLogMessage.message("#OutboundService - upserted auth config code={}", code));
+                        })
                 )
         )
         .thenReturn(Boolean.TRUE);
@@ -229,7 +243,10 @@ public class OutboundServiceImpl implements OutboundService {
               existing.update(system.getId(), request);
               return mapperRepository.save(existing);
             }))
-        .doOnSuccess(s -> log.info(AppLogMessage.message("#OutboundService - upserted response mapper code={}", code)))
+        .doOnSuccess(s -> {
+          gatewayService.evictContext(code);
+          log.info(AppLogMessage.message("#OutboundService - upserted response mapper code={}", code));
+        })
         .thenReturn(Boolean.TRUE);
   }
 
@@ -275,7 +292,7 @@ public class OutboundServiceImpl implements OutboundService {
     return requireSystem(code)
         .flatMap(system -> {
           long systemId = system.getId();
-          LocalDateTime cutoff = LocalDateTime.now().minusHours(1);
+          LocalDateTime cutoff = LocalDateTime.now().minusHours(METRICS_WINDOW_HOURS);
 
           Mono<Map<String, Object>> aggregateMono = databaseClient.sql(CALCULATE_PERCENTILE_QUERY)
               .bind("systemId", systemId)
@@ -321,7 +338,7 @@ public class OutboundServiceImpl implements OutboundService {
                 long idempotencyHits = resolveIdempotencyHits(code);
 
                 return new OutboundMetricsResponse(
-                    code, "last_1h", totalCalls, successRate, errorRate,
+                    code, METRICS_WINDOW_LABEL, totalCalls, successRate, errorRate,
                     breakdown, avgDuration, p90, p95, p99, cbState, idempotencyHits
                 );
               });
@@ -330,19 +347,11 @@ public class OutboundServiceImpl implements OutboundService {
 
   private Mono<OutboundSystem> requireSystem(String code) {
     return systemRepository.findByCode(code)
-        .switchIfEmpty(Mono.error(new IllegalArgumentException("Outbound system not found: " + code)));
+        .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }
 
   private OutboundHostConfiguration defaultHostConfig(String baseUrl) {
-    return OutboundHostConfiguration.builder()
-        .baseUrl(baseUrl)
-        .connectTimeOutMs(5000)
-        .maxConnections(50)
-        .pendingAcquireMaxCount(100)
-        .pendingAcquireTimeoutMs(5000)
-        .disableSslVerification(false)
-        .useProxy(false)
-        .build();
+    return OutboundHostConfiguration.testDefault(baseUrl);
   }
 
   private long resolveIdempotencyHits(String code) {

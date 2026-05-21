@@ -66,7 +66,7 @@ public class AppLogMessage implements Message {
 
   @Override
   public Object[] getParameters() {
-    return this.parameters;
+    return this.parameters.clone();
   }
 
   @Override

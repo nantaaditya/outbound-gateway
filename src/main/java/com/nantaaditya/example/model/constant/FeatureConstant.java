@@ -1,8 +1,8 @@
 package com.nantaaditya.example.model.constant;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
-import java.util.stream.Stream;
 import lombok.Getter;
 import org.springframework.http.HttpMethod;
 import org.springframework.util.AntPathMatcher;
@@ -34,6 +34,7 @@ public enum FeatureConstant {
   private final String path;
 
   private static final AntPathMatcher matcher = new AntPathMatcher();
+  private static final List<FeatureConstant> VALUES = List.of(values());
 
   FeatureConstant(HttpMethod method, String path) {
     this.method = method;
@@ -41,11 +42,8 @@ public enum FeatureConstant {
   }
 
   public static Optional<FeatureConstant> find(String method, String path) {
-    Predicate<FeatureConstant> isMatch = (FeatureConstant item)
-      -> item.getMethod() == HttpMethod.valueOf(method) && matcher.match(item.getPath(), path);
-
-    return Stream.of(values())
-        .filter(isMatch)
-        .findFirst();
+    Predicate<FeatureConstant> isMatch = item ->
+        item.getMethod() == HttpMethod.valueOf(method) && matcher.match(item.getPath(), path);
+    return VALUES.stream().filter(isMatch).findFirst();
   }
 }

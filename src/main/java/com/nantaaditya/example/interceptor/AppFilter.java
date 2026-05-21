@@ -11,8 +11,8 @@ import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.Observation.Event;
 import java.time.ZonedDateTime;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -31,17 +31,15 @@ import reactor.core.publisher.Mono;
 
 @Log4j2
 @Component
+@RequiredArgsConstructor
 @Order(Ordered.HIGHEST_PRECEDENCE + 2)
 public class AppFilter implements WebFilter {
 
   @Value("${spring.webflux.base-path}")
   private String contextPath;
 
-  @Autowired
-  private EventLogHelper eventLogHelper;
-
-  @Autowired
-  private ObservationHelper observationHelper;
+  private final EventLogHelper eventLogHelper;
+  private final ObservationHelper observationHelper;
 
   @Override
   public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
