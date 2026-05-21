@@ -468,6 +468,19 @@ There is no automatic migration — rotation is a manual data step.
 
 OAuth tokens are cached in memory per auth config and written back to `outbound_auth_configurations.current_token` after each successful refresh. On service restart, the persisted token is loaded from DB, reducing cold-start token fetches for long-lived tokens.
 
+### Security Hardening Applied
+
+The following security issues were identified and fixed across multiple code review rounds:
+
+| Issue | Fix |
+|---|---|
+| **Error message leakage** | `ApiExceptionHandler` returns fixed safe strings — `ex.getMessage()` is never forwarded to callers; SQL text is scrubbed from distributed traces |
+| **Header injection** | `AppFilter` reflects only three whitelisted headers (`X-Request-Id`, `X-Client-Id`, `X-Request-Time`) to the response — not all request headers |
+| **Sensitive value in logs** | Idempotency keys and internal identifiers no longer appear in exception messages that reach log aggregators |
+| **Connection pool race** | `GatewayWebClientBuilder` uses `ConcurrentHashMap.computeIfAbsent` (atomic, factory called once) instead of `putIfAbsent` (could build two Netty pools concurrently) |
+| **Reactor Context immutability** | `RetryHelper` and `ReactorJobExecutor` were discarding `context.put()` return values — all contextual keys were silently lost; fixed by chaining puts and returning the new `Context` |
+| **Proxy no-op** | `GatewayWebClientBuilder` proxy lambda was creating a standalone `ProxyProvider.Builder` and discarding it — `useProxy=true` hosts were connecting direct; fixed by chaining on the `TypeSpec` parameter |
+
 ### Resilience Config After V18 + V19 Migrations
 
 V18 added four boolean enable flags (`circuit_breaker_enabled`, `bulkhead_enabled`, `rate_limiter_enabled`, `retry_enabled`) defaulting to `false`. V19 renamed those columns (removed the `is_` prefix) to match the R2DBC entity mapping.
