@@ -115,6 +115,7 @@ public class ResilienceRegistryService {
           }
           return false;
         })
+        .failAfterMaxAttempts(true)
         .build();
   }
 

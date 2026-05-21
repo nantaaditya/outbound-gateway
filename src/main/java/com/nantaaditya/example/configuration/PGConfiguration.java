@@ -1,6 +1,7 @@
 package com.nantaaditya.example.configuration;
 
 import com.nantaaditya.example.helper.JsonHelper;
+import com.nantaaditya.example.helper.PGByteArrayToIntegerMapConverter;
 import com.nantaaditya.example.helper.PGByteArrayToMapConverter;
 import com.nantaaditya.example.helper.PGJsonToMapConverter;
 import com.nantaaditya.example.helper.PGMapToByteArrayConverter;
@@ -33,6 +34,7 @@ public class PGConfiguration {
       converters.add(new PGMapToJsonConverter(jsonHelper));
     } else {
       converters.add(new PGByteArrayToMapConverter(jsonHelper));
+      converters.add(new PGByteArrayToIntegerMapConverter(jsonHelper));
       converters.add(new PGMapToByteArrayConverter(jsonHelper));
     }
     return R2dbcCustomConversions.of(DialectResolver.getDialect(connectionFactory), converters);
