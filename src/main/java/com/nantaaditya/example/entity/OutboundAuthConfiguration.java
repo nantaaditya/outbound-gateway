@@ -41,20 +41,28 @@ public class OutboundAuthConfiguration extends BaseEntity<Long> {
     return tokenExpiryTime == null || LocalDateTime.now().isAfter(tokenExpiryTime);
   }
   
-  public void update(long outboundSystemId, byte[] apiKey, byte[] clientId, byte[] clientSecret, UpsertAuthRequest request) {
-    this.setOutboundSystemId(outboundSystemId);
-    this.setAuthType(request.authType());
-    this.setApiKey(apiKey);
-    this.setClientId(clientId);
-    this.setClientSecret(clientSecret);
-    this.setAutoRefresh(request.autoRefresh());
-    this.setTokenMethod(request.tokenMethod());
-    this.setTokenUrl(request.tokenUrl());
-    this.setTokenBody(request.tokenBody());
-    this.setTokenPrefix(request.tokenPrefix());
-    this.setTokenInjectLocation(request.tokenInjectLocation());
-    this.setTokenKeyName(request.tokenKeyName());
-    this.setTokenResponsePath(request.tokenResponsePath());
-    this.setTokenResponseExpiryPath(request.tokenResponseExpiryPath());
+  public OutboundAuthConfiguration updated(long outboundSystemId, byte[] apiKey, byte[] clientId, byte[] clientSecret, UpsertAuthRequest request) {
+    return OutboundAuthConfiguration.builder()
+        .id(this.getId())
+        .createdBy(this.getCreatedBy())
+        .createdDate(this.getCreatedDate())
+        .version(this.getVersion())
+        .outboundSystemId(outboundSystemId)
+        .authType(request.authType())
+        .apiKey(apiKey)
+        .clientId(clientId)
+        .clientSecret(clientSecret)
+        .autoRefresh(request.autoRefresh())
+        .tokenMethod(request.tokenMethod())
+        .tokenUrl(request.tokenUrl())
+        .tokenBody(request.tokenBody())
+        .tokenPrefix(request.tokenPrefix())
+        .tokenInjectLocation(request.tokenInjectLocation())
+        .tokenKeyName(request.tokenKeyName())
+        .tokenResponsePath(request.tokenResponsePath())
+        .tokenResponseExpiryPath(request.tokenResponseExpiryPath())
+        .currentToken(this.currentToken)
+        .tokenExpiryTime(this.tokenExpiryTime)
+        .build();
   }
 }

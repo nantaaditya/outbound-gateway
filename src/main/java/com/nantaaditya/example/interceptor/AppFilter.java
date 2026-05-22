@@ -15,6 +15,8 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -44,6 +46,9 @@ public class AppFilter implements WebFilter {
   @Value("${spring.webflux.base-path}")
   private String contextPath;
 
+  @Value("${app.filter.max-body-bytes:1048576}")
+  private int maxBodyBytes;
+
   private final EventLogHelper eventLogHelper;
   private final ObservationHelper observationHelper;
 
@@ -70,6 +75,10 @@ public class AppFilter implements WebFilter {
             exchange.getResponse().bufferFactory().allocateBuffer(0)
         ))
         .flatMap(dataBuffer -> {
+          if (dataBuffer.readableByteCount() > maxBodyBytes) {
+            DataBufferUtils.release(dataBuffer);
+            return Mono.error(new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Request body exceeds limit"));
+          }
           byte[] bodyBytes = new byte[dataBuffer.readableByteCount()];
           setCachedAttribute(exchange, dataBuffer, bodyBytes);
           Flux<DataBuffer> cachedBody = getDataBufferFlux(exchange, bodyBytes);

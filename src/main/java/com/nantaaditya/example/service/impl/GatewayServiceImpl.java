@@ -26,6 +26,7 @@ import com.nantaaditya.example.repository.OutboundResilienceConfigurationReposit
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.GatewayService;
+import io.micrometer.observation.Observation;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.ratelimiter.RequestNotPermitted;
@@ -165,6 +166,7 @@ public class GatewayServiceImpl implements GatewayService {
       OutboundSystemContext context, String callerService, String idempotencyKey,
       GatewayRequest request) {
     long startTime = System.currentTimeMillis();
+    Observation obs = metricsRecorder.startCall(code(context));
     Mono<GatewayResponse> execution = buildExecution(context, request);
 
     if (!context.getResilience().isBypassed()) {
@@ -190,7 +192,7 @@ public class GatewayServiceImpl implements GatewayService {
         .onErrorResume(e -> Mono.just(toInternalRejectResponse(context, e)))
         .flatMap(response -> {
           long durationMs = System.currentTimeMillis() - startTime;
-          metricsRecorder.recordCall(code(context), response.status(), callerService, durationMs);
+          metricsRecorder.finalizeCall(obs, response.status(), callerService);
           return saveHistory(context, callerService, idempotencyKey, request, response, durationMs)
               .onErrorResume(err -> {
                 log.error(AppLogMessage.message("#GATEWAY - failed to save history for {}: {}", code(context), err.getMessage()).error(err));
@@ -304,6 +306,14 @@ public class GatewayServiceImpl implements GatewayService {
         .convertedStatus(response.convertedStatus())
         .convertedResponse(response.convertedResponse())
         .build();
+    if (history.hasIdempotencyKey()) {
+      return historyRepository.upsertHistory(
+          history.getOutboundSystemId(), history.getIdempotencyKey(),
+          history.getCallerService(), history.getRequestMethod(), history.getRequestUrl(),
+          history.getRequestPayload(), history.getResponseStatus(), history.getResponsePayload(),
+          history.getDurationMs(), history.getConvertedStatus(), history.getConvertedResponse()
+      ).then();
+    }
     return historyRepository.save(history).then();
   }
 
@@ -325,7 +335,7 @@ public class GatewayServiceImpl implements GatewayService {
    *   <li>BulkheadFull → 503 (too many concurrent calls)
    *   <li>CircuitBreaker open → 503 (upstream considered unhealthy)
    *   <li>RateLimiter → 429 (caller exceeded allowed request rate)
-   *   <li>MaxRetries → 503 (upstream repeatedly failed)
+   *   <li>MaxRetries → 502 (upstream repeatedly failed)
    *   <li>Timeout → 504 (upstream did not respond in time)
    *   <li>Other → 503 (unexpected internal failure)
    * </ul>

@@ -22,6 +22,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.TimeoutException;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
@@ -86,6 +88,7 @@ public class ResilienceRegistryService {
         .permittedNumberOfCallsInHalfOpenState(cfg.getCbPermittedInHalfOpen())
         .slidingWindowSize(cfg.getCbSlidingWindowSize())
         .waitDurationInOpenState(Duration.ofMillis(cfg.getCbWaitDurationOpenMs()))
+        .recordExceptions(WebClientRequestException.class, TimeoutException.class)
         .build();
   }
 
@@ -115,6 +118,7 @@ public class ResilienceRegistryService {
           }
           return false;
         })
+        .retryOnException(e -> e instanceof WebClientRequestException || e instanceof TimeoutException)
         .failAfterMaxAttempts(true)
         .build();
   }

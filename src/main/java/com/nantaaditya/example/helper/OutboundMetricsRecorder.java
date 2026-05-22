@@ -2,8 +2,9 @@ package com.nantaaditya.example.helper;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
-import java.time.Duration;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -11,26 +12,29 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class OutboundMetricsRecorder {
 
+  private final ObservationRegistry observationRegistry;
   private final MeterRegistry meterRegistry;
 
-  public void recordCall(String code, int httpStatus, String callerService, long durationMs) {
-    Counter.builder("outbound.calls")
-        .tag("code", code)
-        .tag("http_status", String.valueOf(httpStatus))
-        .tag("caller_service", callerService != null ? callerService : "unknown")
-        .register(meterRegistry)
-        .increment();
+  private final ConcurrentHashMap<String, Counter> idempotencyCounters = new ConcurrentHashMap<>();
 
-    Timer.builder("outbound.calls.duration")
-        .tag("code", code)
-        .register(meterRegistry)
-        .record(Duration.ofMillis(durationMs));
+  public Observation startCall(String code) {
+    return Observation.createNotStarted("api.public", observationRegistry)
+        .lowCardinalityKeyValue("feature", code)
+        .start();
+  }
+
+  public void finalizeCall(Observation observation, int httpStatus, String callerService) {
+    observation
+        .lowCardinalityKeyValue("responseCode", String.valueOf(httpStatus))
+        .lowCardinalityKeyValue("callerService", callerService != null ? callerService : "unknown")
+        .stop();
   }
 
   public void recordIdempotencyHit(String code) {
-    Counter.builder("outbound.idempotency.hits")
-        .tag("code", code)
-        .register(meterRegistry)
+    idempotencyCounters.computeIfAbsent(code, c ->
+        Counter.builder("api.public.idempotency")
+            .tag("feature", c)
+            .register(meterRegistry))
         .increment();
   }
 }

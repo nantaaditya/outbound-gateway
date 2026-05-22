@@ -6,7 +6,6 @@ import com.nantaaditya.example.model.request.admin.UpsertAuthRequest;
 import com.nantaaditya.example.model.request.admin.UpsertHeadersRequest;
 import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest;
 import com.nantaaditya.example.model.request.admin.UpsertResponseMapperRequest;
-import com.nantaaditya.example.model.response.OutboundMetricsResponse;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse;
 import com.nantaaditya.example.model.response.OutboundSystemResponse;
 import com.nantaaditya.example.model.response.TestConnectionResponse;
@@ -36,6 +35,4 @@ public interface OutboundService {
   Mono<Boolean> reload(String code);
 
   Mono<TestConnectionResponse> testConnection(String code);
-
-  Mono<OutboundMetricsResponse> getMetrics(String code);
 }

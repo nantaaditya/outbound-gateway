@@ -654,6 +654,152 @@ Flyway migrations live in `src/main/resources/db/migration/`. Enable with `FLYWA
 
 ---
 
+## Database Schema (ERD)
+
+> Render with [plantuml.com](https://www.plantuml.com/plantuml/uml/), the IntelliJ **PlantUML Integration** plugin, or the VS Code **PlantUML** extension. GitHub does not render PlantUML natively.
+
+```plantuml
+@startuml Outbound Gateway ERD
+
+skinparam linetype ortho
+hide empty methods
+
+entity "outbound_systems" as sys {
+  * id : bigint <<PK>>
+  --
+  * code : varchar <<unique>>
+  name : varchar
+  description : varchar
+  http_method : varchar
+  base_url : varchar
+  api_path : varchar
+  is_active : boolean
+  idempotency_ttl_hours : int
+  created_by : varchar
+  created_date : timestamp
+  updated_by : varchar
+  updated_date : timestamp
+  version : bigint
+}
+
+entity "outbound_host_configurations" as host {
+  * id : bigint <<PK>>
+  --
+  * base_url : varchar <<unique>>
+  connect_time_out_ms : int
+  max_connections : int
+  pending_acquire_max_count : int
+  pending_acquire_timeout_ms : int
+  is_disable_ssl_verification : boolean
+  is_use_proxy : boolean
+  proxy_host : varchar
+  proxy_port : int
+  proxy_username : bytea
+  proxy_password : bytea
+}
+
+entity "outbound_auth_configurations" as auth {
+  * id : bigint <<PK>>
+  * outbound_system_id : bigint <<FK>>
+  --
+  auth_type : varchar
+  api_key : bytea
+  client_id : bytea
+  client_secret : bytea
+  is_auto_refresh : boolean
+  token_method : varchar
+  token_url : varchar
+  token_body : varchar
+  token_prefix : varchar
+  token_inject_location : varchar
+  token_key_name : varchar
+  token_response_path : varchar
+  token_response_expiry_path : varchar
+  current_token : varchar
+  token_expiry_time : timestamp
+}
+
+entity "outbound_resilience_configurations" as res {
+  * id : bigint <<PK>>
+  * outbound_system_id : bigint <<FK>>
+  --
+  read_time_out_ms : int
+  bypassed : boolean
+  circuit_breaker_enabled : boolean
+  cb_failure_rate_threshold : float
+  cb_slow_call_rate_threshold : float
+  cb_slow_call_duration_ms : int
+  cb_permitted_in_half_open : int
+  cb_sliding_window_size : int
+  cb_wait_duration_open_ms : int
+  bulkhead_enabled : boolean
+  bh_max_concurrent_calls : int
+  bh_max_wait_duration_ms : int
+  rate_limiter_enabled : boolean
+  rl_limit_for_period : int
+  rl_limit_refresh_period_ms : int
+  rl_timeout_duration_ms : int
+  retry_enabled : boolean
+  retry_max_attempts : int
+  retry_wait_duration_ms : int
+  retry_on_status_codes : varchar
+}
+
+entity "outbound_header_configurations" as hdr {
+  * id : bigint <<PK>>
+  * outbound_system_id : bigint <<FK>>
+  --
+  headers : bytea
+}
+
+entity "outbound_response_mapper_configuration" as mapper {
+  * id : bigint <<PK>>
+  * outbound_system_id : bigint <<FK>>
+  --
+  converter_type : varchar
+  mapping_script : text
+  mapping_status : bytea
+  is_active : boolean
+}
+
+entity "outbound_histories" as hist {
+  * id : bigint <<PK>>
+  * outbound_system_id : bigint <<FK>>
+  --
+  idempotency_key : varchar
+  caller_service : varchar
+  request_id : varchar
+  request_method : varchar
+  request_url : varchar
+  request_headers : text
+  request_payload : text
+  response_status : int
+  response_headers : text
+  response_payload : text
+  duration_ms : int
+  converted_status : int
+  converted_response : text
+  created_date : timestamp
+}
+
+sys ||--o| auth   : "outbound_system_id"
+sys ||--o| res    : "outbound_system_id"
+sys ||--o| hdr    : "outbound_system_id"
+sys ||--o| mapper : "outbound_system_id"
+sys }o--||  host  : "base_url (logical)"
+sys ||--o{  hist  : "outbound_system_id"
+
+@enduml
+```
+
+**Relationship notes:**
+- Each `outbound_systems` row has at most one row in each sub-config table (auth, resilience, headers, response mapper). Missing sub-config rows mean: no auth (passthrough), no resilience (bypass), no static headers, no response mapper.
+- `outbound_host_configurations` is keyed by `base_url`, not by `outbound_system_id`. Multiple outbound systems sharing the same `base_url` share the same host-level connection pool config.
+- `outbound_histories` accumulates one row per gateway call (fire-and-forget, not transactional with the call itself).
+- `bytea` columns (`api_key`, `client_id`, `client_secret`, `proxy_username`, `proxy_password`, `headers`, `mapping_status`) are encrypted with AES-256-GCM or serialized via custom R2DBC converters.
+
+---
+
 ## API Endpoints
 
 > **Base path**: All paths below are relative to the base path. With defaults, prepend `http://localhost:8080/app`.

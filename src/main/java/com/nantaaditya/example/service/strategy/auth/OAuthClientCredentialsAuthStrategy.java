@@ -7,10 +7,14 @@ import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.service.AuthStrategy;
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.PathNotFoundException;
 import java.time.LocalDateTime;
 import java.util.Map;
+import org.springframework.core.ParameterizedTypeReference;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.http.HttpMethod;
@@ -38,6 +42,13 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
   private final ConcurrentHashMap<Long, AtomicReference<TokenState>> tokenStates = new ConcurrentHashMap<>();
   // In-flight fetch deduplicator — Mono.cache() makes concurrent callers share one HTTP request.
   private final ConcurrentHashMap<Long, Mono<String>> tokenFetchCache = new ConcurrentHashMap<>();
+
+  private WebClient oauthWebClient;
+
+  @PostConstruct
+  void init() {
+    this.oauthWebClient = webClientBuilder.build();
+  }
 
   @Override
   public AuthType supports() {
@@ -72,14 +83,14 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
       String clientId = encryption.decryptToString(config.getClientId());
       String clientSecret = encryption.decryptToString(config.getClientSecret());
 
-      return webClientBuilder.build()
+      return oauthWebClient
           .method(HttpMethod.valueOf(config.getTokenMethod()))
           .uri(config.getTokenUrl())
           .body(BodyInserters.fromFormData("grant_type", "client_credentials")
               .with("client_id", clientId)
               .with("client_secret", clientSecret))
           .retrieve()
-          .bodyToMono(Map.class)
+          .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
           .flatMap(response -> {
             String token = extractPath(response, config.getTokenResponsePath());
             if (!config.isAutoRefresh()) {
@@ -95,9 +106,7 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
               }
             }
             stateRef.set(new TokenState(token, expiry));
-            config.setCurrentToken(token);
-            config.setTokenExpiryTime(expiry);
-            return authRepository.save(config)
+            return authRepository.updateToken(config.getId(), config.getOutboundSystemId(), token, expiry)
                 .thenReturn(token)
                 .onErrorResume(e -> {
                   log.warn(AppLogMessage.message("Failed to persist OAuth token for config {}: {}", config.getId(), e.getMessage()).error(e));
@@ -107,8 +116,20 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
     }).subscribeOn(Schedulers.boundedElastic());
   }
 
-  private String extractPath(Map<?, ?> response, String path) {
+  private String extractPath(Map<String, Object> response, String path) {
     if (path == null || path.isBlank() || response == null) return null;
+    if (path.startsWith("$.")) {
+      try {
+        Object value = JsonPath.read(response, path);
+        return value != null ? value.toString() : null;
+      } catch (PathNotFoundException e) {
+        log.warn(AppLogMessage.message("JSONPath '{}' not found in token response", path));
+        return null;
+      } catch (Exception e) {
+        log.warn(AppLogMessage.message("JSONPath extraction failed for path '{}': {}", path, e.getMessage()).error(e));
+        return null;
+      }
+    }
     Object value = response.get(path);
     return value != null ? value.toString() : null;
   }

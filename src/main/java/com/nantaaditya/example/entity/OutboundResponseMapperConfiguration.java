@@ -36,11 +36,17 @@ public class OutboundResponseMapperConfiguration extends BaseEntity<Long> {
     return mappingStatus.getOrDefault(String.valueOf(originalStatus), originalStatus);
   }
   
-  public void update(long outboundSystemId, UpsertResponseMapperRequest request) {
-    this.setOutboundSystemId(outboundSystemId);
-    this.setConverterType(request.converterType());
-    this.setMappingScript(request.mappingScript());
-    this.setMappingStatus(request.mappingStatus());
-    this.setActive(request.active());
+  public OutboundResponseMapperConfiguration updated(long outboundSystemId, UpsertResponseMapperRequest request) {
+    return OutboundResponseMapperConfiguration.builder()
+        .id(this.getId())
+        .createdBy(this.getCreatedBy())
+        .createdDate(this.getCreatedDate())
+        .version(this.getVersion())
+        .outboundSystemId(outboundSystemId)
+        .converterType(request.converterType())
+        .mappingScript(request.mappingScript())
+        .mappingStatus(request.mappingStatus())
+        .active(request.active())
+        .build();
   }
 }

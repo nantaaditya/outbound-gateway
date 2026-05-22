@@ -1,3 +1,5 @@
+-- Non-idempotent migration: ON CONFLICT DO NOTHING means re-runs are safe but won't update
+-- existing rows if host config already exists. Ensure flyway.cleanDisabled=true in production.
 -- Populate outbound_host_configurations from existing outbound_systems data.
 -- For each unique base_url, use the first system's SSL/proxy config and its resilience connect timeout.
 INSERT INTO outbound_host_configurations

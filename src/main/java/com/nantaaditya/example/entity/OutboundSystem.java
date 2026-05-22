@@ -40,14 +40,21 @@ public class OutboundSystem extends BaseEntity<Long> {
         .build();
   }
 
-  public void update(UpdateOutboundSystemRequest request) {
-    this.setName(request.name());
-    this.setDescription(request.description());
-    this.setHttpMethod(request.httpMethod());
-    this.setBaseUrl(request.baseUrl());
-    this.setApiPath(request.apiPath());
-    this.setActive(request.active());
-    this.setIdempotencyTtlHours(request.idempotencyTtlHours());
+  public OutboundSystem updated(UpdateOutboundSystemRequest request) {
+    return OutboundSystem.builder()
+        .id(this.getId())
+        .createdBy(this.getCreatedBy())
+        .createdDate(this.getCreatedDate())
+        .version(this.getVersion())
+        .code(this.code)
+        .name(request.name())
+        .description(request.description())
+        .httpMethod(request.httpMethod())
+        .baseUrl(request.baseUrl())
+        .apiPath(request.apiPath())
+        .active(request.active())
+        .idempotencyTtlHours(request.idempotencyTtlHours())
+        .build();
   }
 
   public String getFullPath() {

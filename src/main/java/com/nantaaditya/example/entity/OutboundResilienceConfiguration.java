@@ -72,41 +72,49 @@ public class OutboundResilienceConfiguration extends BaseEntity<Long> {
     return cfg;
   }
   
-  public void update(long outboundSystemId, UpsertResilienceRequest request) {
-    this.setOutboundSystemId(outboundSystemId);
-    this.setReadTimeOutMs(request.readTimeOutMs());
-    this.setCircuitBreakerEnabled(false);
-    this.setBulkheadEnabled(false);
-    this.setRateLimiterEnabled(false);
-    this.setRetryEnabled(false);
+  public OutboundResilienceConfiguration updated(long outboundSystemId, UpsertResilienceRequest request) {
+    var b = OutboundResilienceConfiguration.builder()
+        .id(this.getId())
+        .createdBy(this.getCreatedBy())
+        .createdDate(this.getCreatedDate())
+        .version(this.getVersion())
+        .outboundSystemId(outboundSystemId)
+        .readTimeOutMs(request.readTimeOutMs())
+        .circuitBreakerEnabled(false)
+        .bulkheadEnabled(false)
+        .rateLimiterEnabled(false)
+        .retryEnabled(false);
+
     if (request.circuitBreaker() != null) {
-      this.setCbFailureRateThreshold(request.circuitBreaker().cbFailureRateThreshold());
-      this.setCbSlowCallRateThreshold(request.circuitBreaker().cbSlowCallRateThreshold());
-      this.setCbSlowCallDurationMs(request.circuitBreaker().cbSlowCallDurationMs());
-      this.setCbPermittedInHalfOpen(request.circuitBreaker().cbPermittedInHalfOpen());
-      this.setCbSlidingWindowSize(request.circuitBreaker().cbSlidingWindowSize());
-      this.setCbWaitDurationOpenMs(request.circuitBreaker().cbWaitDurationOpenMs());
-      this.setCircuitBreakerEnabled(true);
+      b.cbFailureRateThreshold(request.circuitBreaker().cbFailureRateThreshold())
+       .cbSlowCallRateThreshold(request.circuitBreaker().cbSlowCallRateThreshold())
+       .cbSlowCallDurationMs(request.circuitBreaker().cbSlowCallDurationMs())
+       .cbPermittedInHalfOpen(request.circuitBreaker().cbPermittedInHalfOpen())
+       .cbSlidingWindowSize(request.circuitBreaker().cbSlidingWindowSize())
+       .cbWaitDurationOpenMs(request.circuitBreaker().cbWaitDurationOpenMs())
+       .circuitBreakerEnabled(true);
     }
 
     if (request.bulkHead() != null) {
-      this.setBhMaxConcurrentCalls(request.bulkHead().bhMaxConcurrentCalls());
-      this.setBhMaxWaitDurationMs(request.bulkHead().bhMaxWaitDurationMs());
-      this.setBulkheadEnabled(true);
+      b.bhMaxConcurrentCalls(request.bulkHead().bhMaxConcurrentCalls())
+       .bhMaxWaitDurationMs(request.bulkHead().bhMaxWaitDurationMs())
+       .bulkheadEnabled(true);
     }
 
     if (request.rateLimiter() != null) {
-      this.setRlLimitForPeriod(request.rateLimiter().rlLimitForPeriod());
-      this.setRlLimitRefreshPeriodMs(request.rateLimiter().rlLimitRefreshPeriodMs());
-      this.setRlTimeoutDurationMs(request.rateLimiter().rlTimeoutDurationMs());
-      this.setRateLimiterEnabled(true);
+      b.rlLimitForPeriod(request.rateLimiter().rlLimitForPeriod())
+       .rlLimitRefreshPeriodMs(request.rateLimiter().rlLimitRefreshPeriodMs())
+       .rlTimeoutDurationMs(request.rateLimiter().rlTimeoutDurationMs())
+       .rateLimiterEnabled(true);
     }
 
     if (request.retry() != null) {
-      this.setRetryMaxAttempts(request.retry().retryMaxAttempts());
-      this.setRetryWaitDurationMs(request.retry().retryWaitDurationMs());
-      this.setRetryOnStatusCodes(request.retry().toStatusCodeString());
-      this.setRetryEnabled(true);
+      b.retryMaxAttempts(request.retry().retryMaxAttempts())
+       .retryWaitDurationMs(request.retry().retryWaitDurationMs())
+       .retryOnStatusCodes(request.retry().toStatusCodeString())
+       .retryEnabled(true);
     }
+
+    return b.build();
   }
 }

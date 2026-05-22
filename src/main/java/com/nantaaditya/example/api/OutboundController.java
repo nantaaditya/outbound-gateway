@@ -12,6 +12,7 @@ import com.nantaaditya.example.model.response.OutboundMetricsResponse;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse;
 import com.nantaaditya.example.model.response.OutboundSystemResponse;
 import com.nantaaditya.example.model.response.TestConnectionResponse;
+import com.nantaaditya.example.service.OutboundMetricsService;
 import com.nantaaditya.example.service.OutboundService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -32,6 +33,7 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class OutboundController {
   private final OutboundService outboundService;
+  private final OutboundMetricsService outboundMetricsService;
   private final ResponseHelper responseHelper;
 
   @PostMapping(
@@ -156,7 +158,7 @@ public class OutboundController {
   )
   public Mono<BaseResponse<OutboundMetricsResponse>> getMetrics(
       @PathVariable String code) {
-    return outboundService.getMetrics(code)
+    return outboundMetricsService.getMetrics(code)
         .map(responseHelper::success);
   }
 }

@@ -116,6 +116,7 @@ public class GatewayWebClientBuilder {
             .addHandlerLast(new LogbookClientHandler(logbook)));
 
     if (hostConfig.isDisableSslVerification()) {
+      log.warn(AppLogMessage.message("#WEBCLIENT - SSL verification disabled for {} — do not use in production", hostConfig.getBaseUrl()));
       httpClient = httpClient.secure(spec -> {
         try {
           spec.sslContext(insecureSsl());
