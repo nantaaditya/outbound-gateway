@@ -201,7 +201,7 @@ Only mechanisms with their enable flag set to `true` are applied. A system with 
 | `ROOT_LOG_LEVEL` | Root log level | `INFO` | No |
 | `APP_LOG_LEVEL` | Application log level | `INFO` | No |
 | `APPS_LOG_FORMAT` | Log format (`json` or `console`) | `json` | No |
-| `APP_NAME` | Spring application name | `single-module-reactive` | No |
+| `APP_NAME` | Spring application name | `outbound-gateway` | No |
 | `APP_VERSION` | Application version label | `1.0.0` | No |
 
 Generate a 32-byte key:
@@ -510,7 +510,7 @@ Retry triggers on **HTTP status codes** (configured via `retryOnStatusCodes`), n
 | `BulkheadFullException` | 503 | Too many concurrent calls to this system |
 | `CallNotPermittedException` | 503 | Circuit breaker is OPEN |
 | `RequestNotPermitted` | 429 | Rate limit exceeded |
-| `MaxRetriesExceededException` | 503 | Upstream repeatedly failed |
+| `MaxRetriesExceededException` | 502 | Upstream repeatedly failed after all retry attempts |
 | `TimeoutException` | 504 | Upstream did not respond within `read_time_out_ms` |
 | Other | 503 | Unexpected internal error |
 
@@ -955,3 +955,90 @@ All error responses use the same envelope:
 ```
 
 Exception details are logged server-side. No internal message, stack trace, or SQL ever reaches the caller.
+
+---
+
+## Testing
+
+### Running Tests
+
+```bash
+# All tests
+mvn test
+
+# Single test class
+mvn test -Dtest=GatewayExecuteAuthIntegrationTest
+
+# All integration tests (by pattern)
+mvn test -Dtest="*IntegrationTest,*PermutationTest"
+```
+
+### Integration Test Architecture
+
+All integration tests extend `BaseIntegrationTest`, which:
+- Starts a full Spring Boot application on a random port (`DEFINED_PORT` + `@AutoConfigureWebTestClient`)
+- Uses H2 in-memory R2DBC database with the schema from `src/test/resources/schema.sql`
+- Registers H2-compatible converters (`PGByteArrayToMapConverter`, `PGByteArrayToIntegerMapConverter`, `PGMapToByteArrayConverter`) in place of the PostgreSQL JSON converters
+- Disables Flyway and cron jobs
+
+WireMock (`dynamicPort()`) is used as a fake external API server in tests that call outbound HTTP endpoints.
+
+### Test Suite Overview
+
+| Test class | Tests | What it covers |
+|---|---|---|
+| `GatewayControllerIntegrationTest` | 3 | Basic execute happy path, idempotency, query-param forwarding |
+| `GatewayExecuteAuthIntegrationTest` | 7 | All 7 auth strategies end-to-end via WireMock header verification |
+| `GatewayExecuteResilienceIntegrationTest` | 5 | Circuit Breaker (forced open), Bulkhead (slot exhausted), Rate Limiter, Retry (exhausted), Read Timeout |
+| `GatewayExecuteResponseMapperIntegrationTest` | 4 | No mapper passthrough, JSLT transform, JSLT + status remap, inactive mapper |
+| `GatewayExecuteValidationIntegrationTest` | 5 | Inactive system, history persistence, upstream 4xx passthrough, null body, query params |
+| `GatewayHistoryControllerIntegrationTest` | 13 | Paginated list, filter by code/status/date, idempotency key lookup, all response fields |
+| `AdminOutboundControllerIntegrationTest` | 13 | Full CRUD, upsert all sub-configs, reload, test-connection, metrics (zero + seeded) |
+| `AdminGatewayFlowPermutationTest` | 6 | End-to-end permutations: full flow, idempotency, active/inactive toggle, reload, batch metrics |
+| `GatewayExecuteFullPipelineIntegrationTest` | 4 | Combined pipelines: API_KEY+Retry+header+JSLT; BASIC+CB+header; Bearer+RateLimit+header; OAuth+bypass+header+JSLT |
+| `TestControllerIntegrationTest` | 1 | Health-check endpoint |
+
+**Total: 61 integration test methods**
+
+Additional unit tests cover:
+
+| Test class | What it covers |
+|---|---|
+| `AuthStrategyTest` | Each auth strategy in isolation with mocked dependencies |
+| `GatewayHistoryServiceTest` | History service pagination and filter logic |
+| `GatewayWebClientBuilderTest` | WebClient pool creation, proxy config, SSL override |
+| `GatewayServiceIntegrationTest` | Context cache, eviction, thundering-herd dedup |
+| `GatewayMetricsIntegrationTest` | Custom Micrometer counters and timers |
+| `ResilienceRegistryServiceTest` | Registry CRUD, metric binding |
+| `OutboundHistoryRepositoryFilterTest` | Custom SQL filter query with all parameter combinations |
+| `OutboundMetricsRecorderTest` | Percentile computation from seeded history rows |
+| `EncryptionHelperTest` | AES-256-GCM round-trip, encrypt/decrypt |
+| `JsltResponseMapperTest` | JSLT transform and Caffeine expression cache |
+
+### Key Test Patterns
+
+**Async history saves** — History is saved fire-and-forget after each gateway call. Tests that assert history row count use Awaitility:
+
+```java
+Awaitility.await()
+    .atMost(Duration.ofSeconds(5))
+    .pollInterval(Duration.ofMillis(200))
+    .until(() -> historyRepository.count().block() >= 1L);
+```
+
+**Stateful WireMock (Retry tests)** — Use WireMock Scenarios to return different responses on consecutive calls to the same endpoint:
+
+```java
+wireMock.stubFor(post(urlEqualTo("/endpoint"))
+    .inScenario("retry-test")
+    .whenScenarioStateIs(Scenario.STARTED)
+    .willReturn(aResponse().withStatus(500))
+    .willSetStateTo("SUCCESS"));
+
+wireMock.stubFor(post(urlEqualTo("/endpoint"))
+    .inScenario("retry-test")
+    .whenScenarioStateIs("SUCCESS")
+    .willReturn(aResponse().withStatus(200)));
+```
+
+**Resilience4j context isolation** — Tests call `gatewayService.evictContext(code)` and `resilienceRegistryService.reload(code)` in `@AfterEach` to prevent registry state from leaking across test methods.

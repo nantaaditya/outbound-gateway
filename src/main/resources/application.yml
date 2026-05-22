@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: ${APP_NAME:single-module-reactive}
+    name: ${APP_NAME:outbound-gateway}
   webflux:
     base-path: ${CONTEXT_PATH:/app}
   r2dbc:
