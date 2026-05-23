@@ -123,6 +123,10 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
           .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
           .flatMap(response -> {
             String token = extractPath(response, config.getTokenResponsePath());
+            if (token == null || token.isBlank()) {
+              return Mono.error(new RuntimeException(
+                  "OAuth token response missing field: " + config.getTokenResponsePath()));
+            }
             if (!config.isAutoRefresh()) {
               return Mono.just(token);
             }

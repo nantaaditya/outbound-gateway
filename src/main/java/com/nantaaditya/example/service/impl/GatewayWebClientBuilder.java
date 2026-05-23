@@ -1,6 +1,7 @@
 package com.nantaaditya.example.service.impl;
 
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
+import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.entity.OutboundHeaderConfiguration;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
@@ -12,7 +13,6 @@ import io.netty.channel.ChannelOption;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -60,6 +60,7 @@ public class GatewayWebClientBuilder {
   private final WebClient.Builder webClientBuilder;
   private final ResilienceRegistryService resilienceRegistry;
   private final Logbook logbook;
+  private final EncryptionHelper encryptionHelper;
 
   // One WebClient (= one Reactor Netty connection pool) per host (scheme+host+port).
   private final ConcurrentMap<String, WebClient> webClientCache = new ConcurrentHashMap<>();
@@ -74,6 +75,11 @@ public class GatewayWebClientBuilder {
   public void evictWebClient(String baseUrl) {
     webClientCache.remove(baseUrl);
     log.info(AppLogMessage.message("#WEBCLIENT - evicted for {}", baseUrl));
+  }
+
+  /** Builds a one-shot WebClient not backed by the shared pool — safe to use for test-connection calls. */
+  public WebClient buildDisposableWebClient(OutboundHostConfiguration hostConfig) {
+    return buildWebClient(hostConfig);
   }
 
   public OutboundSystemContext buildContext(
@@ -143,8 +149,8 @@ public class GatewayWebClientBuilder {
             .host(proxyHost)
             .port(proxyPort);
         if (hostConfig.getProxyUsername() != null && hostConfig.getProxyPassword() != null) {
-          spec.username(new String(hostConfig.getProxyUsername(), StandardCharsets.UTF_8))
-              .password(p -> new String(hostConfig.getProxyPassword(), StandardCharsets.UTF_8));
+          spec.username(encryptionHelper.decryptToString(hostConfig.getProxyUsername()))
+              .password(p -> encryptionHelper.decryptToString(hostConfig.getProxyPassword()));
         }
       });
     }

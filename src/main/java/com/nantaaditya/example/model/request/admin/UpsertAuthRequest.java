@@ -26,10 +26,10 @@ public record UpsertAuthRequest(
   public boolean isAuthFieldsValid() {
     if (authType == null) return true;
     return switch (authType) {
-      case API_KEY, HMAC -> hasValue(apiKey);
+      case API_KEY -> hasValue(apiKey);
+      case HMAC, BEARER_STATIC -> hasValue(clientSecret);
       case BASIC, RSA -> hasValue(clientId) && hasValue(clientSecret);
       case OAUTH -> hasValue(tokenUrl) && hasValue(tokenMethod) && hasValue(tokenKeyName) && hasValue(tokenResponsePath);
-      case BEARER_STATIC -> hasValue(apiKey);
       case NONE -> true;
     };
   }

@@ -7,6 +7,7 @@ import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.helper.EncryptionHelper;
+import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.admin.CreateOutboundSystemRequest;
 import com.nantaaditya.example.model.request.admin.UpdateOutboundSystemRequest;
@@ -23,10 +24,8 @@ import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
-import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.service.GatewayService;
 import com.nantaaditya.example.service.OutboundService;
-import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -35,7 +34,6 @@ import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
-import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Mono;
@@ -65,8 +63,6 @@ public class OutboundServiceImpl implements OutboundService {
       "authorization", "proxy-authorization", "x-api-key", "x-auth-token",
       "x-secret", "x-client-secret", "x-access-token"
   );
-
-
 
   @Override
   public Mono<OutboundSystemResponse> create(CreateOutboundSystemRequest request) {
@@ -240,7 +236,7 @@ public class OutboundServiceImpl implements OutboundService {
             hostConfigRepository.findByBaseUrl(system.getBaseUrl())
                 .defaultIfEmpty(defaultHostConfig(system.getBaseUrl()))
                 .flatMap(hostConfig -> {
-                  var client = contextBuilder.getOrCreateWebClient(hostConfig);
+                  var client = contextBuilder.buildDisposableWebClient(hostConfig);
                   return client.method(system.getHttpMethodEnum())
                       .uri(system.getFullPath())
                       .exchangeToMono(response -> {

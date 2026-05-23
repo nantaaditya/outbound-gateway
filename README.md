@@ -633,7 +633,7 @@ Execute an outbound HTTP call through the configured outbound system.
 | Header | Required | Description |
 |---|---|---|
 | `X-Caller-Service` | No | Calling service name — saved to history |
-| `X-Idempotency-Key` | No | Checks history first; returns cached result if within TTL |
+| `X-Idempotency-Key` | No | Checks history first; returns cached result if within TTL. Ignored when `idempotencyTtlHours = 0` (idempotency disabled for that system). |
 
 **Request body:**
 ```json
@@ -770,6 +770,8 @@ Look up a single history record by idempotency key. `code` is required — idemp
 #### `POST /api/outbound`
 
 Create a new outbound system.
+
+> **`idempotencyTtlHours`**: set to `0` to disable idempotency for this system. Any positive value enables idempotency with that TTL window in hours.
 
 **Request body:**
 ```json

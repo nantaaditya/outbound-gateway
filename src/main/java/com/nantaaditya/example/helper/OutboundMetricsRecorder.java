@@ -34,6 +34,8 @@ public class OutboundMetricsRecorder {
   private final ObservationRegistry observationRegistry;
   private final MeterRegistry meterRegistry;
 
+  private static final int MAX_CALLER_TAG_LENGTH = 64;
+
   private final ConcurrentHashMap<String, Counter> idempotencyCounters = new ConcurrentHashMap<>();
 
   public Observation startCall(String code) {
@@ -45,8 +47,16 @@ public class OutboundMetricsRecorder {
   public void finalizeCall(Observation observation, int httpStatus, String callerService) {
     observation
         .lowCardinalityKeyValue("responseCode", String.valueOf(httpStatus))
-        .lowCardinalityKeyValue("callerService", callerService != null ? callerService : "unknown")
+        .lowCardinalityKeyValue("callerService", normalizeCallerService(callerService))
         .stop();
+  }
+
+  private String normalizeCallerService(String raw) {
+    if (raw == null || raw.isBlank()) return "unknown";
+    String normalized = raw.trim().replaceAll("[^a-zA-Z0-9_\\-]", "_");
+    return normalized.length() > MAX_CALLER_TAG_LENGTH
+        ? normalized.substring(0, MAX_CALLER_TAG_LENGTH)
+        : normalized;
   }
 
   public void recordIdempotencyHit(String code) {
