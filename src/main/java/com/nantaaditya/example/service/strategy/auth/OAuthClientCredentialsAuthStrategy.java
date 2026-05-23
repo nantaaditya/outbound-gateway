@@ -24,6 +24,36 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+/**
+ * Fetches and caches OAuth 2.0 client-credentials tokens with thundering-herd protection.
+ *
+ * <h3>Two-layer token cache</h3>
+ * <ol>
+ *   <li><strong>Live state ({@code tokenStates})</strong> — a {@link ConcurrentHashMap} keyed by
+ *       config ID, each value an {@link java.util.concurrent.atomic.AtomicReference} holding the
+ *       current {@code (token, expiryTime)} pair. {@code AtomicReference} makes the pair visible
+ *       atomically — no partial reads of a stale token with a new expiry (or vice versa).
+ *   <li><strong>In-flight deduplicator ({@code tokenFetchCache})</strong> — when the live state
+ *       is expired or absent, a single {@code Mono<String>} is stored here via
+ *       {@link ConcurrentHashMap#computeIfAbsent}. {@link reactor.core.publisher.Mono#cache()} on
+ *       that {@code Mono} means all concurrent callers subscribe to the same in-flight HTTP request
+ *       rather than each firing their own — thundering-herd prevention. The entry is removed in
+ *       {@code doFinally} so the next expiry triggers a fresh fetch.
+ * </ol>
+ *
+ * <h3>Auto-refresh and DB persistence</h3>
+ * <p>When {@code auto_refresh} is enabled, the resolved expiry (parsed from
+ * {@code token_response_expiry_path} as seconds-from-now) is written back to
+ * {@code outbound_auth_configurations} via {@code authRepository.updateToken}. This survives
+ * application restarts — on startup the live state is seeded from the DB row's
+ * {@code current_token} and {@code token_expiry_time}. A DB write failure is logged and
+ * swallowed; the in-memory token is still used so a persistence blip does not break outbound calls.
+ *
+ * <h3>Token field extraction</h3>
+ * <p>Both {@code token_response_path} and {@code token_response_expiry_path} support either a
+ * plain JSON key (simple map lookup) or a JSONPath expression starting with {@code $.} for
+ * nested response structures.
+ */
 @Log4j2
 @Component
 @RequiredArgsConstructor

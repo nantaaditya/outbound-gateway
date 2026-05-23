@@ -13,6 +13,17 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+/**
+ * Signs the outbound request body with HMAC-SHA256 and injects the signature.
+ *
+ * <p>The signing secret is stored AES-256-GCM encrypted in {@code client_secret}.
+ * The signature is computed over the raw request body string on every call — if the body is
+ * {@code null} (e.g. GET requests) an empty string is signed instead so the HMAC is always
+ * a valid, verifiable value on the upstream side.
+ *
+ * <p>The resulting HMAC bytes are Base64-encoded before injection. Inject location and
+ * header name follow the same {@code token_key_name} / {@code token_inject_location} pattern.
+ */
 @Component
 public class HmacSha256AuthStrategy implements AuthStrategy {
 

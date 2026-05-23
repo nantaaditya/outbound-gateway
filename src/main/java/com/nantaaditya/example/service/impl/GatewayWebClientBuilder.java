@@ -30,18 +30,27 @@ import reactor.netty.resources.ConnectionProvider;
 import reactor.netty.transport.ProxyProvider;
 
 /**
- * Builds and caches {@link WebClient} instances keyed by {@code baseUrl} (host-only).
+ * Builds and caches {@link WebClient} instances keyed by {@code baseUrl} (scheme+host+port).
  *
- * <p><b>One pool per host — first-wins caveat (engineers must read this):</b>
- * Multiple outbound systems may share the same {@code baseUrl}. The FIRST system that
- * triggers {@link #getOrCreateWebClient} wins: its {@link OutboundHostConfiguration}
- * values (connect timeout, SSL, proxy, pool size) are used for the shared pool. All
- * subsequent systems pointing to the same host reuse that pool with NO way to override
- * these settings. To change host-level settings, call {@link #evictWebClient(String)} to
- * force re-creation on the next call — this drops ALL in-flight connections for that host.
+ * <h3>One pool per host</h3>
+ * <p>{@code outbound_host_configurations} has a {@code UNIQUE} constraint on {@code base_url},
+ * so there is exactly one host config row per host. Multiple outbound systems pointing to
+ * the same {@code baseUrl} share both that config row and the pool built from it — no
+ * ambiguity, no conflict.
  *
- * <p>Because of this, {@code outbound_host_configurations} is designed as a host-level
- * table (unique per base_url), not a per-system table.
+ * <p>The pool is created on the first call to {@link #getOrCreateWebClient} and cached in
+ * memory. It is <em>not</em> rebuilt automatically when the DB row changes. Call
+ * {@link #evictWebClient(String)} (triggered by {@code POST /api/outbound/{code}/reload})
+ * to force re-creation on the next request. Eviction drops all in-flight connections to
+ * that host — all systems sharing the same {@code baseUrl} are affected.
+ *
+ * <h3>Resilience wiring</h3>
+ * <p>{@link #buildContext} registers Resilience4j instances only when their enable flag is
+ * {@code true}. The application order in {@code GatewayServiceImpl.executeWithResilience}
+ * must match the registration order here:
+ * <pre>  transformDeferred: RateLimiter → Bulkhead → CircuitBreaker → Retry (outermost)</pre>
+ * Retry being outermost means each retry passes through CB and Bulkhead again. Swapping
+ * Retry inside CB would bypass the circuit breaker on retries — defeating its purpose.
  */
 @Log4j2
 @Service

@@ -8,6 +8,25 @@ import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+/**
+ * Records Micrometer metrics for every outbound gateway call.
+ *
+ * <h3>Observation vs pre-cached Counter — why two instruments</h3>
+ * <p>{@link #startCall} creates a new {@link Observation} per call. Observations carry per-call
+ * state (latency, status tags) so they cannot be shared or pre-cached.
+ *
+ * <p>{@link #recordIdempotencyHit} uses a {@link Counter} cached in {@code idempotencyCounters}.
+ * Counter creation (registry lookup + tag binding) is not free — doing it on every call under
+ * load would add contention on the {@code MeterRegistry}. {@link ConcurrentHashMap#computeIfAbsent}
+ * ensures the counter is registered exactly once per system code and reused on every subsequent
+ * idempotency cache hit.
+ *
+ * <h3>Low-cardinality tags only</h3>
+ * <p>All tags added here ({@code feature}, {@code responseCode}, {@code callerService}) have
+ * bounded cardinality. High-cardinality values (request IDs, idempotency keys, body content)
+ * must never be added as tags — each unique value creates a new time-series in Prometheus,
+ * leading to cardinality explosion and OOM in the metrics backend.
+ */
 @Component
 @RequiredArgsConstructor
 public class OutboundMetricsRecorder {

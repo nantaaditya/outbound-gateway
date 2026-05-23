@@ -11,6 +11,16 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+/**
+ * Produces an HTTP Basic Authentication header from encrypted credentials.
+ *
+ * <p>Both {@code client_id} and {@code client_secret} are AES-256-GCM encrypted at rest.
+ * On each call they are decrypted, concatenated as {@code clientId:clientSecret}, and
+ * Base64-encoded into the standard {@code Authorization: Basic <encoded>} header.
+ *
+ * <p>The inject location is always {@link com.nantaaditya.example.model.constant.TokenInjectLocation#HEADER}
+ * — Basic auth is defined only as a header mechanism.
+ */
 @Component
 public class BasicAuthStrategy implements AuthStrategy {
 

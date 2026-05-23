@@ -28,6 +28,25 @@ import com.nantaaditya.example.model.logger.AppLogMessage;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
 
+/**
+ * Manages Resilience4j instances (CB, Bulkhead, RateLimiter, Retry) per outbound system code.
+ *
+ * <h3>Shared registries + automatic Micrometer binding</h3>
+ * <p>One registry per mechanism type is created at startup. All four are bound to Micrometer
+ * via {@code Tagged*Metrics.bindTo()} in the constructor — every instance created through
+ * {@code getOrCreate*} is automatically tracked in Prometheus without per-instance registration.
+ *
+ * <h3>Retry on result, not on exception</h3>
+ * <p>{@code buildRetryConfig} uses {@code retryOnResult} to trigger retries when the upstream
+ * returns a configured HTTP status code (e.g. 500, 503). This avoids requiring a thrown
+ * exception for status-based retries — the {@link GatewayResponse} is inspected directly.
+ * {@code failAfterMaxAttempts(true)} ensures {@code MaxRetriesExceededException} is emitted
+ * after exhaustion, which {@code GatewayServiceImpl} converts to a 502 internal-reject.
+ *
+ * <h3>Reload</h3>
+ * <p>{@link #reload} removes all four instances for a given code. The next {@code getOrCreate*}
+ * call rebuilds them from the current DB config values.
+ */
 @Log4j2
 @Service
 public class ResilienceRegistryService {

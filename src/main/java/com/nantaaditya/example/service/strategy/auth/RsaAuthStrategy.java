@@ -15,6 +15,21 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+/**
+ * Signs the outbound request body with RSA-SHA256 using a PKCS8 DER private key.
+ *
+ * <p>The private key is stored AES-256-GCM encrypted in {@code client_secret} as raw DER bytes
+ * (not PEM — no header/footer stripping required). On every call the bytes are decrypted,
+ * loaded via {@link java.security.spec.PKCS8EncodedKeySpec}, and used to produce a
+ * {@code SHA256withRSA} signature over the request body.
+ *
+ * <p>The key is not cached — if loading or signing fails a {@link RuntimeException} is thrown,
+ * which surfaces as a gateway 502 to the caller. This is intentional: a bad key is a
+ * configuration error that should never silently pass through.
+ *
+ * <p>Like HMAC, an empty string is signed when the request body is {@code null}, and the
+ * resulting signature bytes are Base64-encoded before injection.
+ */
 @Component
 public class RsaAuthStrategy implements AuthStrategy {
 

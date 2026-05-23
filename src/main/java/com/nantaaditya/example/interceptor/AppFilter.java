@@ -31,6 +31,35 @@ import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+/**
+ * First-in-chain WebFilter — body caching, header decoration, and Micrometer observation.
+ *
+ * <h3>Why body caching is required</h3>
+ * <p>WebFlux request bodies are single-subscription {@link reactor.core.publisher.Flux} streams.
+ * Once a subscriber reads the body, the bytes are gone — a second read (e.g. controller → service)
+ * would receive an empty stream. {@link DataBufferUtils#join} materialises the entire body into a
+ * single {@link org.springframework.core.io.buffer.DataBuffer}, copies it to a {@code byte[]},
+ * and wraps that array in a {@link ServerHttpRequestDecorator} so every downstream subscriber
+ * always reads from the same in-memory snapshot.
+ *
+ * <h3>Body size guard</h3>
+ * <p>If the buffered body exceeds {@code app.filter.max-body-bytes} (default 1 MB / 1 048 576
+ * bytes) the buffer is released immediately and HTTP 413 Payload Too Large is returned before
+ * any application code sees the request.
+ *
+ * <h3>Header reflection whitelist</h3>
+ * <p>Only the three headers in {@link #REFLECT_HEADERS} ({@code X-Request-Id},
+ * {@code X-Client-Id}, {@code X-Request-Time}) are copied from the request to the response.
+ * Reflecting arbitrary request headers would let callers inject unexpected response headers,
+ * so the whitelist is intentionally narrow.
+ *
+ * <h3>Observation lifecycle</h3>
+ * <p>A Micrometer {@link io.micrometer.observation.Observation} is started before the chain is
+ * invoked and stopped inside {@code doFinally} — which fires on success, error, <em>and</em>
+ * cancellation. This guarantees the observation is always closed regardless of how the reactive
+ * pipeline terminates, preventing the "scope never closed" leak logged by
+ * {@code ObservationThreadLocalAccessor}.
+ */
 @Log4j2
 @Component
 @RequiredArgsConstructor

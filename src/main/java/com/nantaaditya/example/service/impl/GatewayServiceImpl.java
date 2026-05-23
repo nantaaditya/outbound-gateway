@@ -53,6 +53,34 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+/**
+ * Central orchestrator for all outbound gateway calls.
+ *
+ * <h3>Execution pipeline (per call)</h3>
+ * <ol>
+ *   <li>{@link #loadContext} — resolves {@link OutboundSystemContext} from the two-layer cache
+ *       (hot {@code contextCache} → cold {@code contextLoadCache} with {@code Mono.cache()}
+ *       thundering-herd protection).</li>
+ *   <li>Idempotency check — if {@code X-Idempotency-Key} is present, queries history within
+ *       the configured TTL window using the composite index
+ *       {@code (outbound_system_id, idempotency_key, created_date)}.</li>
+ *   <li>{@link #executeWithResilience} — runs auth, HTTP call, and the resilience pipeline.</li>
+ *   <li>{@link #applyMapping} — JSLT transform or pass-through.</li>
+ *   <li>{@link #saveHistory} — fire-and-forget; uses upsert when an idempotency key is present
+ *       so a successful retry always overwrites an earlier failure record.</li>
+ * </ol>
+ *
+ * <h3>Resilience operator order</h3>
+ * <p>{@code transformDeferred} builds the chain inside-out. The order below results in Retry
+ * being the outermost wrapper at execution time:
+ * <pre>  RateLimiter → Bulkhead → CircuitBreaker → Retry (outermost)</pre>
+ * Retry must be outermost so each retry re-evaluates CB and Bulkhead. Placing Retry inside
+ * CB would bypass the circuit breaker on retries — defeating its purpose.
+ *
+ * <h3>History save — fire-and-forget</h3>
+ * <p>{@link #saveHistory} failures are logged and swallowed. A history write failure must
+ * never surface as a gateway call failure to the caller.
+ */
 @Log4j2
 @Service
 @RequiredArgsConstructor
