@@ -49,7 +49,7 @@ public class OutboundController {
   @GetMapping(
       produces = MediaType.APPLICATION_JSON_VALUE
   )
-  public Mono<BaseResponse<List<OutboundSystemResponse>>> list() {
+  public Mono<BaseResponse<List<OutboundSystemDetailResponse>>> list() {
     return outboundService.list()
         .map(responseHelper::success);
   }

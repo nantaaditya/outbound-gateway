@@ -809,7 +809,7 @@ Create a new outbound system.
 
 #### `GET /api/outbound`
 
-List all registered outbound systems.
+List all registered outbound systems with full configuration (resilience, headers, auth, response mapper, and host config).
 
 **Response:**
 ```json
@@ -825,7 +825,60 @@ List all registered outbound systems.
       "baseUrl": "https://api.xendit.co",
       "apiPath": "/v2/charges",
       "active": true,
-      "idempotencyTtlHours": 24
+      "idempotencyTtlHours": 24,
+      "resilience": {
+        "readTimeOutMs": 10000,
+        "circuitBreakerEnabled": true,
+        "cbFailureRateThreshold": 50.0,
+        "cbSlowCallRateThreshold": 100.0,
+        "cbSlowCallDurationMs": 5000,
+        "cbPermittedInHalfOpen": 10,
+        "cbSlidingWindowSize": 50,
+        "cbWaitDurationOpenMs": 30000,
+        "bulkheadEnabled": false,
+        "bhMaxConcurrentCalls": 0,
+        "bhMaxWaitDurationMs": 0,
+        "rateLimiterEnabled": false,
+        "rlLimitForPeriod": 0,
+        "rlLimitRefreshPeriodMs": 0,
+        "rlTimeoutDurationMs": 0,
+        "retryEnabled": true,
+        "retryMaxAttempts": 3,
+        "retryWaitDurationMs": 500,
+        "retryOnStatusCodes": "500,502,503"
+      },
+      "headers": [
+        { "Content-Type": ["application/json"], "Accept": ["application/json"] }
+      ],
+      "auth": {
+        "authType": "API_KEY",
+        "autoRefresh": false,
+        "tokenMethod": null,
+        "tokenUrl": null,
+        "tokenPrefix": null,
+        "tokenInjectLocation": "HEADER",
+        "tokenKeyName": "Authorization",
+        "tokenResponsePath": null,
+        "tokenResponseExpiryPath": null
+      },
+      "responseMapper": {
+        "converterType": "JSLT",
+        "mappingScript": "{\"transactionId\": .id, \"amount\": .amount, \"status\": .status}",
+        "mappingStatus": { "404": 400, "422": 400 },
+        "active": true
+      },
+      "hostConfig": {
+        "id": 1,
+        "baseUrl": "https://api.xendit.co",
+        "connectTimeOutMs": 3000,
+        "maxConnections": 100,
+        "pendingAcquireMaxCount": 200,
+        "pendingAcquireTimeoutMs": 5000,
+        "disableSslVerification": false,
+        "useProxy": false,
+        "proxyHost": null,
+        "proxyPort": 0
+      }
     },
     {
       "id": 2,
@@ -836,11 +889,18 @@ List all registered outbound systems.
       "baseUrl": "https://api.midtrans.com",
       "apiPath": "/v2/charge",
       "active": true,
-      "idempotencyTtlHours": 12
+      "idempotencyTtlHours": 12,
+      "resilience": null,
+      "headers": [],
+      "auth": null,
+      "responseMapper": null,
+      "hostConfig": null
     }
   ]
 }
 ```
+
+> `hostConfig: null` means the system uses production-default connection pool settings and no host configuration has been explicitly registered. Use `POST /api/outbound/host` to configure it.
 
 ---
 
@@ -902,10 +962,24 @@ Get full detail including all sub-configurations. Sensitive fields (`apiKey`, `c
       "mappingScript": "{\"transactionId\": .id, \"amount\": .amount, \"status\": .status}",
       "mappingStatus": { "404": 400, "422": 400 },
       "active": true
+    },
+    "hostConfig": {
+      "id": 1,
+      "baseUrl": "https://api.xendit.co",
+      "connectTimeOutMs": 3000,
+      "maxConnections": 100,
+      "pendingAcquireMaxCount": 200,
+      "pendingAcquireTimeoutMs": 5000,
+      "disableSslVerification": false,
+      "useProxy": false,
+      "proxyHost": null,
+      "proxyPort": 0
     }
   }
 }
 ```
+
+> `hostConfig: null` means no host configuration has been explicitly registered — the system uses production-default connection pool settings.
 
 ---
 

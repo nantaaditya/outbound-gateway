@@ -16,7 +16,7 @@ public interface OutboundService {
 
   Mono<OutboundSystemResponse> create(CreateOutboundSystemRequest request);
 
-  Mono<List<OutboundSystemResponse>> list();
+  Mono<List<OutboundSystemDetailResponse>> list();
 
   Mono<OutboundSystemDetailResponse> getDetail(String code);
 

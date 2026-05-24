@@ -29,9 +29,11 @@ import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest.Circu
 import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest.RateLimiter;
 import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest.Retry;
 import com.nantaaditya.example.model.request.admin.UpsertResponseMapperRequest;
+import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.repository.EventLogRepository;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
+import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import java.time.Duration;
@@ -72,6 +74,8 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
   @Autowired
   private OutboundHistoryRepository historyRepository;
   @Autowired
+  private OutboundHostConfigurationRepository hostConfigRepository;
+  @Autowired
   private EventLogRepository eventLogRepository;
   @Autowired
   private ObjectMapper objectMapper;
@@ -81,6 +85,7 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
     resilienceRepository.deleteAll().block();
     authRepository.deleteAll().block();
     historyRepository.deleteAll().block();
+    hostConfigRepository.deleteAll().block();
     systemRepository.deleteAll().block();
     eventLogRepository.deleteAll().block();
   }
@@ -584,6 +589,68 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
     awaitEventLog(requestId);
   }
 
+  // --- 14. GET DETAIL with host config ---
+
+  @Test
+  @DisplayName("GET /api/outbound/{code} — returns hostConfig when configured")
+  void getDetail_withHostConfig_includesHostConfigDetail() throws Exception {
+    seedSystem("admin-detail-hostcfg");
+    seedHostConfig("http://localhost:9999");
+    String requestId = TsidHelper.generateStringId();
+
+    byte[] body = webTestClient.get()
+        .uri("/api/outbound/admin-detail-hostcfg")
+        .header(HeaderConstant.REQUEST_ID.getHeader(), requestId)
+        .header(HeaderConstant.CLIENT_ID.getHeader(), "test-client")
+        .header(HeaderConstant.REQUEST_TIME.getHeader(),
+            DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .returnResult()
+        .getResponseBody();
+
+    JsonNode root = objectMapper.readTree(body);
+    assertThat(root.path("response").path("code").asText()).isEqualTo("000");
+    assertThat(root.path("data").path("hostConfig").isNull()).isFalse();
+    assertThat(root.path("data").path("hostConfig").path("baseUrl").asText())
+        .isEqualTo("http://localhost:9999");
+    assertThat(root.path("data").path("hostConfig").path("maxConnections").asInt()).isEqualTo(50);
+
+    awaitEventLog(requestId);
+  }
+
+  // --- 15. LIST with host config ---
+
+  @Test
+  @DisplayName("GET /api/outbound — returns hostConfig in each item when configured")
+  void list_withHostConfig_includesHostConfigInItems() throws Exception {
+    seedSystem("admin-list-hostcfg");
+    seedHostConfig("http://localhost:9999");
+    String requestId = TsidHelper.generateStringId();
+
+    byte[] body = webTestClient.get()
+        .uri("/api/outbound")
+        .header(HeaderConstant.REQUEST_ID.getHeader(), requestId)
+        .header(HeaderConstant.CLIENT_ID.getHeader(), "test-client")
+        .header(HeaderConstant.REQUEST_TIME.getHeader(),
+            DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .returnResult()
+        .getResponseBody();
+
+    JsonNode root = objectMapper.readTree(body);
+    assertThat(root.path("response").path("code").asText()).isEqualTo("000");
+    assertThat(root.path("data").isArray()).isTrue();
+    JsonNode first = root.path("data").get(0);
+    assertThat(first.path("hostConfig").isNull()).isFalse();
+    assertThat(first.path("hostConfig").path("baseUrl").asText()).isEqualTo("http://localhost:9999");
+
+    awaitEventLog(requestId);
+  }
+
   // --- Helpers ---
 
   private OutboundSystem seedSystem(String code) {
@@ -599,6 +666,18 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
         .apiPath(apiPath)
         .active(true)
         .idempotencyTtlHours(24)
+        .build()).block();
+  }
+
+  private void seedHostConfig(String baseUrl) {
+    hostConfigRepository.save(OutboundHostConfiguration.builder()
+        .baseUrl(baseUrl)
+        .connectTimeOutMs(3000)
+        .maxConnections(50)
+        .pendingAcquireMaxCount(100)
+        .pendingAcquireTimeoutMs(3000)
+        .disableSslVerification(false)
+        .useProxy(false)
         .build()).block();
   }
 

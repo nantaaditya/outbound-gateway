@@ -72,10 +72,39 @@ public class OutboundServiceImpl implements OutboundService {
   }
 
   @Override
-  public Mono<List<OutboundSystemResponse>> list() {
+  public Mono<List<OutboundSystemDetailResponse>> list() {
     return systemRepository.findAll()
         .take(MAX_LIST_SIZE)
-        .map(OutboundSystemResponse::from)
+        .flatMap(system -> {
+          long systemId = system.getId();
+          Mono<Optional<OutboundResilienceConfiguration>> resilienceMono = resilienceRepository
+              .findByOutboundSystemId(systemId)
+              .map(Optional::of)
+              .defaultIfEmpty(Optional.empty());
+          Mono<List<Map<String, Object>>> headersMono = headerRepository.findByOutboundSystemId(systemId)
+              .map(h -> scrubSensitiveHeaders(h.getHeaders()))
+              .collectList();
+          Mono<Optional<OutboundAuthConfiguration>> authMono = authRepository
+              .findByOutboundSystemId(systemId)
+              .map(Optional::of)
+              .defaultIfEmpty(Optional.empty());
+          Mono<Optional<OutboundResponseMapperConfiguration>> mapperMono = mapperRepository
+              .findByOutboundSystemId(systemId)
+              .map(Optional::of)
+              .defaultIfEmpty(Optional.empty());
+          Mono<Optional<OutboundHostConfiguration>> hostMono = hostConfigRepository
+              .findByBaseUrl(system.getBaseUrl())
+              .map(Optional::of)
+              .defaultIfEmpty(Optional.empty());
+          return Mono.zip(resilienceMono, headersMono, authMono, mapperMono, hostMono)
+              .map(t -> OutboundSystemDetailResponse.from(
+                  system,
+                  t.getT1().orElse(null),
+                  t.getT2(),
+                  t.getT3().orElse(null),
+                  t.getT4().orElse(null),
+                  t.getT5().orElse(null)));
+        })
         .collectList();
   }
 
@@ -99,15 +128,19 @@ public class OutboundServiceImpl implements OutboundService {
               .findByOutboundSystemId(systemId)
               .map(Optional::of)
               .defaultIfEmpty(Optional.empty());
+          Mono<Optional<OutboundHostConfiguration>> hostMono = hostConfigRepository
+              .findByBaseUrl(system.getBaseUrl())
+              .map(Optional::of)
+              .defaultIfEmpty(Optional.empty());
 
-          return Mono.zip(resilienceMono, headersMono, authMono, mapperMono)
+          return Mono.zip(resilienceMono, headersMono, authMono, mapperMono, hostMono)
               .map(t -> OutboundSystemDetailResponse.from(
                   system,
                   t.getT1().orElse(null),
                   t.getT2(),
                   t.getT3().orElse(null),
-                  t.getT4().orElse(null))
-              );
+                  t.getT4().orElse(null),
+                  t.getT5().orElse(null)));
         });
   }
 
