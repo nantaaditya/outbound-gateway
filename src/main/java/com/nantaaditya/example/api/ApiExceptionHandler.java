@@ -8,7 +8,10 @@ import com.nantaaditya.example.helper.ResponseHelper;
 import com.nantaaditya.example.helper.TracerHelper;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.ResponseCode;
+import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.web.bind.support.WebExchangeBindException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.response.BaseResponse;
 import jakarta.validation.ConstraintViolation;
@@ -133,6 +136,45 @@ public class ApiExceptionHandler {
       Map<String, List<String>> errors = Map.of("code", List.of("NotFound"));
       BaseResponse<Object> response = responseHelper.failed(ResponseCode.BAD_REQUEST, errors);
       return Tuples.of(errors, response);
+    });
+  }
+
+  @ResponseBody
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  @ExceptionHandler(HostConfigNotFoundException.class)
+  public BaseResponse<Object> hostConfigNotFoundException(HostConfigNotFoundException ex) {
+    return toBaseErrorResponse(ex, error -> {
+      Map<String, List<String>> errors = Map.of("id", List.of("NotFound"));
+      BaseResponse<Object> response = responseHelper.failed(ResponseCode.BAD_REQUEST, errors);
+      return Tuples.of(errors, response);
+    });
+  }
+
+  @ResponseBody
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  @ExceptionHandler(DataIntegrityViolationException.class)
+  public BaseResponse<Object> dataIntegrityViolationException(DataIntegrityViolationException ex) {
+    return toBaseErrorResponse(ex, error -> {
+      Map<String, List<String>> errors = Map.of("baseUrl", List.of("AlreadyExists"));
+      BaseResponse<Object> response = responseHelper.failed(ResponseCode.BAD_REQUEST, errors);
+      return Tuples.of(errors, response);
+    });
+  }
+
+  @ResponseBody
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  @ExceptionHandler(WebExchangeBindException.class)
+  public BaseResponse<Object> webExchangeBindException(WebExchangeBindException ex) {
+    return toBaseErrorResponse(ex, error -> {
+      Map<String, List<String>> map = new HashMap<>();
+      error.getFieldErrors().forEach(fe ->
+          putEntry(map, fe.getField(),
+              fe.getDefaultMessage() != null ? fe.getDefaultMessage() : "NotValid"));
+      error.getGlobalErrors().forEach(ge ->
+          putEntry(map, ge.getObjectName(),
+              ge.getDefaultMessage() != null ? ge.getDefaultMessage() : "NotValid"));
+      BaseResponse<Object> response = responseHelper.failed(ResponseCode.INVALID_PARAMS, map);
+      return Tuples.of(map, response);
     });
   }
 

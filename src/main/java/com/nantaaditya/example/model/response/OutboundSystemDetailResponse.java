@@ -1,6 +1,8 @@
 package com.nantaaditya.example.model.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
+import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
@@ -10,6 +12,7 @@ import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import java.util.List;
 import java.util.Map;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record OutboundSystemDetailResponse(
     Long id,
     String code,
@@ -23,9 +26,11 @@ public record OutboundSystemDetailResponse(
     ResilienceDetail resilience,
     List<Map<String, Object>> headers,
     AuthDetail auth,
-    ResponseMapperDetail responseMapper
+    ResponseMapperDetail responseMapper,
+    HostConfigDetail hostConfig
 ) {
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record ResilienceDetail(
       int readTimeOutMs,
       float cbFailureRateThreshold,
@@ -73,6 +78,7 @@ public record OutboundSystemDetailResponse(
     }
   }
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record AuthDetail(
       AuthType authType,
       boolean autoRefresh,
@@ -102,6 +108,7 @@ public record OutboundSystemDetailResponse(
     }
   }
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record ResponseMapperDetail(
       ConverterType converterType,
       String mappingScript,
@@ -119,12 +126,53 @@ public record OutboundSystemDetailResponse(
     }
   }
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record HostConfigDetail(
+      Long id,
+      String baseUrl,
+      int connectTimeOutMs,
+      int maxConnections,
+      int pendingAcquireMaxCount,
+      int pendingAcquireTimeoutMs,
+      boolean disableSslVerification,
+      boolean useProxy,
+      String proxyHost,
+      int proxyPort
+  ) {
+    public static HostConfigDetail from(OutboundHostConfiguration cfg) {
+      if (cfg == null) return null;
+      return new HostConfigDetail(
+          cfg.getId(),
+          cfg.getBaseUrl(),
+          cfg.getConnectTimeOutMs(),
+          cfg.getMaxConnections(),
+          cfg.getPendingAcquireMaxCount(),
+          cfg.getPendingAcquireTimeoutMs(),
+          cfg.isDisableSslVerification(),
+          cfg.isUseProxy(),
+          cfg.getProxyHost(),
+          cfg.getProxyPort()
+      );
+    }
+  }
+
   public static OutboundSystemDetailResponse from(
       OutboundSystem system,
       OutboundResilienceConfiguration resilience,
       List<Map<String, Object>> headers,
       OutboundAuthConfiguration auth,
       OutboundResponseMapperConfiguration responseMapper
+  ) {
+    return from(system, resilience, headers, auth, responseMapper, null);
+  }
+
+  public static OutboundSystemDetailResponse from(
+      OutboundSystem system,
+      OutboundResilienceConfiguration resilience,
+      List<Map<String, Object>> headers,
+      OutboundAuthConfiguration auth,
+      OutboundResponseMapperConfiguration responseMapper,
+      OutboundHostConfiguration hostConfig
   ) {
     return new OutboundSystemDetailResponse(
         system.getId(),
@@ -139,7 +187,8 @@ public record OutboundSystemDetailResponse(
         ResilienceDetail.from(resilience),
         headers,
         AuthDetail.from(auth),
-        ResponseMapperDetail.from(responseMapper)
+        ResponseMapperDetail.from(responseMapper),
+        HostConfigDetail.from(hostConfig)
     );
   }
 }

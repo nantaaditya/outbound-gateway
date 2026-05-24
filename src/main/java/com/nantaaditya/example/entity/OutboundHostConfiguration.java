@@ -1,5 +1,7 @@
 package com.nantaaditya.example.entity;
 
+import com.nantaaditya.example.model.request.admin.CreateHostConfigRequest;
+import com.nantaaditya.example.model.request.admin.UpdateHostConfigRequest;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -45,6 +47,42 @@ public class OutboundHostConfiguration extends BaseEntity<Long> {
   private int proxyPort;
   private byte[] proxyUsername;
   private byte[] proxyPassword;
+
+  public static OutboundHostConfiguration create(
+      CreateHostConfigRequest request,
+      byte[] encryptedUsername,
+      byte[] encryptedPassword) {
+    return OutboundHostConfiguration.builder()
+        .baseUrl(request.baseUrl())
+        .connectTimeOutMs(request.connectTimeOutMs())
+        .maxConnections(request.maxConnections())
+        .pendingAcquireMaxCount(request.pendingAcquireMaxCount())
+        .pendingAcquireTimeoutMs(request.pendingAcquireTimeoutMs())
+        .disableSslVerification(request.disableSslVerification())
+        .useProxy(request.useProxy())
+        .proxyHost(request.proxyHost())
+        .proxyPort(request.proxyPort())
+        .proxyUsername(encryptedUsername)
+        .proxyPassword(encryptedPassword)
+        .build();
+  }
+
+  public OutboundHostConfiguration updated(
+      UpdateHostConfigRequest request,
+      byte[] encryptedUsername,
+      byte[] encryptedPassword) {
+    this.connectTimeOutMs = request.connectTimeOutMs();
+    this.maxConnections = request.maxConnections();
+    this.pendingAcquireMaxCount = request.pendingAcquireMaxCount();
+    this.pendingAcquireTimeoutMs = request.pendingAcquireTimeoutMs();
+    this.disableSslVerification = request.disableSslVerification();
+    this.useProxy = request.useProxy();
+    this.proxyHost = request.proxyHost();
+    this.proxyPort = request.proxyPort();
+    this.proxyUsername = encryptedUsername;
+    this.proxyPassword = encryptedPassword;
+    return this;
+  }
 
   public static OutboundHostConfiguration productionDefault(String baseUrl) {
     return OutboundHostConfiguration.builder()

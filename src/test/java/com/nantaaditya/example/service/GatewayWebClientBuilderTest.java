@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
+import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.service.impl.GatewayWebClientBuilder;
 import com.nantaaditya.example.service.impl.ResilienceRegistryService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -23,7 +24,8 @@ class GatewayWebClientBuilderTest {
     builder = new GatewayWebClientBuilder(
         WebClient.builder(),
         new ResilienceRegistryService(new SimpleMeterRegistry()),
-        Logbook.builder().build()
+        Logbook.builder().build(),
+        new EncryptionHelper("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
     );
   }
 

@@ -1210,6 +1210,209 @@ Real-time call statistics for the past hour. Percentiles computed with PostgreSQ
 
 ---
 
+### Host Configuration API
+
+Manage the TCP connection pool and proxy settings for each unique `baseUrl`. One host config row covers all outbound systems sharing the same `baseUrl`.
+
+> **Pool sizing invariants** (admin responsibility — not enforced in code):
+> - `maxConnections` ≥ sum of `bhMaxConcurrentCalls` across **all** outbound systems on this host. If the pool is smaller, the pool becomes the real concurrency limiter and bulkhead metrics become misleading.
+> - `pendingAcquireTimeoutMs` < minimum `readTimeOutMs` of all systems on this host. If not, a pool-full condition surfaces as a read timeout (504) instead of a 503, making incident diagnosis harder.
+
+---
+
+#### `POST /api/outbound/host`
+
+Create a new host configuration. `baseUrl` must be unique.
+
+**Request body:**
+```json
+{
+  "baseUrl": "https://api.xendit.co",
+  "connectTimeOutMs": 5000,
+  "maxConnections": 200,
+  "pendingAcquireMaxCount": 500,
+  "pendingAcquireTimeoutMs": 5000,
+  "disableSslVerification": false,
+  "useProxy": false
+}
+```
+
+With proxy (`proxyHost` and `proxyPort` are required when `useProxy: true`):
+```json
+{
+  "baseUrl": "https://api.internal.example.com",
+  "connectTimeOutMs": 3000,
+  "maxConnections": 50,
+  "pendingAcquireMaxCount": 100,
+  "pendingAcquireTimeoutMs": 3000,
+  "disableSslVerification": false,
+  "useProxy": true,
+  "proxyHost": "proxy.corp.example.com",
+  "proxyPort": 8080,
+  "proxyUsername": "proxyuser",
+  "proxyPassword": "proxypassword"
+}
+```
+
+**Response:**
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": {
+    "id": 1,
+    "baseUrl": "https://api.xendit.co",
+    "connectTimeOutMs": 5000,
+    "maxConnections": 200,
+    "pendingAcquireMaxCount": 500,
+    "pendingAcquireTimeoutMs": 5000,
+    "disableSslVerification": false,
+    "useProxy": false,
+    "proxyHost": null,
+    "proxyPort": 0
+  }
+}
+```
+
+> Proxy credentials (`proxyUsername`, `proxyPassword`) are encrypted at rest and never returned in responses.
+
+**Errors:**
+```json
+{ "response": { "code": "400", "description": "bad request" }, "data": { "baseUrl": ["AlreadyExists"] } }
+{ "response": { "code": "400", "description": "bad request" }, "data": { "proxyConfigValid": ["proxyHost and proxyPort are required when useProxy is true"] } }
+```
+
+---
+
+#### `GET /api/outbound/host`
+
+List all host configurations.
+
+**Response:**
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": [
+    {
+      "id": 1,
+      "baseUrl": "https://api.xendit.co",
+      "connectTimeOutMs": 5000,
+      "maxConnections": 200,
+      "pendingAcquireMaxCount": 500,
+      "pendingAcquireTimeoutMs": 5000,
+      "disableSslVerification": false,
+      "useProxy": false,
+      "proxyHost": null,
+      "proxyPort": 0
+    },
+    {
+      "id": 2,
+      "baseUrl": "https://api.midtrans.com",
+      "connectTimeOutMs": 5000,
+      "maxConnections": 100,
+      "pendingAcquireMaxCount": 200,
+      "pendingAcquireTimeoutMs": 5000,
+      "disableSslVerification": false,
+      "useProxy": false,
+      "proxyHost": null,
+      "proxyPort": 0
+    }
+  ]
+}
+```
+
+---
+
+#### `GET /api/outbound/host/{id}`
+
+Get a single host configuration by its database ID.
+
+**Response:**
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": {
+    "id": 1,
+    "baseUrl": "https://api.xendit.co",
+    "connectTimeOutMs": 5000,
+    "maxConnections": 200,
+    "pendingAcquireMaxCount": 500,
+    "pendingAcquireTimeoutMs": 5000,
+    "disableSslVerification": false,
+    "useProxy": false,
+    "proxyHost": null,
+    "proxyPort": 0
+  }
+}
+```
+
+**Error (unknown id):**
+```json
+{ "response": { "code": "400", "description": "bad request" }, "data": { "id": ["NotFound"] } }
+```
+
+---
+
+#### `PUT /api/outbound/host/{id}`
+
+Update host configuration. Automatically evicts the existing WebClient pool for this `baseUrl` so the new settings take effect on the next request.
+
+**Request body:**
+```json
+{
+  "connectTimeOutMs": 5000,
+  "maxConnections": 300,
+  "pendingAcquireMaxCount": 600,
+  "pendingAcquireTimeoutMs": 5000,
+  "disableSslVerification": false,
+  "useProxy": false
+}
+```
+
+**Response:**
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": {
+    "id": 1,
+    "baseUrl": "https://api.xendit.co",
+    "connectTimeOutMs": 5000,
+    "maxConnections": 300,
+    "pendingAcquireMaxCount": 600,
+    "pendingAcquireTimeoutMs": 5000,
+    "disableSslVerification": false,
+    "useProxy": false,
+    "proxyHost": null,
+    "proxyPort": 0
+  }
+}
+```
+
+**Error (unknown id):**
+```json
+{ "response": { "code": "400", "description": "bad request" }, "data": { "id": ["NotFound"] } }
+```
+
+---
+
+#### `POST /api/outbound/host/{id}/reload`
+
+Evict the WebClient connection pool for this host's `baseUrl` without changing any configuration. The pool is rebuilt with the current settings on the next request. Use when you need to force connection recycling (e.g., after a certificate rotation or network change).
+
+**Response:**
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": true
+}
+```
+
+**Error (unknown id):**
+```json
+{ "response": { "code": "400", "description": "bad request" }, "data": { "id": ["NotFound"] } }
+```
+
+---
+
 ## 10. Metrics
 
 ### Actuator Endpoints

@@ -2,6 +2,7 @@ package com.nantaaditya.example.helper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.observation.DefaultMeterObservationHandler;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -23,7 +24,7 @@ class OutboundMetricsRecorderTest {
     ObservationRegistry observationRegistry = ObservationRegistry.create();
     observationRegistry.observationConfig()
         .observationHandler(new DefaultMeterObservationHandler(meterRegistry));
-    recorder = new OutboundMetricsRecorder(observationRegistry);
+    recorder = new OutboundMetricsRecorder(observationRegistry, meterRegistry);
   }
 
   @Test
@@ -93,16 +94,16 @@ class OutboundMetricsRecorderTest {
   }
 
   @Test
-  @DisplayName("recordIdempotencyHit registers api.public.idempotency timer with feature tag")
+  @DisplayName("recordIdempotencyHit registers api.public.idempotency counter with feature tag")
   void recordIdempotencyHit_incrementsCounter() {
     recorder.recordIdempotencyHit("xendit");
 
-    Timer timer = meterRegistry.find("api.public.idempotency")
+    Counter counter = meterRegistry.find("api.public.idempotency")
         .tags("feature", "xendit")
-        .timer();
+        .counter();
 
-    assertThat(timer).isNotNull();
-    assertThat(timer.count()).isEqualTo(1L);
+    assertThat(counter).isNotNull();
+    assertThat(counter.count()).isEqualTo(1.0);
   }
 
   @Test
@@ -111,12 +112,12 @@ class OutboundMetricsRecorderTest {
     recorder.recordIdempotencyHit("xendit");
     recorder.recordIdempotencyHit("xendit");
 
-    Timer timer = meterRegistry.find("api.public.idempotency")
+    Counter counter = meterRegistry.find("api.public.idempotency")
         .tags("feature", "xendit")
-        .timer();
+        .counter();
 
-    assertThat(timer).isNotNull();
-    assertThat(timer.count()).isEqualTo(2L);
+    assertThat(counter).isNotNull();
+    assertThat(counter.count()).isEqualTo(2.0);
   }
 
   @Test
