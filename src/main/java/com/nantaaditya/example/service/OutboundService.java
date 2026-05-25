@@ -8,15 +8,15 @@ import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest;
 import com.nantaaditya.example.model.request.admin.UpsertResponseMapperRequest;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse;
 import com.nantaaditya.example.model.response.OutboundSystemResponse;
+import com.nantaaditya.example.model.response.PageResponse;
 import com.nantaaditya.example.model.response.TestConnectionResponse;
-import java.util.List;
 import reactor.core.publisher.Mono;
 
 public interface OutboundService {
 
   Mono<OutboundSystemResponse> create(CreateOutboundSystemRequest request);
 
-  Mono<List<OutboundSystemDetailResponse>> list();
+  Mono<PageResponse<OutboundSystemDetailResponse>> list(int page, int size);
 
   Mono<OutboundSystemDetailResponse> getDetail(String code);
 

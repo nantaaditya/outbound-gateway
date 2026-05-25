@@ -7,16 +7,24 @@ import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
+import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.service.strategy.auth.ApiKeyAuthStrategy;
 import com.nantaaditya.example.service.strategy.auth.BasicAuthStrategy;
 import com.nantaaditya.example.service.strategy.auth.BearerStaticAuthStrategy;
 import com.nantaaditya.example.service.strategy.auth.HmacSha256AuthStrategy;
 import com.nantaaditya.example.service.strategy.auth.NoneAuthStrategy;
+import com.nantaaditya.example.service.strategy.auth.OAuthClientCredentialsAuthStrategy;
 import java.util.Base64;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 class AuthStrategyTest {
@@ -172,6 +180,41 @@ class AuthStrategyTest {
             assertThat(cred.location()).isEqualTo(TokenInjectLocation.HEADER);
           })
           .verifyComplete();
+    }
+  }
+
+  @Nested
+  class OAuthEvictTokenStateTest {
+
+    private OAuthClientCredentialsAuthStrategy strategy;
+
+    @BeforeEach
+    void setUp() {
+      WebClient.Builder builder = Mockito.mock(WebClient.Builder.class);
+      OutboundAuthConfigurationRepository repo =
+          Mockito.mock(OutboundAuthConfigurationRepository.class);
+      strategy = new OAuthClientCredentialsAuthStrategy(builder, repo);
+      // init() (PostConstruct) is package-private and not required for eviction tests
+    }
+
+    @Test
+    @DisplayName("evictTokenState removes entry from both tokenStates and tokenFetchCache")
+    @SuppressWarnings("unchecked")
+    void evictTokenState_seededEntry_removesFromBothCaches() {
+      ConcurrentHashMap<Long, AtomicReference<Object>> tokenStates =
+          (ConcurrentHashMap<Long, AtomicReference<Object>>)
+              ReflectionTestUtils.getField(strategy, "tokenStates");
+      ConcurrentHashMap<Long, Mono<String>> tokenFetchCache =
+          (ConcurrentHashMap<Long, Mono<String>>)
+              ReflectionTestUtils.getField(strategy, "tokenFetchCache");
+
+      tokenStates.put(42L, new AtomicReference<>());
+      tokenFetchCache.put(42L, Mono.just("stale-token").cache());
+
+      strategy.evictTokenState(42L);
+
+      assertThat(tokenStates).doesNotContainKey(42L);
+      assertThat(tokenFetchCache).doesNotContainKey(42L);
     }
   }
 }

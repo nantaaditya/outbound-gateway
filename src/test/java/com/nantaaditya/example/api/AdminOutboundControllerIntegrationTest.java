@@ -132,7 +132,7 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
   // --- 2. LIST ---
 
   @Test
-  @DisplayName("GET /api/outbound — lists systems and event_log")
+  @DisplayName("GET /api/outbound — lists systems as paginated response and event_log")
   void list_existingSystem_returnsListAndEventLog() throws Exception {
     seedSystem("admin-list-test");
     String requestId = TsidHelper.generateStringId();
@@ -149,16 +149,50 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
         .returnResult()
         .getResponseBody();
 
-    // Assertion 1: non-empty list
+    // Assertion 1: paginated response shape
     JsonNode root = objectMapper.readTree(body);
     assertThat(root.path("response").path("code").asText()).isEqualTo("000");
-    assertThat(root.path("data").isArray()).isTrue();
-    assertThat(root.path("data").size()).isGreaterThanOrEqualTo(1);
+    assertThat(root.path("data").path("content").isArray()).isTrue();
+    assertThat(root.path("data").path("content").size()).isGreaterThanOrEqualTo(1);
+    assertThat(root.path("data").path("totalElements").asLong()).isGreaterThanOrEqualTo(1L);
 
     // Assertion 2: DB has system
     assertThat(systemRepository.findByCode("admin-list-test").block()).isNotNull();
 
     // Assertion 3: event_log
+    awaitEventLog(requestId);
+  }
+
+  @Test
+  @DisplayName("GET /api/outbound?page=0&size=2 — returns paginated page response")
+  void list_withPagination_returnsPageResponseShape() throws Exception {
+    seedSystem("admin-page-test-1");
+    seedSystem("admin-page-test-2");
+    seedSystem("admin-page-test-3");
+    String requestId = TsidHelper.generateStringId();
+
+    byte[] body = webTestClient.get()
+        .uri("/api/outbound?page=0&size=2")
+        .header(HeaderConstant.REQUEST_ID.getHeader(), requestId)
+        .header(HeaderConstant.CLIENT_ID.getHeader(), "test-client")
+        .header(HeaderConstant.REQUEST_TIME.getHeader(),
+            DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .returnResult()
+        .getResponseBody();
+
+    JsonNode root = objectMapper.readTree(body);
+    assertThat(root.path("response").path("code").asText()).isEqualTo("000");
+    JsonNode data = root.path("data");
+    assertThat(data.path("content").isArray()).isTrue();
+    assertThat(data.path("content").size()).isEqualTo(2);
+    assertThat(data.path("totalElements").asLong()).isGreaterThanOrEqualTo(3L);
+    assertThat(data.path("totalPages").asInt()).isGreaterThanOrEqualTo(2);
+    assertThat(data.path("page").asInt()).isEqualTo(0);
+    assertThat(data.path("size").asInt()).isEqualTo(2);
+
     awaitEventLog(requestId);
   }
 
@@ -643,10 +677,40 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
 
     JsonNode root = objectMapper.readTree(body);
     assertThat(root.path("response").path("code").asText()).isEqualTo("000");
-    assertThat(root.path("data").isArray()).isTrue();
-    JsonNode first = root.path("data").get(0);
+    assertThat(root.path("data").path("content").isArray()).isTrue();
+    JsonNode first = root.path("data").path("content").get(0);
     assertThat(first.path("hostConfig").isNull()).isFalse();
     assertThat(first.path("hostConfig").path("baseUrl").asText()).isEqualTo("http://localhost:9999");
+
+    awaitEventLog(requestId);
+  }
+
+  // --- 16. testConnection with unreachable host ---
+
+  @Test
+  @DisplayName("POST /api/outbound/{code}/test — returns generic 'Connection failed' on unreachable host")
+  void testConnection_unreachable_returnsGenericErrorMessage() throws Exception {
+    seedSystem("admin-test-conn-fail", "http://127.0.0.1:1", "/unreachable", "GET");
+    String requestId = TsidHelper.generateStringId();
+
+    byte[] body = webTestClient.post()
+        .uri("/api/outbound/admin-test-conn-fail/test")
+        .header(HeaderConstant.REQUEST_ID.getHeader(), requestId)
+        .header(HeaderConstant.CLIENT_ID.getHeader(), "test-client")
+        .header(HeaderConstant.REQUEST_TIME.getHeader(),
+            DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
+        .exchange()
+        .expectStatus().isOk()
+        .expectBody()
+        .returnResult()
+        .getResponseBody();
+
+    JsonNode root = objectMapper.readTree(body);
+    assertThat(root.path("response").path("code").asText()).isEqualTo("000");
+    String message = root.path("data").path("message").asText();
+    assertThat(message).isEqualTo("Connection failed");
+    assertThat(message).doesNotContain("Exception");
+    assertThat(message).doesNotContain(":");
 
     awaitEventLog(requestId);
   }

@@ -12,3 +12,5 @@ CREATE TABLE IF NOT EXISTS outbound_response_mapper_configuration
     mapping_status              JSONB, -- {"404":400}
     is_active                   BOOLEAN
 );
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_outboundresponse_systemid on outbound_response_mapper_configuration(outbound_system_id);

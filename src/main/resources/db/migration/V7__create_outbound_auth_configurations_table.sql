@@ -23,3 +23,5 @@ CREATE TABLE IF NOT EXISTS outbound_auth_configurations
     current_token               TEXT,
     token_expiry_time           TIMESTAMP
 );
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_outboundauth_systemid on outbound_auth_configurations(outbound_system_id);

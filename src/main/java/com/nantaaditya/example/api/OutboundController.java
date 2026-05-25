@@ -11,11 +11,11 @@ import com.nantaaditya.example.model.response.BaseResponse;
 import com.nantaaditya.example.model.response.OutboundMetricsResponse;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse;
 import com.nantaaditya.example.model.response.OutboundSystemResponse;
+import com.nantaaditya.example.model.response.PageResponse;
 import com.nantaaditya.example.model.response.TestConnectionResponse;
 import com.nantaaditya.example.service.OutboundMetricsService;
 import com.nantaaditya.example.service.OutboundService;
 import jakarta.validation.Valid;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
@@ -49,8 +50,10 @@ public class OutboundController {
   @GetMapping(
       produces = MediaType.APPLICATION_JSON_VALUE
   )
-  public Mono<BaseResponse<List<OutboundSystemDetailResponse>>> list() {
-    return outboundService.list()
+  public Mono<BaseResponse<PageResponse<OutboundSystemDetailResponse>>> list(
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size) {
+    return outboundService.list(page, size)
         .map(responseHelper::success);
   }
 

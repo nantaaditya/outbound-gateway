@@ -92,6 +92,12 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
         .map(token -> buildCredential(config, token));
   }
 
+  @Override
+  public void evictTokenState(Long configId) {
+    tokenStates.remove(configId);
+    tokenFetchCache.remove(configId);
+  }
+
   private Mono<String> resolveToken(OutboundAuthConfiguration config, EncryptionHelper encryption) {
     AtomicReference<TokenState> stateRef = tokenStates.computeIfAbsent(
         config.getId(),

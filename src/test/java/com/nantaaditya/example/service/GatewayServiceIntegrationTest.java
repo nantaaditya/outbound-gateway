@@ -178,4 +178,30 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
         .authType(AuthType.NONE)
         .build()).block();
   }
+
+  @Test
+  @DisplayName("execute succeeds as NONE auth when no auth config row exists")
+  void execute_systemWithoutAuthConfig_succeedsAsNone() {
+    wireMock.stubFor(post(urlEqualTo("/v1/ping"))
+        .willReturn(aResponse()
+            .withStatus(200)
+            .withHeader("Content-Type", "application/json")
+            .withBody("{\"pong\":true}")));
+
+    String baseUrl = "http://localhost:" + wireMock.port();
+    OutboundSystem system = saveSystem("no-auth-gw", baseUrl, "/v1/ping");
+    saveHostConfig(baseUrl);
+    saveResilience(system.getId());
+    // intentionally no saveAuth call
+
+    GatewayRequest request = new GatewayRequest(java.util.Map.of(), java.util.Map.of());
+
+    StepVerifier.create(
+        gatewayService.execute("no-auth-gw", "caller-svc", null, request))
+        .assertNext(response -> {
+          assertThat(response.status()).isEqualTo(200);
+          assertThat(response.fromCache()).isFalse();
+        })
+        .verifyComplete();
+  }
 }

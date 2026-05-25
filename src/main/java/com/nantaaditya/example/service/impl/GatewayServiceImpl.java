@@ -1,10 +1,12 @@
 package com.nantaaditya.example.service.impl;
 
+import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
+import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.helper.JsltResponseMapper;
@@ -171,7 +173,12 @@ public class GatewayServiceImpl implements GatewayService {
                   resilienceRepository.findByOutboundSystemId(systemId)
                       .defaultIfEmpty(OutboundResilienceConfiguration.bypass()),
                   headerRepository.findByOutboundSystemId(systemId).collectList(),
-                  authRepository.findByOutboundSystemId(systemId),
+                  // No auth row → treat as NONE so execution proceeds without auth headers
+                  authRepository.findByOutboundSystemId(systemId)
+                      .defaultIfEmpty(OutboundAuthConfiguration.builder()
+                          .outboundSystemId(systemId)
+                          .authType(AuthType.NONE)
+                          .build()),
                   mapperRepository.findByOutboundSystemIdAndActiveTrue(systemId)
                       .defaultIfEmpty(passthroughMapper()),
                   hostConfigRepository.findByBaseUrl(system.getBaseUrl())

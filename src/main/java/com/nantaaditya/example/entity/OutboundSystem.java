@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import java.util.Locale;
 import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
 import org.springframework.http.HttpMethod;
@@ -32,7 +33,7 @@ public class OutboundSystem extends BaseEntity<Long> {
         .code(request.code())
         .name(request.name())
         .description(request.description())
-        .httpMethod(request.httpMethod())
+        .httpMethod(request.httpMethod().toUpperCase(Locale.US))
         .baseUrl(request.baseUrl())
         .apiPath(request.apiPath())
         .active(request.active())
@@ -49,7 +50,7 @@ public class OutboundSystem extends BaseEntity<Long> {
         .code(this.code)
         .name(request.name())
         .description(request.description())
-        .httpMethod(request.httpMethod())
+        .httpMethod(request.httpMethod().toUpperCase(Locale.US))
         .baseUrl(request.baseUrl())
         .apiPath(request.apiPath())
         .active(request.active())
@@ -62,6 +63,6 @@ public class OutboundSystem extends BaseEntity<Long> {
   }
 
   public HttpMethod getHttpMethodEnum() {
-    return HttpMethod.valueOf(httpMethod);
+    return HttpMethod.valueOf(httpMethod.toUpperCase(Locale.US));
   }
 }
