@@ -71,17 +71,22 @@ public class OutboundHostConfiguration extends BaseEntity<Long> {
       UpdateHostConfigRequest request,
       byte[] encryptedUsername,
       byte[] encryptedPassword) {
-    this.connectTimeOutMs = request.connectTimeOutMs();
-    this.maxConnections = request.maxConnections();
-    this.pendingAcquireMaxCount = request.pendingAcquireMaxCount();
-    this.pendingAcquireTimeoutMs = request.pendingAcquireTimeoutMs();
-    this.disableSslVerification = request.disableSslVerification();
-    this.useProxy = request.useProxy();
-    this.proxyHost = request.proxyHost();
-    this.proxyPort = request.proxyPort();
-    this.proxyUsername = encryptedUsername;
-    this.proxyPassword = encryptedPassword;
-    return this;
+    return OutboundHostConfiguration.builder()
+        .id(this.getId())
+        .createdBy(this.getCreatedBy())
+        .createdDate(this.getCreatedDate())
+        .baseUrl(this.baseUrl)
+        .connectTimeOutMs(request.connectTimeOutMs())
+        .maxConnections(request.maxConnections())
+        .pendingAcquireMaxCount(request.pendingAcquireMaxCount())
+        .pendingAcquireTimeoutMs(request.pendingAcquireTimeoutMs())
+        .disableSslVerification(request.disableSslVerification())
+        .useProxy(request.useProxy())
+        .proxyHost(request.proxyHost())
+        .proxyPort(request.proxyPort())
+        .proxyUsername(encryptedUsername)
+        .proxyPassword(encryptedPassword)
+        .build();
   }
 
   public static OutboundHostConfiguration productionDefault(String baseUrl) {

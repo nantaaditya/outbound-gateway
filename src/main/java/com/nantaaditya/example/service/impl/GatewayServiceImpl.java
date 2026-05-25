@@ -124,6 +124,7 @@ public class GatewayServiceImpl implements GatewayService {
 
   public void evictContext(String code) {
     Optional.ofNullable(contextCache.get(code))
+        .filter(ctx -> ctx.getHostConfig() != null)
         .ifPresent(ctx -> contextBuilder.evictWebClient(ctx.getHostConfig().getBaseUrl()));
     contextCache.remove(code);
     contextLoadCache.remove(code);

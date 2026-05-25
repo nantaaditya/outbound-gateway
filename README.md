@@ -1641,6 +1641,8 @@ Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply mi
 | Header injection | `AppFilter` reflects only three whitelisted headers (`X-Request-Id`, `X-Client-Id`, `X-Request-Time`) |
 | Connection pool race | `GatewayWebClientBuilder` uses `ConcurrentHashMap.computeIfAbsent` — pool factory called exactly once |
 | Reactor context immutability | `context.put()` return values are chained — contextual keys are never silently lost |
+| `evictContext` silent NPE on missing `hostConfig` | `GatewayServiceImpl.evictContext` now guards `ctx.getHostConfig() != null` before calling `evictWebClient`. A null host config previously caused a silent `NullPointerException` inside `doOnSuccess`, leaving the context cache stale — hot-reload appeared to succeed but the old context remained active. |
+| `OutboundHostConfiguration.updated()` in-place mutation | `updated()` now returns a builder-constructed copy. Mutating `this` meant concurrent readers of a cached `OutboundSystemContext` holding the same entity reference could observe partially-updated field values mid-save. |
 
 ---
 
