@@ -809,94 +809,107 @@ Create a new outbound system.
 
 #### `GET /api/outbound`
 
-List all registered outbound systems with full configuration (resilience, headers, auth, response mapper, and host config).
+List outbound systems with full configuration (resilience, headers, auth, response mapper, and host config). Returns a paginated response.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `page` | int | `0` | Zero-based page index |
+| `size` | int | `20` | Page size |
 
 **Response:**
 ```json
 {
   "response": { "code": "000", "description": "success" },
-  "data": [
-    {
-      "id": 1,
-      "code": "xendit-charge",
-      "name": "Xendit Charge",
-      "description": "Create payment charge via Xendit",
-      "httpMethod": "POST",
-      "baseUrl": "https://api.xendit.co",
-      "apiPath": "/v2/charges",
-      "active": true,
-      "idempotencyTtlHours": 24,
-      "resilience": {
-        "readTimeOutMs": 10000,
-        "circuitBreakerEnabled": true,
-        "cbFailureRateThreshold": 50.0,
-        "cbSlowCallRateThreshold": 100.0,
-        "cbSlowCallDurationMs": 5000,
-        "cbPermittedInHalfOpen": 10,
-        "cbSlidingWindowSize": 50,
-        "cbWaitDurationOpenMs": 30000,
-        "bulkheadEnabled": false,
-        "bhMaxConcurrentCalls": 0,
-        "bhMaxWaitDurationMs": 0,
-        "rateLimiterEnabled": false,
-        "rlLimitForPeriod": 0,
-        "rlLimitRefreshPeriodMs": 0,
-        "rlTimeoutDurationMs": 0,
-        "retryEnabled": true,
-        "retryMaxAttempts": 3,
-        "retryWaitDurationMs": 500,
-        "retryOnStatusCodes": "500,502,503"
-      },
-      "headers": [
-        { "Content-Type": ["application/json"], "Accept": ["application/json"] }
-      ],
-      "auth": {
-        "authType": "API_KEY",
-        "autoRefresh": false,
-        "tokenMethod": null,
-        "tokenUrl": null,
-        "tokenPrefix": null,
-        "tokenInjectLocation": "HEADER",
-        "tokenKeyName": "Authorization",
-        "tokenResponsePath": null,
-        "tokenResponseExpiryPath": null
-      },
-      "responseMapper": {
-        "converterType": "JSLT",
-        "mappingScript": "{\"transactionId\": .id, \"amount\": .amount, \"status\": .status}",
-        "mappingStatus": { "404": 400, "422": 400 },
-        "active": true
-      },
-      "hostConfig": {
+  "data": {
+    "content": [
+      {
         "id": 1,
+        "code": "xendit-charge",
+        "name": "Xendit Charge",
+        "description": "Create payment charge via Xendit",
+        "httpMethod": "POST",
         "baseUrl": "https://api.xendit.co",
-        "connectTimeOutMs": 3000,
-        "maxConnections": 100,
-        "pendingAcquireMaxCount": 200,
-        "pendingAcquireTimeoutMs": 5000,
-        "disableSslVerification": false,
-        "useProxy": false,
-        "proxyHost": null,
-        "proxyPort": 0
+        "apiPath": "/v2/charges",
+        "active": true,
+        "idempotencyTtlHours": 24,
+        "resilience": {
+          "readTimeOutMs": 10000,
+          "circuitBreakerEnabled": true,
+          "cbFailureRateThreshold": 50.0,
+          "cbSlowCallRateThreshold": 100.0,
+          "cbSlowCallDurationMs": 5000,
+          "cbPermittedInHalfOpen": 10,
+          "cbSlidingWindowSize": 50,
+          "cbWaitDurationOpenMs": 30000,
+          "bulkheadEnabled": false,
+          "bhMaxConcurrentCalls": 0,
+          "bhMaxWaitDurationMs": 0,
+          "rateLimiterEnabled": false,
+          "rlLimitForPeriod": 0,
+          "rlLimitRefreshPeriodMs": 0,
+          "rlTimeoutDurationMs": 0,
+          "retryEnabled": true,
+          "retryMaxAttempts": 3,
+          "retryWaitDurationMs": 500,
+          "retryOnStatusCodes": "500,502,503"
+        },
+        "headers": [
+          { "Content-Type": ["application/json"], "Accept": ["application/json"] }
+        ],
+        "auth": {
+          "authType": "API_KEY",
+          "autoRefresh": false,
+          "tokenMethod": null,
+          "tokenUrl": null,
+          "tokenPrefix": null,
+          "tokenInjectLocation": "HEADER",
+          "tokenKeyName": "Authorization",
+          "tokenResponsePath": null,
+          "tokenResponseExpiryPath": null
+        },
+        "responseMapper": {
+          "converterType": "JSLT",
+          "mappingScript": "{\"transactionId\": .id, \"amount\": .amount, \"status\": .status}",
+          "mappingStatus": { "404": 400, "422": 400 },
+          "active": true
+        },
+        "hostConfig": {
+          "id": 1,
+          "baseUrl": "https://api.xendit.co",
+          "connectTimeOutMs": 3000,
+          "maxConnections": 100,
+          "pendingAcquireMaxCount": 200,
+          "pendingAcquireTimeoutMs": 5000,
+          "disableSslVerification": false,
+          "useProxy": false,
+          "proxyHost": null,
+          "proxyPort": 0
+        }
+      },
+      {
+        "id": 2,
+        "code": "midtrans-charge",
+        "name": "Midtrans Charge",
+        "description": "Create payment charge via Midtrans",
+        "httpMethod": "POST",
+        "baseUrl": "https://api.midtrans.com",
+        "apiPath": "/v2/charge",
+        "active": true,
+        "idempotencyTtlHours": 12,
+        "resilience": null,
+        "headers": [],
+        "auth": null,
+        "responseMapper": null,
+        "hostConfig": null
       }
-    },
-    {
-      "id": 2,
-      "code": "midtrans-charge",
-      "name": "Midtrans Charge",
-      "description": "Create payment charge via Midtrans",
-      "httpMethod": "POST",
-      "baseUrl": "https://api.midtrans.com",
-      "apiPath": "/v2/charge",
-      "active": true,
-      "idempotencyTtlHours": 12,
-      "resilience": null,
-      "headers": [],
-      "auth": null,
-      "responseMapper": null,
-      "hostConfig": null
-    }
-  ]
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 2,
+    "totalPages": 1
+  }
 }
 ```
 
@@ -1611,7 +1624,7 @@ OAuth tokens are written back to `outbound_auth_configurations.current_token` af
 
 ### Flyway Migrations
 
-Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V19) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
+Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V20) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
 
 | Version | Description |
 |---|---|
@@ -1624,6 +1637,7 @@ Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply mi
 | V15–V17 | HMAC/RSA support columns |
 | V18 | Four boolean enable flags on resilience config (default `false`) |
 | V19 | Rename enable flag columns — remove `is_` prefix to match R2DBC field names |
+| V20 | `v_outbound_system_detail` JOIN view — eliminates N+1 for `list()` and `getDetail()` |
 
 ### SSL Verification Disabled
 
@@ -1643,6 +1657,10 @@ Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply mi
 | Reactor context immutability | `context.put()` return values are chained — contextual keys are never silently lost |
 | `evictContext` silent NPE on missing `hostConfig` | `GatewayServiceImpl.evictContext` now guards `ctx.getHostConfig() != null` before calling `evictWebClient`. A null host config previously caused a silent `NullPointerException` inside `doOnSuccess`, leaving the context cache stale — hot-reload appeared to succeed but the old context remained active. |
 | `OutboundHostConfiguration.updated()` in-place mutation | `updated()` now returns a builder-constructed copy. Mutating `this` meant concurrent readers of a cached `OutboundSystemContext` holding the same entity reference could observe partially-updated field values mid-save. |
+| `testConnection` leaks internal exception class name | `onErrorResume` in `OutboundServiceImpl.testConnection` previously returned `"Connection failed: " + e.getClass().getSimpleName()`. Now returns the static string `"Connection failed"` — no internal class names exposed to callers. |
+| `HttpMethod.valueOf` throws on lowercase input | `OutboundSystem.getHttpMethodEnum()` now calls `httpMethod.toUpperCase(Locale.US)` before `valueOf`. `create()` and `updated()` also normalize to uppercase on write so the DB always stores canonical values. |
+| OAuth stale token survives auth config update | `AuthStrategy` now declares `evictTokenState(Long configId)` with a no-op default. `OAuthClientCredentialsAuthStrategy` overrides it to purge both `tokenStates` and `tokenFetchCache`. `OutboundServiceImpl.upsertAuth` calls `evictTokenState` before `evictContext` — the next request fetches a fresh token with the new credentials. |
+| `loadContext` fails as 404 when no auth config row exists | `GatewayServiceImpl.loadFromDb` previously passed the raw `authRepository.findByOutboundSystemId` result to `Mono.zip`. A missing auth row emits empty, which makes the zip emit empty, which hits `switchIfEmpty(OutboundSystemNotFoundException)`. Now uses `.defaultIfEmpty(NONE-auth stub)` so execution proceeds without auth headers for systems with no auth config. |
 
 ---
 

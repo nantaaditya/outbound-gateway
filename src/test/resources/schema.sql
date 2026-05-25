@@ -164,3 +164,68 @@ create table if not exists outbound_histories (
 create index if not exists idx_histories_system_date     on outbound_histories (outbound_system_id, created_date);
 create index if not exists idx_histories_idempotency     on outbound_histories (outbound_system_id, idempotency_key, created_date);
 create index if not exists idx_histories_response_status on outbound_histories (outbound_system_id, response_status);
+
+create view if not exists v_outbound_system_detail as
+select
+    s.id,
+    s.code,
+    s.name,
+    s.description,
+    s.http_method,
+    s.base_url,
+    s.api_path,
+    s.is_active,
+    s.idempotency_ttl_hours,
+    r.id                           as r_id,
+    r.read_time_out_ms,
+    r.cb_failure_rate_threshold,
+    r.cb_slow_call_rate_threshold,
+    r.cb_slow_call_duration_ms,
+    r.cb_permitted_in_half_open,
+    r.cb_sliding_window_size,
+    r.cb_wait_duration_open_ms,
+    r.bh_max_concurrent_calls,
+    r.bh_max_wait_duration_ms,
+    r.rl_limit_for_period,
+    r.rl_limit_refresh_period_ms,
+    r.rl_timeout_duration_ms,
+    r.retry_max_attempts,
+    r.retry_wait_duration_ms,
+    r.retry_on_status_codes,
+    r.circuit_breaker_enabled,
+    r.bulkhead_enabled,
+    r.rate_limiter_enabled,
+    r.retry_enabled,
+    h.headers                      as h_headers,
+    a.id                           as a_id,
+    a.auth_type,
+    a.is_auto_refresh,
+    a.token_method,
+    a.token_url,
+    a.token_body,
+    a.token_prefix,
+    a.token_inject_location,
+    a.token_key_name,
+    a.token_response_path,
+    a.token_response_expiry_path,
+    rm.id                          as rm_id,
+    rm.converter_type,
+    rm.mapping_script,
+    rm.mapping_status,
+    rm.is_active                   as rm_is_active,
+    hc.id                          as hc_id,
+    hc.base_url                    as hc_base_url,
+    hc.connect_time_out_ms,
+    hc.max_connections,
+    hc.pending_acquire_max_count,
+    hc.pending_acquire_timeout_ms,
+    hc.is_disable_ssl_verification,
+    hc.is_use_proxy,
+    hc.proxy_host,
+    hc.proxy_port
+from outbound_systems s
+left join outbound_resilience_configurations r  on r.outbound_system_id  = s.id
+left join outbound_header_configurations h      on h.outbound_system_id  = s.id
+left join outbound_auth_configurations a        on a.outbound_system_id  = s.id
+left join outbound_response_mapper_configuration rm on rm.outbound_system_id = s.id
+left join outbound_host_configurations hc       on hc.base_url           = s.base_url;

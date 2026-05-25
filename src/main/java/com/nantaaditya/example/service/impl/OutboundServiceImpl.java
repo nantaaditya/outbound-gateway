@@ -17,21 +17,22 @@ import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest;
 import com.nantaaditya.example.model.request.admin.UpsertResponseMapperRequest;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse;
 import com.nantaaditya.example.model.response.OutboundSystemResponse;
+import com.nantaaditya.example.model.response.PageResponse;
 import com.nantaaditya.example.model.response.TestConnectionResponse;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundHeaderConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
+import com.nantaaditya.example.repository.OutboundSystemDetailQuery;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
+import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.service.GatewayService;
 import com.nantaaditya.example.service.OutboundService;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
@@ -50,19 +51,16 @@ public class OutboundServiceImpl implements OutboundService {
   private final OutboundAuthConfigurationRepository authRepository;
   private final OutboundResponseMapperConfigurationRepository mapperRepository;
   private final OutboundHostConfigurationRepository hostConfigRepository;
+  private final OutboundSystemDetailQuery systemDetailQuery;
   private final GatewayService gatewayService;
   private final GatewayWebClientBuilder contextBuilder;
+  private final AuthStrategyFactory authStrategyFactory;
   private final EncryptionHelper encryptionHelper;
   private final ResilienceRegistryService resilienceRegistryService;
   private final TransactionalOperator transactionalOperator;
 
   private static final Duration TEST_CONNECTION_TIMEOUT = Duration.ofSeconds(5);
-  private static final int MAX_LIST_SIZE = 1000;
-
-  private static final Set<String> SENSITIVE_HEADER_NAMES = Set.of(
-      "authorization", "proxy-authorization", "x-api-key", "x-auth-token",
-      "x-secret", "x-client-secret", "x-access-token"
-  );
+  private static final int DEFAULT_PAGE_SIZE = 20;
 
   @Override
   public Mono<OutboundSystemResponse> create(CreateOutboundSystemRequest request) {
@@ -72,76 +70,23 @@ public class OutboundServiceImpl implements OutboundService {
   }
 
   @Override
-  public Mono<List<OutboundSystemDetailResponse>> list() {
-    return systemRepository.findAll()
-        .take(MAX_LIST_SIZE)
-        .flatMap(system -> {
-          long systemId = system.getId();
-          Mono<Optional<OutboundResilienceConfiguration>> resilienceMono = resilienceRepository
-              .findByOutboundSystemId(systemId)
-              .map(Optional::of)
-              .defaultIfEmpty(Optional.empty());
-          Mono<List<Map<String, Object>>> headersMono = headerRepository.findByOutboundSystemId(systemId)
-              .map(h -> scrubSensitiveHeaders(h.getHeaders()))
-              .collectList();
-          Mono<Optional<OutboundAuthConfiguration>> authMono = authRepository
-              .findByOutboundSystemId(systemId)
-              .map(Optional::of)
-              .defaultIfEmpty(Optional.empty());
-          Mono<Optional<OutboundResponseMapperConfiguration>> mapperMono = mapperRepository
-              .findByOutboundSystemId(systemId)
-              .map(Optional::of)
-              .defaultIfEmpty(Optional.empty());
-          Mono<Optional<OutboundHostConfiguration>> hostMono = hostConfigRepository
-              .findByBaseUrl(system.getBaseUrl())
-              .map(Optional::of)
-              .defaultIfEmpty(Optional.empty());
-          return Mono.zip(resilienceMono, headersMono, authMono, mapperMono, hostMono)
-              .map(t -> OutboundSystemDetailResponse.from(
-                  system,
-                  t.getT1().orElse(null),
-                  t.getT2(),
-                  t.getT3().orElse(null),
-                  t.getT4().orElse(null),
-                  t.getT5().orElse(null)));
-        })
-        .collectList();
+  public Mono<PageResponse<OutboundSystemDetailResponse>> list(int page, int size) {
+    int effectiveSize = size > 0 ? size : DEFAULT_PAGE_SIZE;
+    Mono<Long> countMono = systemDetailQuery.count();
+    Mono<List<OutboundSystemDetailResponse>> itemsMono =
+        systemDetailQuery.findAllPaged(page, effectiveSize).collectList();
+    return Mono.zip(countMono, itemsMono)
+        .map(t -> {
+          long total = t.getT1();
+          int totalPages = effectiveSize > 0 ? (int) Math.ceil((double) total / effectiveSize) : 1;
+          return new PageResponse<>(t.getT2(), page, effectiveSize, total, totalPages);
+        });
   }
 
   @Override
   public Mono<OutboundSystemDetailResponse> getDetail(String code) {
-    return requireSystem(code)
-        .flatMap(system -> {
-          long systemId = system.getId();
-          Mono<Optional<OutboundResilienceConfiguration>> resilienceMono = resilienceRepository
-              .findByOutboundSystemId(systemId)
-              .map(Optional::of)
-              .defaultIfEmpty(Optional.empty());
-          Mono<List<Map<String, Object>>> headersMono = headerRepository.findByOutboundSystemId(systemId)
-              .map(h -> scrubSensitiveHeaders(h.getHeaders()))
-              .collectList();
-          Mono<Optional<OutboundAuthConfiguration>> authMono = authRepository
-              .findByOutboundSystemId(systemId)
-              .map(Optional::of)
-              .defaultIfEmpty(Optional.empty());
-          Mono<Optional<OutboundResponseMapperConfiguration>> mapperMono = mapperRepository
-              .findByOutboundSystemId(systemId)
-              .map(Optional::of)
-              .defaultIfEmpty(Optional.empty());
-          Mono<Optional<OutboundHostConfiguration>> hostMono = hostConfigRepository
-              .findByBaseUrl(system.getBaseUrl())
-              .map(Optional::of)
-              .defaultIfEmpty(Optional.empty());
-
-          return Mono.zip(resilienceMono, headersMono, authMono, mapperMono, hostMono)
-              .map(t -> OutboundSystemDetailResponse.from(
-                  system,
-                  t.getT1().orElse(null),
-                  t.getT2(),
-                  t.getT3().orElse(null),
-                  t.getT4().orElse(null),
-                  t.getT5().orElse(null)));
-        });
+    return systemDetailQuery.findByCode(code)
+        .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }
 
   @Override
@@ -228,6 +173,7 @@ public class OutboundServiceImpl implements OutboundService {
                         .flatMap(existing -> authRepository.save(
                             existing.updated(system.getId(), encrypted[0], encrypted[1], encrypted[2], request)))
                         .doOnSuccess(s -> {
+                          authStrategyFactory.getStrategy(s.getAuthType()).evictTokenState(s.getId());
                           gatewayService.evictContext(code);
                           log.info(AppLogMessage.message("#OutboundService - upserted auth config code={}", code));
                         })
@@ -282,18 +228,10 @@ public class OutboundServiceImpl implements OutboundService {
                       .doOnSuccess(r -> log.info(AppLogMessage.message("#OutboundService - testConnection code={} httpStatus={} success={}", code, r.httpStatus(), r.success())))
                       .onErrorResume(e -> {
                         log.warn(AppLogMessage.message("#OutboundService - testConnection failed code={} error={}", code, e.getClass().getSimpleName()).error(e));
-                        return Mono.just(new TestConnectionResponse(false, 0, "Connection failed: " + e.getClass().getSimpleName()));
+                        return Mono.just(new TestConnectionResponse(false, 0, "Connection failed"));
                       });
                 })
         );
-  }
-
-  private Map<String, Object> scrubSensitiveHeaders(Map<String, Object> headers) {
-    if (headers == null || headers.isEmpty()) return Map.of();
-    Map<String, Object> scrubbed = new HashMap<>();
-    headers.forEach((k, v) -> scrubbed.put(k,
-        SENSITIVE_HEADER_NAMES.contains(k.toLowerCase()) ? "***" : v));
-    return scrubbed;
   }
 
   private Mono<OutboundSystem> requireSystem(String code) {
