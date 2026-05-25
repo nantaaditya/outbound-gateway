@@ -166,6 +166,15 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
+  @DisplayName("GET /api/gateway/histories/{key} — blank code returns HTTP 400")
+  void findByIdempotencyKey_blankCode_returns400() {
+    webTestClient.get()
+        .uri("/api/gateway/histories/idem-001?code=")
+        .exchange()
+        .expectStatus().isBadRequest();
+  }
+
+  @Test
   @DisplayName("GET /api/gateway/histories — startDate in the past includes all seeded records")
   void findHistories_filterByStartDateInPast_includesSeededRecords() throws Exception {
     byte[] body = webTestClient.get()

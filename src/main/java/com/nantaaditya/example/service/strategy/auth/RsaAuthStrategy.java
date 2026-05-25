@@ -11,6 +11,7 @@ import java.security.Signature;
 import java.nio.charset.StandardCharsets;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -19,13 +20,16 @@ import reactor.core.scheduler.Schedulers;
  * Signs the outbound request body with RSA-SHA256 using a PKCS8 DER private key.
  *
  * <p>The private key is stored AES-256-GCM encrypted in {@code client_secret} as raw DER bytes
- * (not PEM — no header/footer stripping required). On every call the bytes are decrypted,
- * loaded via {@link java.security.spec.PKCS8EncodedKeySpec}, and used to produce a
- * {@code SHA256withRSA} signature over the request body.
+ * (not PEM — no header/footer stripping required). On the first call per config ID, the bytes
+ * are decrypted and loaded via {@link java.security.spec.PKCS8EncodedKeySpec}; the parsed
+ * {@link PrivateKey} is cached in {@link #keyCache} via
+ * {@link ConcurrentHashMap#computeIfAbsent computeIfAbsent} so subsequent calls skip the
+ * {@link KeyFactory} overhead entirely. Call {@link #evictTokenState(Long)} (triggered by
+ * admin upsert-auth) to drop the cached key and force a fresh load on the next request.
  *
- * <p>The key is not cached — if loading or signing fails a {@link RuntimeException} is thrown,
- * which surfaces as a gateway 502 to the caller. This is intentional: a bad key is a
- * configuration error that should never silently pass through.
+ * <p>If loading or signing fails a {@link RuntimeException} is thrown, which surfaces as a
+ * gateway 502 to the caller. A bad key is a configuration error that should never silently
+ * pass through.
  *
  * <p>Like HMAC, an empty string is signed when the request body is {@code null}, and the
  * resulting signature bytes are Base64-encoded before injection.
@@ -35,17 +39,26 @@ public class RsaAuthStrategy implements AuthStrategy {
 
   private static final String SIGNATURE_ALGORITHM = "SHA256withRSA";
 
+  private final ConcurrentHashMap<Long, PrivateKey> keyCache = new ConcurrentHashMap<>();
+
   @Override
   public AuthType supports() {
     return AuthType.RSA;
   }
 
   @Override
+  public void evictTokenState(Long configId) {
+    keyCache.remove(configId);
+  }
+
+  @Override
   public Mono<AuthCredential> authenticate(
       OutboundAuthConfiguration config, EncryptionHelper encryption, String requestBody) {
     return Mono.fromCallable(() -> {
-      byte[] privateKeyBytes = encryption.decrypt(config.getClientSecret());
-      PrivateKey privateKey = loadPrivateKey(privateKeyBytes);
+      PrivateKey privateKey = keyCache.computeIfAbsent(config.getId(), id -> {
+        byte[] der = encryption.decrypt(config.getClientSecret());
+        return loadPrivateKey(der);
+      });
       String body = requestBody != null ? requestBody : "";
       String signature = sign(privateKey, body);
       return new AuthCredential(

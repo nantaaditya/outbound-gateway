@@ -163,9 +163,10 @@ public class OutboundSystemDetailRowMapper {
   }
 
   private float getFloat(Readable row, String col) {
-    // H2 returns FLOAT columns as Double; PostgreSQL returns them as Float.
-    Number val = (Number) row.get(col, Object.class);
-    return val != null ? val.floatValue() : 0f;
+    // H2 returns FLOAT as Double, PostgreSQL as Float — both extend Number.
+    // instanceof pattern avoids ClassCastException on unexpected column types.
+    Object raw = row.get(col, Object.class);
+    return raw instanceof Number n ? n.floatValue() : 0f;
   }
 
   private boolean getBool(Readable row, String col) {

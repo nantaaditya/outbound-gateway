@@ -94,6 +94,17 @@ class GatewayWebClientBuilderTest {
   }
 
   @Test
+  @DisplayName("buildDisposableWebClient returns a new WebClient not backed by the shared pool")
+  void buildDisposableWebClient_returnsNewInstanceNotFromCache() {
+    var host = hostConfig(false, false);
+    var pooled = builder.getOrCreateWebClient(host);
+    var disposable = builder.buildDisposableWebClient(host);
+
+    assertThat(disposable).isNotNull();
+    assertThat(disposable).isNotSameAs(pooled);
+  }
+
+  @Test
   @DisplayName("buildContext creates full context with all resilience components")
   void buildContext_fullConfig_returnsContext() {
     var sys = system();

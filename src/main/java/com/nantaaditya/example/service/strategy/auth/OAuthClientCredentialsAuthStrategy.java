@@ -137,12 +137,19 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
               return Mono.just(token);
             }
             LocalDateTime expiry = null;
-            String expiryStr = extractPath(response, config.getTokenResponseExpiryPath());
-            if (expiryStr != null) {
-              try {
-                expiry = LocalDateTime.now().plusSeconds(Long.parseLong(expiryStr));
-              } catch (NumberFormatException ignored) {
-                log.warn(AppLogMessage.message("Cannot parse token expiry: {}", expiryStr));
+            String expiryPath = config.getTokenResponseExpiryPath();
+            if (expiryPath == null || expiryPath.isBlank()) {
+              log.warn(AppLogMessage.message(
+                  "OAuth expiry path not configured for config {} — token will be refetched on every call. " +
+                  "Set token_response_expiry_path to enable token caching.", config.getId()));
+            } else {
+              String expiryStr = extractPath(response, expiryPath);
+              if (expiryStr != null) {
+                try {
+                  expiry = LocalDateTime.now().plusSeconds(Long.parseLong(expiryStr));
+                } catch (NumberFormatException ignored) {
+                  log.warn(AppLogMessage.message("Cannot parse token expiry: {}", expiryStr));
+                }
               }
             }
             stateRef.set(new TokenState(token, expiry));

@@ -5,11 +5,13 @@ import com.nantaaditya.example.model.response.BaseResponse;
 import com.nantaaditya.example.model.response.GatewayHistoryResponse;
 import com.nantaaditya.example.model.response.PageResponse;
 import com.nantaaditya.example.service.GatewayHistoryService;
+import jakarta.validation.constraints.NotBlank;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.MediaType;
 import org.springframework.lang.Nullable;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +22,7 @@ import reactor.core.publisher.Mono;
 @RestController
 @RequestMapping("/api/gateway")
 @RequiredArgsConstructor
+@Validated
 public class GatewayHistoryController {
 
   private final GatewayHistoryService gatewayHistoryService;
@@ -40,7 +43,7 @@ public class GatewayHistoryController {
   @GetMapping(value = "/histories/{idempotencyKey}",
       produces = MediaType.APPLICATION_JSON_VALUE)
   public Mono<BaseResponse<GatewayHistoryResponse>> findByIdempotencyKey(
-      @PathVariable String idempotencyKey, @RequestParam String code) {
+      @PathVariable String idempotencyKey, @NotBlank @RequestParam String code) {
     return gatewayHistoryService.findByIdempotencyKey(code, idempotencyKey)
         .map(responseHelper::success);
   }

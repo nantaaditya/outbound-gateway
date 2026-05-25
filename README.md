@@ -729,7 +729,7 @@ Paginated outbound call history with optional filters.
 
 #### `GET /api/gateway/histories/{idempotencyKey}?code={code}`
 
-Look up a single history record by idempotency key. `code` is required — idempotency keys are scoped per outbound system.
+Look up a single history record by idempotency key. `code` is **required and must not be blank** — idempotency keys are scoped per outbound system. A blank or missing `code` returns HTTP 400 immediately (validated at the controller layer via `@NotBlank`).
 
 > Index: `idx_histories_idempotency (outbound_system_id, idempotency_key, created_date)` — fully covered. The same index covers the TTL check during `execute`.
 

@@ -14,6 +14,10 @@ import com.nantaaditya.example.service.strategy.auth.BearerStaticAuthStrategy;
 import com.nantaaditya.example.service.strategy.auth.HmacSha256AuthStrategy;
 import com.nantaaditya.example.service.strategy.auth.NoneAuthStrategy;
 import com.nantaaditya.example.service.strategy.auth.OAuthClientCredentialsAuthStrategy;
+import com.nantaaditya.example.service.strategy.auth.RsaAuthStrategy;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
 import java.util.Base64;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -180,6 +184,69 @@ class AuthStrategyTest {
             assertThat(cred.location()).isEqualTo(TokenInjectLocation.HEADER);
           })
           .verifyComplete();
+    }
+  }
+
+  @Nested
+  class RsaAuthStrategyTest {
+
+    private RsaAuthStrategy strategy;
+    private EncryptionHelper rsaEncryption;
+    private KeyPair rsaKeyPair;
+
+    @BeforeEach
+    void setUp() throws Exception {
+      strategy = new RsaAuthStrategy();
+      String key = Base64.getEncoder().encodeToString(new byte[32]);
+      rsaEncryption = new EncryptionHelper(key);
+      KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
+      gen.initialize(2048);
+      rsaKeyPair = gen.generateKeyPair();
+    }
+
+    @Test
+    @DisplayName("supports RSA auth type")
+    void supports_returnsRsa() {
+      assertThat(strategy.supports()).isEqualTo(AuthType.RSA);
+    }
+
+    @Test
+    @DisplayName("authenticate signs body and caches parsed PrivateKey")
+    @SuppressWarnings("unchecked")
+    void authenticate_signsBodyAndCachesKey() {
+      byte[] encryptedKey = rsaEncryption.encrypt(rsaKeyPair.getPrivate().getEncoded());
+      OutboundAuthConfiguration config = OutboundAuthConfiguration.builder()
+          .id(1L)
+          .authType(AuthType.RSA)
+          .clientSecret(encryptedKey)
+          .tokenKeyName("X-Signature")
+          .tokenInjectLocation(TokenInjectLocation.HEADER)
+          .build();
+
+      StepVerifier.create(strategy.authenticate(config, rsaEncryption, "{\"amount\":100}"))
+          .assertNext(cred -> {
+            assertThat(cred.keyName()).isEqualTo("X-Signature");
+            assertThat(cred.value()).isNotBlank();
+            assertThat(cred.location()).isEqualTo(TokenInjectLocation.HEADER);
+          })
+          .verifyComplete();
+
+      ConcurrentHashMap<Long, PrivateKey> keyCache =
+          (ConcurrentHashMap<Long, PrivateKey>) ReflectionTestUtils.getField(strategy, "keyCache");
+      assertThat(keyCache).containsKey(1L);
+    }
+
+    @Test
+    @DisplayName("evictTokenState removes key from cache")
+    @SuppressWarnings("unchecked")
+    void evictTokenState_removesKeyFromCache() {
+      ConcurrentHashMap<Long, PrivateKey> keyCache =
+          (ConcurrentHashMap<Long, PrivateKey>) ReflectionTestUtils.getField(strategy, "keyCache");
+      keyCache.put(42L, rsaKeyPair.getPrivate());
+
+      strategy.evictTokenState(42L);
+
+      assertThat(keyCache).doesNotContainKey(42L);
     }
   }
 

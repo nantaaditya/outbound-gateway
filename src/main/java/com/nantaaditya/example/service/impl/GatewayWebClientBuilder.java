@@ -77,9 +77,42 @@ public class GatewayWebClientBuilder {
     log.info(AppLogMessage.message("#WEBCLIENT - evicted for {}", baseUrl));
   }
 
-  /** Builds a one-shot WebClient not backed by the shared pool — safe to use for test-connection calls. */
+  /**
+   * Builds a one-shot {@link WebClient} for test-connection calls.
+   *
+   * <p><strong>Why not reuse {@link #buildWebClient}?</strong> That method creates a
+   * {@link ConnectionProvider#builder(String) pooled} provider sized for production
+   * sustained load. Using it here would either:
+   * <ul>
+   *   <li>Share the production pool — stealing connection slots from live gateway calls, or
+   *   <li>Create a new named pool that is never {@code dispose()}d — one leaked pool per
+   *       test-connection invocation, accumulating indefinitely until JVM runs out of file
+   *       descriptors or native memory.
+   * </ul>
+   * <p>{@link ConnectionProvider#newConnection()} creates a single-use, non-pooled provider
+   * that is released automatically when the connection closes — no explicit dispose needed.
+   */
   public WebClient buildDisposableWebClient(OutboundHostConfiguration hostConfig) {
-    return buildWebClient(hostConfig);
+    HttpClient httpClient = HttpClient.create(ConnectionProvider.newConnection())
+        .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, hostConfig.getConnectTimeOutMs());
+
+    if (hostConfig.isDisableSslVerification()) {
+      log.warn(AppLogMessage.message(
+          "#WEBCLIENT - SSL verification disabled for {} — do not use in production",
+          hostConfig.getBaseUrl()));
+      httpClient = httpClient.secure(spec -> {
+        try {
+          spec.sslContext(insecureSsl());
+        } catch (SSLException e) {
+          throw new RuntimeException("SSL config failed", e);
+        }
+      });
+    }
+
+    return webClientBuilder.clone()
+        .baseUrl(hostConfig.getBaseUrl())
+        .clientConnector(new ReactorClientHttpConnector(httpClient))
+        .build();
   }
 
   public OutboundSystemContext buildContext(
