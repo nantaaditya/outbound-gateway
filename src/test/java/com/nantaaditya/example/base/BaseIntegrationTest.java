@@ -19,10 +19,13 @@ import org.springframework.boot.test.autoconfigure.actuate.observability.AutoCon
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.test.web.reactive.server.WebTestClient.RequestBodySpec;
 import org.springframework.test.web.reactive.server.WebTestClient.ResponseSpec;
 import org.springframework.util.MultiValueMap;
+import org.testcontainers.containers.PostgreSQLContainer;
 import reactor.core.publisher.Hooks;
 import reactor.core.scheduler.Schedulers;
 
@@ -34,6 +37,28 @@ import reactor.core.scheduler.Schedulers;
 @AutoConfigureWebTestClient
 @AutoConfigureObservability
 public class BaseIntegrationTest {
+
+  // Singleton: started once when this class is loaded, reused by all test classes via Spring context cache.
+  // @Container/@Testcontainers are intentionally omitted — they stop/restart the container between classes,
+  // breaking the Spring context cache (each restart gets a different port).
+  static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+
+  static {
+    postgres.start();
+  }
+
+  @DynamicPropertySource
+  static void registerContainerProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.r2dbc.url", () ->
+        "r2dbc:postgresql://%s:%d/%s".formatted(
+            postgres.getHost(), postgres.getMappedPort(5432), postgres.getDatabaseName()
+        ));
+    registry.add("spring.r2dbc.username", postgres::getUsername);
+    registry.add("spring.r2dbc.password", postgres::getPassword);
+    registry.add("spring.flyway.url", postgres::getJdbcUrl);
+    registry.add("spring.flyway.user", postgres::getUsername);
+    registry.add("spring.flyway.password", postgres::getPassword);
+  }
 
   @Autowired
   protected WebTestClient webTestClient;

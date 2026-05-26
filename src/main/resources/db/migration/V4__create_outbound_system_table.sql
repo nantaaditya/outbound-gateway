@@ -20,4 +20,4 @@ CREATE TABLE IF NOT EXISTS outbound_systems
     proxy_password  bytea -- encrypted
 );
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_outboundsystem_code on outbound_systems(code, is_active);
+CREATE INDEX IF NOT EXISTS idx_outboundsystem_code on outbound_systems(code, is_active);

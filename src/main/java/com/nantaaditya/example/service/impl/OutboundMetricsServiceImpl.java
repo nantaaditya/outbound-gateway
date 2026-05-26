@@ -34,7 +34,7 @@ public class OutboundMetricsServiceImpl implements OutboundMetricsService {
   private static final String CALCULATE_PERCENTILE_QUERY = """
       SELECT
         COUNT(*)                                                                                        AS total_calls,
-        COALESCE(AVG(CAST(duration_ms AS DOUBLE)), 0)                                                   AS avg_duration_ms,
+        COALESCE(AVG(CAST(duration_ms AS DOUBLE PRECISION)), 0)                                        AS avg_duration_ms,
         COALESCE(percentile_cont(0.90) WITHIN GROUP (ORDER BY duration_ms), 0)                          AS p90_duration_ms,
         COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms), 0)                          AS p95_duration_ms,
         COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms), 0)                          AS p99_duration_ms,

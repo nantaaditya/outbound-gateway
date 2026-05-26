@@ -14,8 +14,9 @@ import reactor.core.publisher.Mono;
 @Repository
 public interface OutboundHistoryRepository extends ReactiveCrudRepository<OutboundHistory, Long> {
 
-  // Upsert for idempotent calls: on conflict (same system + idempotency_key),
-  // overwrite response fields so a successful retry overwrites an earlier failure record.
+  // Insert history for idempotent calls. V15 dropped the unique constraint on
+  // (outbound_system_id, idempotency_key) to allow key reuse across TTL windows,
+  // so ON CONFLICT is no longer valid — a plain INSERT is correct here.
   @Modifying
   @Query("""
       INSERT INTO outbound_histories
@@ -26,12 +27,6 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
         (:outboundSystemId, :idempotencyKey, :callerService, :requestMethod, :requestUrl,
          :requestPayload, :responseStatus, :responsePayload, :durationMs,
          :convertedStatus, :convertedResponse, NOW())
-      ON CONFLICT (outbound_system_id, idempotency_key) DO UPDATE SET
-        response_status    = EXCLUDED.response_status,
-        response_payload   = EXCLUDED.response_payload,
-        duration_ms        = EXCLUDED.duration_ms,
-        converted_status   = EXCLUDED.converted_status,
-        converted_response = EXCLUDED.converted_response
       """)
   Mono<Integer> upsertHistory(
       @Param("outboundSystemId") long outboundSystemId,

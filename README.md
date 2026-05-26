@@ -20,6 +20,9 @@ All configuration is stored in the database — no restart is needed to add, upd
 11. [Error Response](#11-error-response)
 12. [Important Notes](#12-important-notes)
 13. [Configure & Use](#13-configure--use)
+    - [Prerequisites](#prerequisites)
+    - [Running Tests](#running-tests)
+    - [Step-by-Step Walkthrough](#step-by-step-walkthrough)
 
 ---
 
@@ -199,7 +202,7 @@ webClientCache (one pool per host)
 | **Serialization** | Jackson (via Spring Boot), Gson 2.13.2 |
 | **Caching** | Caffeine (via Spring Boot Cache) |
 | **Logging** | Log4j2 async via LMAX Disruptor 3.4.4 |
-| **Testing** | JUnit 5, Reactor Test, r2dbc-h2, WireMock 3.13.1, Awaitility 4.3.0 |
+| **Testing** | JUnit 5, Reactor Test, Testcontainers 1.21.0 (postgres:16-alpine), WireMock 3.13.1, Awaitility 4.3.0 |
 
 ---
 
@@ -1675,6 +1678,7 @@ Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply mi
 - Java 21+
 - PostgreSQL 14+
 - Maven 3.9+
+- **Docker Desktop** (or any Docker-compatible daemon) — required to run integration tests
 
 ### Environment Variables
 
@@ -1710,6 +1714,31 @@ mvn spring-boot:run -DGATEWAY_ENCRYPTION_KEY=<your-base64-key>
 
 Application: `http://localhost:8080/app`
 Actuator: `http://localhost:1000/actuator/health`
+
+---
+
+### Running Tests
+
+Integration tests use **Testcontainers** with a real PostgreSQL instance. Docker must be running before executing tests.
+
+```bash
+# Run all tests (unit + integration)
+mvn test
+
+# Run only unit tests (no Docker needed)
+mvn test -Dtest="*Test" -DfailIfNoTests=false
+
+# Run only integration tests
+mvn test -Dtest="*IntegrationTest" -DfailIfNoTests=false
+```
+
+**What happens on first run:**
+- Testcontainers pulls `postgres:16-alpine` if not already cached locally
+- A single shared container starts once per JVM (singleton pattern) — all test classes share it
+- Flyway migrations (V1–V20) run against the container on startup
+- The container stops automatically when the JVM exits
+
+**No configuration needed** — `@DynamicPropertySource` in `BaseIntegrationTest` wires the R2DBC and Flyway URLs directly to the container. `application.yml` values for `R2DBC_URL`, `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` are overridden by the container's generated credentials.
 
 ---
 

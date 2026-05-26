@@ -75,6 +75,7 @@ public class OutboundHostConfiguration extends BaseEntity<Long> {
         .id(this.getId())
         .createdBy(this.getCreatedBy())
         .createdDate(this.getCreatedDate())
+        .version(this.getVersion())
         .baseUrl(this.baseUrl)
         .connectTimeOutMs(request.connectTimeOutMs())
         .maxConnections(request.maxConnections())

@@ -15,4 +15,4 @@ CREATE TABLE IF NOT EXISTS outbound_resilience_configurations
     max_pool_size       INT
 );
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_outboundresilience_systemid on outbound_resilience_configurations(outbound_system_id);
+CREATE INDEX IF NOT EXISTS idx_outboundresilience_systemid on outbound_resilience_configurations(outbound_system_id);

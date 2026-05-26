@@ -7,18 +7,16 @@ spring:
   webflux:
     base-path: ${CONTEXT_PATH:}
   r2dbc:
-    url: r2dbc:h2:mem:///test_db
     pool:
       enabled: true
       initial-size: 5
       max-size: 10
       validation-query: SELECT 1
   flyway:
-    url: jdbc:h2:mem:test_db
-    enabled: false
+    enabled: true
   sql:
     init:
-      mode: always
+      mode: never
 
 management:
   server:
@@ -46,17 +44,9 @@ logging:
     root: INFO
     com.nantaaditya: INFO
     org.zalando.logbook: TRACE
-#    io.r2dbc.h2.client: DEBUG
-#    io.r2dbc.h2: DEBUG
-#    io.r2dbc.spi: DEBUG
-#    org.springframework.r2dbc.core: DEBUG
   file:
     path: ${LOG_PATH:logs/}
   config: classpath:log4j2-spring-${apps.log.log-format:json}.xml
-
-cron:
-  internal:
-    integration-test: true
 
 gateway:
   encryption:

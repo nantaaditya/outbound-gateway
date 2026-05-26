@@ -141,11 +141,11 @@ class GatewayMetricsIntegrationTest extends BaseIntegrationTest {
     // Second call — should return from cache
     gatewayService.execute(code, "svc", idemKey, request).block();
 
-    Timer idempotencyTimer = meterRegistry.find("api.public.idempotency")
+    io.micrometer.core.instrument.Counter idempotencyCounter = meterRegistry.find("api.public.idempotency")
         .tags("feature", code)
-        .timer();
-    assertThat(idempotencyTimer).isNotNull();
-    assertThat(idempotencyTimer.count()).isGreaterThanOrEqualTo(1L);
+        .counter();
+    assertThat(idempotencyCounter).isNotNull();
+    assertThat(idempotencyCounter.count()).isGreaterThanOrEqualTo(1.0);
   }
 
   @Test
