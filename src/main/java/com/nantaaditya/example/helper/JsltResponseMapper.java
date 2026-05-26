@@ -23,6 +23,14 @@ public class JsltResponseMapper {
       .maximumSize(MAX_CACHE_SIZE)
       .build();
 
+  /**
+   * Applies the JSLT {@code script} to the JSON {@code body}.
+   *
+   * @param body   the raw JSON response body
+   * @param script the JSLT transform script; when {@code null} or blank the original body is returned unchanged
+   * @return the transformed JSON string on success; the original {@code body} when script is absent;
+   *         or {@code null} when mapping fails — callers MUST null-check and treat {@code null} as a fallback signal
+   */
   public String map(String body, String script) {
     if (script == null || script.isBlank()) {
       return body;

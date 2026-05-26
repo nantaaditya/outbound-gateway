@@ -96,6 +96,16 @@ class AppFilterBodylessIntegrationTest extends BaseIntegrationTest {
         .expectHeader().exists(HeaderConstant.RECEIVED_TIME.getHeader());
   }
 
+  @Test
+  @DisplayName("DELETE request — bypasses DataBufferUtils.join, doFinally completes")
+  void deleteRequest_bodylessPath_doFinallyRuns() {
+    webTestClient.delete()
+        .uri("/api/outbound/filter-test")
+        .exchange()
+        .expectStatus().isOk()
+        .expectHeader().exists(HeaderConstant.RECEIVED_TIME.getHeader());
+  }
+
   private OutboundHistory history(long sysId, String key, int status) {
     return OutboundHistory.builder()
         .outboundSystemId(sysId)

@@ -321,10 +321,10 @@ public class GatewayServiceImpl implements GatewayService {
         .map(m -> {
           String converted = jsltResponseMapper.map(response.body(), m.getMappingScript());
           if (converted == null) {
-            log.warn(AppLogMessage.message("#GATEWAY - JSLT mapping fallback for code={}", context.getSystem().getCode()));
+            log.warn(AppLogMessage.message("#GATEWAY - JSLT mapping failed, falling back to original body for code={}", context.getSystem().getCode()));
             return GatewayResponse.mappedWithFallback(
                 response.status(), response.headers(), response.body(),
-                m.getMappedStatus(response.status()));
+                response.status());
           }
           return GatewayResponse.mapped(
               response.status(), response.headers(), response.body(),

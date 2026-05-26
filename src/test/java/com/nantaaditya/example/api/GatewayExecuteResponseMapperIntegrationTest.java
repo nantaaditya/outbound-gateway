@@ -201,12 +201,12 @@ class GatewayExecuteResponseMapperIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("Valid JSLT script — mappingFallback is false")
+  @DisplayName("Valid JSLT script — mappingFallback is false and convertedResponse is transformed")
   void execute_withValidJsltScript_mappingFallbackIsFalse() throws Exception {
     wireMock.stubFor(post(urlEqualTo("/v1/jslt-ok"))
         .willReturn(aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
-            .withBody("{\"amount\":200,\"txId\":\"tx-ok\"}")));
+            .withBody("{\"amount\":200,\"txId\":\"tx-ok\",\"extra\":\"stripped\"}")));
 
     String baseUrl = "http://localhost:" + wireMock.port();
     OutboundSystem system = seedSystem("jslt-ok-test", baseUrl, "/v1/jslt-ok");
@@ -220,6 +220,38 @@ class GatewayExecuteResponseMapperIntegrationTest extends BaseIntegrationTest {
     JsonNode root = executeGateway("jslt-ok-test");
 
     assertThat(root.path("data").path("mappingFallback").asBoolean()).isFalse();
+    // mapping ran: convertedResponse contains transformed fields, not the original ones
+    JsonNode converted = root.path("data").path("convertedResponse");
+    assertThat(converted.path("id").asText()).isEqualTo("tx-ok");
+    assertThat(converted.path("total").asInt()).isEqualTo(200);
+    assertThat(converted.path("amount").isMissingNode()).isTrue();
+    assertThat(converted.path("txId").isMissingNode()).isTrue();
+    assertThat(converted.path("extra").isMissingNode()).isTrue();
+  }
+
+  @Test
+  @DisplayName("Broken JSLT + status remapping — fallback preserves original status, no remapping applied")
+  void execute_withInvalidJsltScriptAndStatusMapping_fallbackPreservesOriginalStatus() throws Exception {
+    wireMock.stubFor(post(urlEqualTo("/v1/jslt-broken-remap"))
+        .willReturn(aResponse().withStatus(200)
+            .withHeader("Content-Type", "application/json")
+            .withBody("{\"amount\":100,\"txId\":\"tx-broken-remap\"}")));
+
+    String baseUrl = "http://localhost:" + wireMock.port();
+    OutboundSystem system = seedSystem("jslt-broken-remap-test", baseUrl, "/v1/jslt-broken-remap");
+    mapperRepository.save(OutboundResponseMapperConfiguration.builder()
+        .outboundSystemId(system.getId())
+        .converterType(ConverterType.JSLT)
+        .mappingScript("not valid jslt {{{")
+        .mappingStatus(Map.of("200", 201))
+        .active(true)
+        .build()).block();
+
+    JsonNode root = executeGateway("jslt-broken-remap-test");
+
+    assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
+    assertThat(root.path("data").path("convertedStatus").asInt()).isEqualTo(200);
+    assertThat(root.path("data").path("mappingFallback").asBoolean()).isTrue();
   }
 
   // --- helpers ---

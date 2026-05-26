@@ -664,7 +664,7 @@ Both fields are optional.
 | Field | Description |
 |---|---|
 | `fromCache` | `true` when the result was served from idempotency history without calling the upstream |
-| `mappingFallback` | `true` when a JSLT mapper was configured but failed to execute — `convertedResponse` equals `body` (pass-through fallback) |
+| `mappingFallback` | `true` when a JSLT mapper was configured but failed to execute — `convertedResponse` equals `body` and `convertedStatus` equals `status` (full pass-through; no body transform or status remap applied) |
 
 **When blocked by a resilience mechanism:**
 ```json
