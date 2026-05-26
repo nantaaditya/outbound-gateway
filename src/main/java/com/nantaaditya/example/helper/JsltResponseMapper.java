@@ -33,8 +33,8 @@ public class JsltResponseMapper {
       JsonNode result = expression.apply(input);
       return objectMapper.writeValueAsString(result);
     } catch (Exception e) {
-      log.warn(AppLogMessage.message("JSLT mapping failed, returning original body: {}", e.getMessage()).error(e));
-      return body;
+      log.warn(AppLogMessage.message("JSLT mapping failed: {}", e.getMessage()).error(e));
+      return null;
     }
   }
 }

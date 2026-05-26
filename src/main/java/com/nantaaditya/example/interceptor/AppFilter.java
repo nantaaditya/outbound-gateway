@@ -15,6 +15,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.core.Ordered;
@@ -72,6 +73,14 @@ public class AppFilter implements WebFilter {
       HeaderConstant.REQUEST_TIME.getHeader()
   );
 
+  // These methods carry no body by definition — skip DataBufferUtils.join entirely.
+  // Allocating a 0-byte DataBuffer via switchIfEmpty for every GET/DELETE is wasteful
+  // and can cause Netty async-cleanup noise when error responses are committed before the
+  // flatMap pipeline completes (observed as "Async resource cleanup failed after onComplete").
+  private static final Set<HttpMethod> BODYLESS_METHODS = Set.of(
+      HttpMethod.GET, HttpMethod.DELETE, HttpMethod.HEAD, HttpMethod.OPTIONS
+  );
+
   @Value("${spring.webflux.base-path}")
   private String contextPath;
 
@@ -97,6 +106,21 @@ public class AppFilter implements WebFilter {
         () -> observationContext,
         observationHelper.getObservationRegistry()
     );
+
+    if (BODYLESS_METHODS.contains(request.getMethod())) {
+      exchange.getAttributes().put("cachedRequestBody", new byte[0]);
+      return chain.filter(exchange)
+          .doOnError(error -> doObservationOnError(error, observationContext, observation))
+          .doFinally(signal -> {
+            eventLogHelper.save(exchange, contextDTO);
+            try {
+              observation.stop();
+            } catch (Exception e) {
+              log.warn(AppLogMessage.message("#Observation - failed to stop observation: {}", e.getMessage()).error(e));
+            }
+          })
+          .contextWrite(ctx -> ctx.put("context", contextDTO));
+    }
 
     return DataBufferUtils.join(request.getBody())
         .cast(DataBuffer.class)

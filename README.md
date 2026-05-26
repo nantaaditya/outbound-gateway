@@ -655,12 +655,16 @@ Both fields are optional.
     "body": { "id": "charge-abc", "status": "PENDING" },
     "convertedStatus": 200,
     "convertedResponse": { "id": "charge-abc", "status": "PENDING" },
-    "fromCache": false
+    "fromCache": false,
+    "mappingFallback": false
   }
 }
 ```
 
-`fromCache: true` when the result was served from idempotency history.
+| Field | Description |
+|---|---|
+| `fromCache` | `true` when the result was served from idempotency history without calling the upstream |
+| `mappingFallback` | `true` when a JSLT mapper was configured but failed to execute — `convertedResponse` equals `body` (pass-through fallback) |
 
 **When blocked by a resilience mechanism:**
 ```json

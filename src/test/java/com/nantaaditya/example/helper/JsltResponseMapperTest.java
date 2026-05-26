@@ -52,13 +52,24 @@ class JsltResponseMapperTest {
   }
 
   @Test
-  @DisplayName("map with invalid body returns original body")
-  void map_invalidJson_returnsOriginalBody() {
+  @DisplayName("map with invalid body returns null to signal failure")
+  void map_invalidJson_returnsNull() {
     String invalidBody = "not-json";
     String script = "{\"code\": .status}";
 
     String result = mapper.map(invalidBody, script);
 
-    assertThat(result).isEqualTo(invalidBody);
+    assertThat(result).isNull();
+  }
+
+  @Test
+  @DisplayName("map with invalid JSLT script returns null to signal failure")
+  void map_invalidScript_returnsNull() {
+    String body = "{\"status\":\"ok\"}";
+    String brokenScript = "not valid jslt {{{";
+
+    String result = mapper.map(body, brokenScript);
+
+    assertThat(result).isNull();
   }
 }

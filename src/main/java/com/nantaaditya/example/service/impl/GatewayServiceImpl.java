@@ -318,10 +318,18 @@ public class GatewayServiceImpl implements GatewayService {
   private GatewayResponse applyMapping(OutboundSystemContext context, GatewayResponse response) {
     return Optional.ofNullable(context.getResponseMapper())
         .filter(m -> !m.isPassThrough())
-        .map(m -> GatewayResponse.mapped(
-            response.status(), response.headers(), response.body(),
-            m.getMappedStatus(response.status()),
-            jsltResponseMapper.map(response.body(), m.getMappingScript())))
+        .map(m -> {
+          String converted = jsltResponseMapper.map(response.body(), m.getMappingScript());
+          if (converted == null) {
+            log.warn(AppLogMessage.message("#GATEWAY - JSLT mapping fallback for code={}", context.getSystem().getCode()));
+            return GatewayResponse.mappedWithFallback(
+                response.status(), response.headers(), response.body(),
+                m.getMappedStatus(response.status()));
+          }
+          return GatewayResponse.mapped(
+              response.status(), response.headers(), response.body(),
+              m.getMappedStatus(response.status()), converted);
+        })
         .orElse(response);
   }
 

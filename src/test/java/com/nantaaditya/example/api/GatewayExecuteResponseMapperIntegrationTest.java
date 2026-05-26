@@ -175,6 +175,53 @@ class GatewayExecuteResponseMapperIntegrationTest extends BaseIntegrationTest {
     assertThat(root.path("data").path("convertedResponse").path("amount").asInt()).isEqualTo(77);
   }
 
+  @Test
+  @DisplayName("Invalid JSLT script — falls back to original body with mappingFallback=true signal")
+  void execute_withInvalidJsltScript_fallsBackToOriginalBodyWithFallbackSignal() throws Exception {
+    wireMock.stubFor(post(urlEqualTo("/v1/jslt-broken"))
+        .willReturn(aResponse().withStatus(200)
+            .withHeader("Content-Type", "application/json")
+            .withBody("{\"amount\":100,\"txId\":\"tx-fallback\"}")));
+
+    String baseUrl = "http://localhost:" + wireMock.port();
+    OutboundSystem system = seedSystem("jslt-broken-test", baseUrl, "/v1/jslt-broken");
+    mapperRepository.save(OutboundResponseMapperConfiguration.builder()
+        .outboundSystemId(system.getId())
+        .converterType(ConverterType.JSLT)
+        .mappingScript("not valid jslt {{{")
+        .active(true)
+        .build()).block();
+
+    JsonNode root = executeGateway("jslt-broken-test");
+
+    assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
+    assertThat(root.path("data").path("convertedResponse").path("amount").asInt()).isEqualTo(100);
+    assertThat(root.path("data").path("convertedResponse").path("txId").asText()).isEqualTo("tx-fallback");
+    assertThat(root.path("data").path("mappingFallback").asBoolean()).isTrue();
+  }
+
+  @Test
+  @DisplayName("Valid JSLT script — mappingFallback is false")
+  void execute_withValidJsltScript_mappingFallbackIsFalse() throws Exception {
+    wireMock.stubFor(post(urlEqualTo("/v1/jslt-ok"))
+        .willReturn(aResponse().withStatus(200)
+            .withHeader("Content-Type", "application/json")
+            .withBody("{\"amount\":200,\"txId\":\"tx-ok\"}")));
+
+    String baseUrl = "http://localhost:" + wireMock.port();
+    OutboundSystem system = seedSystem("jslt-ok-test", baseUrl, "/v1/jslt-ok");
+    mapperRepository.save(OutboundResponseMapperConfiguration.builder()
+        .outboundSystemId(system.getId())
+        .converterType(ConverterType.JSLT)
+        .mappingScript(JSLT_EXTRACT)
+        .active(true)
+        .build()).block();
+
+    JsonNode root = executeGateway("jslt-ok-test");
+
+    assertThat(root.path("data").path("mappingFallback").asBoolean()).isFalse();
+  }
+
   // --- helpers ---
 
   private OutboundSystem seedSystem(String code, String baseUrl, String apiPath) {

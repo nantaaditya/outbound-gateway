@@ -10,7 +10,8 @@ public record GatewayExecuteResponse(
     Object body,
     int convertedStatus,
     Object convertedResponse,
-    boolean fromCache
+    boolean fromCache,
+    boolean mappingFallback
 ) {
 
   public static GatewayExecuteResponse from(GatewayResponse response, JsonHelper jsonHelper) {
@@ -20,7 +21,8 @@ public record GatewayExecuteResponse(
         jsonHelper.parseJsonOrRaw(response.body()),
         response.convertedStatus(),
         jsonHelper.parseJsonOrRaw(response.convertedResponse()),
-        response.fromCache()
+        response.fromCache(),
+        response.mappingFallback()
     );
   }
 }
