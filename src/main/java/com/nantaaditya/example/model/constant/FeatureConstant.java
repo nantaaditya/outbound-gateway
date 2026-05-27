@@ -24,7 +24,7 @@ public enum FeatureConstant {
   DELETE_OUTBOUND(HttpMethod.DELETE, "/api/outbound/*"),
   UPSERT_RESILIENCE(HttpMethod.POST, "/api/outbound/*/resilience"),
   UPSERT_HEADERS(HttpMethod.POST, "/api/outbound/*/headers"),
-  UPSERT_AUTH(HttpMethod.POST, "/api/outbound/*/auth"),
+  UPSERT_AUTH(HttpMethod.POST, "/api/outbound/*/authentication"),
   UPSERT_RESPONSE_MAPPER(HttpMethod.POST, "/api/outbound/*/response-mapper"),
   OUTBOUND_RELOAD(HttpMethod.POST, "/api/outbound/*/reload"),
   OUTBOUND_TEST(HttpMethod.POST, "/api/outbound/*/test"),

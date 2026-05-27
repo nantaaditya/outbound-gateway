@@ -11,6 +11,7 @@ import java.security.Signature;
 import java.nio.charset.StandardCharsets;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -25,7 +26,7 @@ import reactor.core.scheduler.Schedulers;
  * {@link PrivateKey} is cached in {@link #keyCache} via
  * {@link ConcurrentHashMap#computeIfAbsent computeIfAbsent} so subsequent calls skip the
  * {@link KeyFactory} overhead entirely. Call {@link #evictTokenState(Long)} (triggered by
- * admin upsert-auth) to drop the cached key and force a fresh load on the next request.
+ * admin upsert-authentication) to drop the cached key and force a fresh load on the next request.
  *
  * <p>If loading or signing fails a {@link RuntimeException} is thrown, which surfaces as a
  * gateway 502 to the caller. A bad key is a configuration error that should never silently
@@ -59,7 +60,7 @@ public class RsaAuthStrategy implements AuthStrategy {
         byte[] der = encryption.decrypt(config.getClientSecret());
         return loadPrivateKey(der);
       });
-      String body = requestBody != null ? requestBody : "";
+      String body = Optional.ofNullable(requestBody).orElse("");
       String signature = sign(privateKey, body);
       return new AuthCredential(
           config.getTokenKeyName(),

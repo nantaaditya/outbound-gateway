@@ -66,7 +66,7 @@ import reactor.core.publisher.Mono;
  *   <li>Idempotency check — if {@code X-Idempotency-Key} is present, queries history within
  *       the configured TTL window using the composite index
  *       {@code (outbound_system_id, idempotency_key, created_date)}.</li>
- *   <li>{@link #executeWithResilience} — runs auth, HTTP call, and the resilience pipeline.</li>
+ *   <li>{@link #executeWithResilience} — runs authentication, HTTP call, and the resilience pipeline.</li>
  *   <li>{@link #applyMapping} — JSLT transform or pass-through.</li>
  *   <li>{@link #saveHistory} — fire-and-forget; uses upsert when an idempotency key is present
  *       so a successful retry always overwrites an earlier failure record.</li>
@@ -140,7 +140,7 @@ public class GatewayServiceImpl implements GatewayService {
       String idempotencyKey) {
     LocalDateTime cutoff = LocalDateTime.now()
         .minusHours(context.getSystem().getIdempotencyTtlHours());
-    return historyRepository.findByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfter(
+    return historyRepository.findFirstByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfterOrderByCreatedDateDesc(
             context.getSystem().getId(), idempotencyKey, cutoff)
         .map(history -> GatewayResponse.fromCache(
             history.getResponseStatus(),
@@ -173,7 +173,7 @@ public class GatewayServiceImpl implements GatewayService {
                   resilienceRepository.findByOutboundSystemId(systemId)
                       .defaultIfEmpty(OutboundResilienceConfiguration.bypass()),
                   headerRepository.findByOutboundSystemId(systemId).collectList(),
-                  // No auth row → treat as NONE so execution proceeds without auth headers
+                  // No authentication row → treat as NONE so execution proceeds without authentication headers
                   authRepository.findByOutboundSystemId(systemId)
                       .defaultIfEmpty(OutboundAuthConfiguration.builder()
                           .outboundSystemId(systemId)

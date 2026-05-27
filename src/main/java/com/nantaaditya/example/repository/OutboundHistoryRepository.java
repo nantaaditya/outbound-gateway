@@ -41,11 +41,14 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
       @Param("convertedStatus") Integer convertedStatus,
       @Param("convertedResponse") String convertedResponse);
 
-  Mono<OutboundHistory> findByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfter(
+  // findFirst + OrderByCreatedDateDesc: tolerates duplicate rows from the async-race window
+  // (two concurrent calls with the same key can both INSERT before either commits).
+  // Returns the newest match; Mono throws IncorrectResultSizeDataAccessException without findFirst.
+  Mono<OutboundHistory> findFirstByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfterOrderByCreatedDateDesc(
       long outboundSystemId, String idempotencyKey, LocalDateTime cutoff);
 
-  // Used by GET /gateway/histories/{idempotencyKey} — no TTL window, returns the stored record.
-  Mono<OutboundHistory> findByOutboundSystemIdAndIdempotencyKey(
+  // Used by GET /gateway/histories/{idempotencyKey} — no TTL window, returns the newest stored record.
+  Mono<OutboundHistory> findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(
       long outboundSystemId, String idempotencyKey);
 
   // systemId = 0  → no system filter (all systems)

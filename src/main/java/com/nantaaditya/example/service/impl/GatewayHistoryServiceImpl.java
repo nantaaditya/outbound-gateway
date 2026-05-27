@@ -56,7 +56,7 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
     return systemRepository.findByCode(code)
         .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)))
         .flatMap(system ->
-            historyRepository.findByOutboundSystemIdAndIdempotencyKey(system.getId(), idempotencyKey)
+            historyRepository.findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(system.getId(), idempotencyKey)
                 .map(h -> GatewayHistoryResponse.from(h, jsonHelper))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("History not found for code=" + code)))
         );

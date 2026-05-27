@@ -202,7 +202,7 @@ class GatewayExecuteFullPipelineIntegrationTest extends BaseIntegrationTest {
     JsonNode call1 = executeGateway(code);
     assertThat(call1.path("data").path("status").asInt()).isEqualTo(200);
 
-    // Verify BASIC auth and static header were forwarded
+    // Verify BASIC authentication and static header were forwarded
     String expectedBasic = Base64.getEncoder()
         .encodeToString("pipe-b-user:pipe-b-pass".getBytes());
     wireMock.verify(1, postRequestedFor(urlEqualTo("/v1/pipe-b"))

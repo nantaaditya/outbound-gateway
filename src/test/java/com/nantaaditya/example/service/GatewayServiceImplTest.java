@@ -53,7 +53,7 @@ class GatewayServiceImplTest {
   GatewayServiceImpl gatewayService;
 
   @Test
-  @DisplayName("evictContext with null hostConfig does not throw NPE — cache is still cleared")
+  @DisplayName("evictContext with null hostConfiguration does not throw NPE — cache is still cleared")
   void evictContext_nullHostConfig_doesNotThrowAndCacheIsCleared() {
     OutboundSystemContext contextWithNullHost = OutboundSystemContext.builder()
         .system(OutboundSystem.builder().code("test-code").build())
@@ -69,7 +69,7 @@ class GatewayServiceImplTest {
   }
 
   @Test
-  @DisplayName("evictContext with non-null hostConfig evicts the WebClient pool")
+  @DisplayName("evictContext with non-null hostConfiguration evicts the WebClient pool")
   void evictContext_withHostConfig_evictsWebClientPool() {
     OutboundHostConfiguration hostConfig = OutboundHostConfiguration.builder()
         .baseUrl("https://api.example.com")

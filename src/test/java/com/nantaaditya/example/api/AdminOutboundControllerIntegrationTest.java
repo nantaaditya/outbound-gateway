@@ -398,9 +398,9 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
   // --- 8. UPSERT AUTH ---
 
   @Test
-  @DisplayName("POST /api/outbound/{code}/auth — encrypts and saves and event_log")
+  @DisplayName("POST /api/outbound/{code}/authentication — encrypts and saves and event_log")
   void upsertAuth_apiKey_encryptsAndSavesAndEventLog() throws Exception {
-    OutboundSystem system = seedSystem("admin-auth-test");
+    OutboundSystem system = seedSystem("admin-authentication-test");
     String requestId = TsidHelper.generateStringId();
 
     UpsertAuthRequest req = new UpsertAuthRequest(
@@ -408,7 +408,7 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
         false, null, null, null, null, null, "X-Api-Key", null, null);
 
     webTestClient.post()
-        .uri("/api/outbound/admin-auth-test/auth")
+        .uri("/api/outbound/admin-authentication-test/authentication")
         .contentType(MediaType.APPLICATION_JSON)
         .header(HeaderConstant.REQUEST_ID.getHeader(), requestId)
         .header(HeaderConstant.CLIENT_ID.getHeader(), "test-client")
@@ -418,7 +418,7 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
         .exchange()
         .expectStatus().isOk();
 
-    // Assertion 1: auth row saved
+    // Assertion 1: authentication row saved
     OutboundAuthConfiguration savedAuth =
         authRepository.findByOutboundSystemId(system.getId()).block();
     assertThat(savedAuth).isNotNull();
@@ -626,7 +626,7 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
   // --- 14. GET DETAIL with host config ---
 
   @Test
-  @DisplayName("GET /api/outbound/{code} — returns hostConfig when configured")
+  @DisplayName("GET /api/outbound/{code} — returns hostConfiguration when configured")
   void getDetail_withHostConfig_includesHostConfigDetail() throws Exception {
     seedSystem("admin-detail-hostcfg");
     seedHostConfig("http://localhost:9999");
@@ -646,10 +646,10 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
 
     JsonNode root = objectMapper.readTree(body);
     assertThat(root.path("response").path("code").asText()).isEqualTo("000");
-    assertThat(root.path("data").path("hostConfig").isNull()).isFalse();
-    assertThat(root.path("data").path("hostConfig").path("baseUrl").asText())
+    assertThat(root.path("data").path("hostConfiguration").isNull()).isFalse();
+    assertThat(root.path("data").path("hostConfiguration").path("baseUrl").asText())
         .isEqualTo("http://localhost:9999");
-    assertThat(root.path("data").path("hostConfig").path("maxConnections").asInt()).isEqualTo(50);
+    assertThat(root.path("data").path("hostConfiguration").path("maxConnections").asInt()).isEqualTo(50);
 
     awaitEventLog(requestId);
   }
@@ -657,7 +657,7 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
   // --- 15. LIST with host config ---
 
   @Test
-  @DisplayName("GET /api/outbound — returns hostConfig in each item when configured")
+  @DisplayName("GET /api/outbound — returns hostConfiguration in each item when configured")
   void list_withHostConfig_includesHostConfigInItems() throws Exception {
     seedSystem("admin-list-hostcfg");
     seedHostConfig("http://localhost:9999");
@@ -679,8 +679,8 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
     assertThat(root.path("response").path("code").asText()).isEqualTo("000");
     assertThat(root.path("data").path("content").isArray()).isTrue();
     JsonNode first = root.path("data").path("content").get(0);
-    assertThat(first.path("hostConfig").isNull()).isFalse();
-    assertThat(first.path("hostConfig").path("baseUrl").asText()).isEqualTo("http://localhost:9999");
+    assertThat(first.path("hostConfiguration").isNull()).isFalse();
+    assertThat(first.path("hostConfiguration").path("baseUrl").asText()).isEqualTo("http://localhost:9999");
 
     awaitEventLog(requestId);
   }

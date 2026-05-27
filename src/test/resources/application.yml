@@ -57,7 +57,7 @@ apps:
   log:
     enable-trace-log: true
     ignored-trace-log-path: ${IGNORED_TRACE_LOG_PATH:*/swagger-ui,*/swagger-ui/*,*/v3/api-docs,*/v3/api-docs/*}
-    sensitive-field: ${SENSITIVE_FIELDS:x-client-id}
+    sensitive-field: ${SENSITIVE_FIELDS:x-client-id,authorization,proxy-authorization,x-api-key,x-auth-token,x-secret,x-client-secret,x-access-token}
     log-format: json
   scheduler.configurations:
     default-async:

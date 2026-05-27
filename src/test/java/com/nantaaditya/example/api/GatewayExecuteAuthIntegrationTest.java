@@ -84,37 +84,37 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("Auth NONE — executes without adding any auth header")
+  @DisplayName("Auth NONE — executes without adding any authentication header")
   void execute_withNoneAuth_sendsNoAuthHeader() throws Exception {
-    wireMock.stubFor(post(urlEqualTo("/v1/auth-none"))
+    wireMock.stubFor(post(urlEqualTo("/v1/authentication-none"))
         .willReturn(aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody("{\"ok\":true}")));
 
     String baseUrl = "http://localhost:" + wireMock.port();
-    OutboundSystem system = seedSystem("auth-none", baseUrl, "/v1/auth-none");
+    OutboundSystem system = seedSystem("authentication-none", baseUrl, "/v1/authentication-none");
     authRepository.save(OutboundAuthConfiguration.builder()
         .outboundSystemId(system.getId())
         .authType(AuthType.NONE)
         .build()).block();
 
-    JsonNode root = executeGateway("auth-none");
+    JsonNode root = executeGateway("authentication-none");
 
     assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
-    wireMock.verify(1, postRequestedFor(urlEqualTo("/v1/auth-none")));
+    wireMock.verify(1, postRequestedFor(urlEqualTo("/v1/authentication-none")));
     awaitHistorySaved(1);
   }
 
   @Test
   @DisplayName("Auth API_KEY — injects encrypted api key into X-API-Key header")
   void execute_withApiKeyAuth_injectsApiKeyHeader() throws Exception {
-    wireMock.stubFor(post(urlEqualTo("/v1/auth-apikey"))
+    wireMock.stubFor(post(urlEqualTo("/v1/authentication-apikey"))
         .willReturn(aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody("{\"ok\":true}")));
 
     String baseUrl = "http://localhost:" + wireMock.port();
-    OutboundSystem system = seedSystem("auth-apikey", baseUrl, "/v1/auth-apikey");
+    OutboundSystem system = seedSystem("authentication-apikey", baseUrl, "/v1/authentication-apikey");
     authRepository.save(OutboundAuthConfiguration.builder()
         .outboundSystemId(system.getId())
         .authType(AuthType.API_KEY)
@@ -123,10 +123,10 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
         .tokenInjectLocation(TokenInjectLocation.HEADER)
         .build()).block();
 
-    JsonNode root = executeGateway("auth-apikey");
+    JsonNode root = executeGateway("authentication-apikey");
 
     assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
-    wireMock.verify(postRequestedFor(urlEqualTo("/v1/auth-apikey"))
+    wireMock.verify(postRequestedFor(urlEqualTo("/v1/authentication-apikey"))
         .withHeader("X-API-Key", equalTo("test-api-key-value")));
     awaitHistorySaved(1);
   }
@@ -134,13 +134,13 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
   @Test
   @DisplayName("Auth BASIC — injects Base64(user:pass) into Authorization header")
   void execute_withBasicAuth_injectsAuthorizationHeader() throws Exception {
-    wireMock.stubFor(post(urlEqualTo("/v1/auth-basic"))
+    wireMock.stubFor(post(urlEqualTo("/v1/authentication-basic"))
         .willReturn(aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody("{\"ok\":true}")));
 
     String baseUrl = "http://localhost:" + wireMock.port();
-    OutboundSystem system = seedSystem("auth-basic", baseUrl, "/v1/auth-basic");
+    OutboundSystem system = seedSystem("authentication-basic", baseUrl, "/v1/authentication-basic");
     authRepository.save(OutboundAuthConfiguration.builder()
         .outboundSystemId(system.getId())
         .authType(AuthType.BASIC)
@@ -148,11 +148,11 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
         .clientSecret(encryptionHelper.encryptString("pass"))
         .build()).block();
 
-    JsonNode root = executeGateway("auth-basic");
+    JsonNode root = executeGateway("authentication-basic");
 
     assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
     // Base64("user:pass") = "dXNlcjpwYXNz"
-    wireMock.verify(postRequestedFor(urlEqualTo("/v1/auth-basic"))
+    wireMock.verify(postRequestedFor(urlEqualTo("/v1/authentication-basic"))
         .withHeader("Authorization", equalTo("Basic dXNlcjpwYXNz")));
     awaitHistorySaved(1);
   }
@@ -160,13 +160,13 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
   @Test
   @DisplayName("Auth BEARER_STATIC — injects static Bearer token into Authorization header")
   void execute_withBearerStaticAuth_injectsBearerHeader() throws Exception {
-    wireMock.stubFor(post(urlEqualTo("/v1/auth-bearer"))
+    wireMock.stubFor(post(urlEqualTo("/v1/authentication-bearer"))
         .willReturn(aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody("{\"ok\":true}")));
 
     String baseUrl = "http://localhost:" + wireMock.port();
-    OutboundSystem system = seedSystem("auth-bearer", baseUrl, "/v1/auth-bearer");
+    OutboundSystem system = seedSystem("authentication-bearer", baseUrl, "/v1/authentication-bearer");
     authRepository.save(OutboundAuthConfiguration.builder()
         .outboundSystemId(system.getId())
         .authType(AuthType.BEARER_STATIC)
@@ -176,10 +176,10 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
         .tokenInjectLocation(TokenInjectLocation.HEADER)
         .build()).block();
 
-    JsonNode root = executeGateway("auth-bearer");
+    JsonNode root = executeGateway("authentication-bearer");
 
     assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
-    wireMock.verify(postRequestedFor(urlEqualTo("/v1/auth-bearer"))
+    wireMock.verify(postRequestedFor(urlEqualTo("/v1/authentication-bearer"))
         .withHeader("Authorization", equalTo("Bearer static-token-abc")));
     awaitHistorySaved(1);
   }
@@ -191,13 +191,13 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
         .willReturn(aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody("{\"access_token\":\"fetched-oauth-token\",\"expires_in\":3600}")));
-    wireMock.stubFor(post(urlEqualTo("/v1/auth-oauth"))
+    wireMock.stubFor(post(urlEqualTo("/v1/authentication-oauth"))
         .willReturn(aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody("{\"ok\":true}")));
 
     String baseUrl = "http://localhost:" + wireMock.port();
-    OutboundSystem system = seedSystem("auth-oauth", baseUrl, "/v1/auth-oauth");
+    OutboundSystem system = seedSystem("authentication-oauth", baseUrl, "/v1/authentication-oauth");
     authRepository.save(OutboundAuthConfiguration.builder()
         .outboundSystemId(system.getId())
         .authType(AuthType.OAUTH)
@@ -213,11 +213,11 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
         .tokenInjectLocation(TokenInjectLocation.HEADER)
         .build()).block();
 
-    JsonNode root = executeGateway("auth-oauth");
+    JsonNode root = executeGateway("authentication-oauth");
 
     assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
     wireMock.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
-    wireMock.verify(postRequestedFor(urlEqualTo("/v1/auth-oauth"))
+    wireMock.verify(postRequestedFor(urlEqualTo("/v1/authentication-oauth"))
         .withHeader("Authorization", equalTo("Bearer fetched-oauth-token")));
     awaitHistorySaved(1);
   }
@@ -225,13 +225,13 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
   @Test
   @DisplayName("Auth HMAC — computes HMAC-SHA256 signature of body and injects into X-Signature header")
   void execute_withHmacAuth_injectsSignatureHeader() throws Exception {
-    wireMock.stubFor(post(urlEqualTo("/v1/auth-hmac"))
+    wireMock.stubFor(post(urlEqualTo("/v1/authentication-hmac"))
         .willReturn(aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody("{\"ok\":true}")));
 
     String baseUrl = "http://localhost:" + wireMock.port();
-    OutboundSystem system = seedSystem("auth-hmac", baseUrl, "/v1/auth-hmac");
+    OutboundSystem system = seedSystem("authentication-hmac", baseUrl, "/v1/authentication-hmac");
     authRepository.save(OutboundAuthConfiguration.builder()
         .outboundSystemId(system.getId())
         .authType(AuthType.HMAC)
@@ -240,10 +240,10 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
         .tokenInjectLocation(TokenInjectLocation.HEADER)
         .build()).block();
 
-    JsonNode root = executeGateway("auth-hmac");
+    JsonNode root = executeGateway("authentication-hmac");
 
     assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
-    wireMock.verify(postRequestedFor(urlEqualTo("/v1/auth-hmac"))
+    wireMock.verify(postRequestedFor(urlEqualTo("/v1/authentication-hmac"))
         .withHeader("X-Signature", matching(".+")));
     awaitHistorySaved(1);
   }
@@ -251,13 +251,13 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
   @Test
   @DisplayName("Auth RSA — computes RSA-SHA256 signature of body and injects into X-RSA-Signature header")
   void execute_withRsaAuth_injectsSignatureHeader() throws Exception {
-    wireMock.stubFor(post(urlEqualTo("/v1/auth-rsa"))
+    wireMock.stubFor(post(urlEqualTo("/v1/authentication-rsa"))
         .willReturn(aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody("{\"ok\":true}")));
 
     String baseUrl = "http://localhost:" + wireMock.port();
-    OutboundSystem system = seedSystem("auth-rsa", baseUrl, "/v1/auth-rsa");
+    OutboundSystem system = seedSystem("authentication-rsa", baseUrl, "/v1/authentication-rsa");
     // RSA strategy decrypts clientSecret as raw DER bytes then loads as PKCS8 PrivateKey
     byte[] encryptedPrivateKey = encryptionHelper.encrypt(rsaKeyPair.getPrivate().getEncoded());
     authRepository.save(OutboundAuthConfiguration.builder()
@@ -268,10 +268,10 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
         .tokenInjectLocation(TokenInjectLocation.HEADER)
         .build()).block();
 
-    JsonNode root = executeGateway("auth-rsa");
+    JsonNode root = executeGateway("authentication-rsa");
 
     assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
-    wireMock.verify(postRequestedFor(urlEqualTo("/v1/auth-rsa"))
+    wireMock.verify(postRequestedFor(urlEqualTo("/v1/authentication-rsa"))
         .withHeader("X-RSA-Signature", matching(".+")));
     awaitHistorySaved(1);
   }

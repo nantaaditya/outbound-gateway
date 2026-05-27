@@ -14,8 +14,8 @@ public interface AuthStrategy {
       OutboundAuthConfiguration config, EncryptionHelper encryption, String requestBody);
 
   /**
-   * Evicts any cached token state for the given auth config ID.
-   * Called after auth config is updated so stale tokens are not reused.
+   * Evicts any cached token state for the given authentication config ID.
+   * Called after authentication config is updated so stale tokens are not reused.
    * Strategies that don't cache tokens (e.g. NONE, API_KEY) leave this as a no-op.
    */
   default void evictTokenState(Long configId) {}

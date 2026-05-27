@@ -124,12 +124,12 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
     doPost("/api/outbound/" + code + "/resilience", resReq, rid2).expectStatus().isOk();
     awaitEventLog(rid2);
 
-    // Step 3: upsert auth (NONE)
+    // Step 3: upsert authentication (NONE)
     String rid3 = newRequestId();
     UpsertAuthRequest authReq = new UpsertAuthRequest(
         AuthType.NONE, null, null, null, false,
         null, null, null, null, null, null, null, null);
-    doPost("/api/outbound/" + code + "/auth", authReq, rid3).expectStatus().isOk();
+    doPost("/api/outbound/" + code + "/authentication", authReq, rid3).expectStatus().isOk();
     awaitEventLog(rid3);
 
     // Step 4: upsert headers
@@ -408,17 +408,17 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         .until(() -> eventLogRepository.count().block() >= 3L);
   }
 
-  // --- Permutation 4: Upsert auth then verify execution ---
+  // --- Permutation 4: Upsert authentication then verify execution ---
 
   @Test
-  @DisplayName("Permutation 4: upsert auth NONE then execute successfully")
+  @DisplayName("Permutation 4: upsert authentication NONE then execute successfully")
   void permutation4_upsertAuthThenExecute() throws Exception {
-    String code = "perm4-auth";
+    String code = "perm4-authentication";
     String baseUrl = "http://localhost:" + wireMock.port();
     wireMock.stubFor(post(urlEqualTo("/v1/perm4"))
         .willReturn(aResponse()
             .withStatus(200)
-            .withBody("{\"auth\":\"ok\"}")));
+            .withBody("{\"authentication\":\"ok\"}")));
 
     // Step 1: create system
     String rid1 = newRequestId();
@@ -427,12 +427,12 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
     doPost("/api/outbound", createReq, rid1).expectStatus().isOk();
     awaitEventLog(rid1);
 
-    // Step 2: upsert auth NONE
+    // Step 2: upsert authentication NONE
     String rid2 = newRequestId();
     UpsertAuthRequest authReq = new UpsertAuthRequest(
         AuthType.NONE, null, null, null, false,
         null, null, null, null, null, null, null, null);
-    doPost("/api/outbound/" + code + "/auth", authReq, rid2).expectStatus().isOk();
+    doPost("/api/outbound/" + code + "/authentication", authReq, rid2).expectStatus().isOk();
     awaitEventLog(rid2);
 
     // Seed resilience + host config for gateway

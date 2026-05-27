@@ -35,7 +35,7 @@ class OutboundHistoryRepositoryFilterTest extends BaseIntegrationTest {
   @DisplayName("findByIdempotencyKey returns record regardless of TTL window")
   void findByIdempotencyKey_existingKey_returns() {
     StepVerifier.create(
-        repository.findByOutboundSystemIdAndIdempotencyKey(1L, "key-A"))
+        repository.findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(1L, "key-A"))
         .assertNext(h -> {
           assertThat(h.getIdempotencyKey()).isEqualTo("key-A");
           assertThat(h.getResponseStatus()).isEqualTo(200);
@@ -47,7 +47,7 @@ class OutboundHistoryRepositoryFilterTest extends BaseIntegrationTest {
   @DisplayName("findByIdempotencyKey returns empty for unknown key")
   void findByIdempotencyKey_unknownKey_empty() {
     StepVerifier.create(
-        repository.findByOutboundSystemIdAndIdempotencyKey(1L, "no-such-key"))
+        repository.findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(1L, "no-such-key"))
         .verifyComplete();
   }
 

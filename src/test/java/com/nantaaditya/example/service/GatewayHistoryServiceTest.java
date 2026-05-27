@@ -159,7 +159,7 @@ class GatewayHistoryServiceTest {
   @DisplayName("findByIdempotencyKey returns history for existing key")
   void findByIdempotencyKey_existingKey_returnsHistory() {
     when(systemRepository.findByCode("midtrans")).thenReturn(Mono.just(system(10L, "midtrans")));
-    when(historyRepository.findByOutboundSystemIdAndIdempotencyKey(10L, "order-abc"))
+    when(historyRepository.findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(10L, "order-abc"))
         .thenReturn(Mono.just(history(10L, "order-abc", 201)));
 
     StepVerifier.create(service.findByIdempotencyKey("midtrans", "order-abc"))
@@ -185,7 +185,7 @@ class GatewayHistoryServiceTest {
   @DisplayName("findByIdempotencyKey returns error when key not found")
   void findByIdempotencyKey_unknownKey_returnsError() {
     when(systemRepository.findByCode("xendit")).thenReturn(Mono.just(system(1L, "xendit")));
-    when(historyRepository.findByOutboundSystemIdAndIdempotencyKey(1L, "ghost-key"))
+    when(historyRepository.findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(1L, "ghost-key"))
         .thenReturn(Mono.empty());
 
     StepVerifier.create(service.findByIdempotencyKey("xendit", "ghost-key"))

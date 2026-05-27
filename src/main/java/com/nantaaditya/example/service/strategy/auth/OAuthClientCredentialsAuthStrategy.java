@@ -1,5 +1,7 @@
 package com.nantaaditya.example.service.strategy.auth;
 
+import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.PathNotFoundException;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.constant.AuthType;
@@ -7,16 +9,15 @@ import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.service.AuthStrategy;
-import com.jayway.jsonpath.JsonPath;
-import com.jayway.jsonpath.PathNotFoundException;
+import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
 import java.util.Map;
-import org.springframework.core.ParameterizedTypeReference;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.BodyInserters;
@@ -63,6 +64,10 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
     boolean isExpired() {
       return expiryTime == null || LocalDateTime.now().isAfter(expiryTime);
     }
+
+    boolean isExists() {
+      return token != null && !token.isBlank() && !isExpired();
+    }
   }
 
   private final WebClient.Builder webClientBuilder;
@@ -99,15 +104,17 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
   }
 
   private Mono<String> resolveToken(OutboundAuthConfiguration config, EncryptionHelper encryption) {
-    AtomicReference<TokenState> stateRef = tokenStates.computeIfAbsent(
+    AtomicReference<TokenState> stateReference = tokenStates.computeIfAbsent(
         config.getId(),
-        id -> new AtomicReference<>(new TokenState(config.getCurrentToken(), config.getTokenExpiryTime())));
-    TokenState state = stateRef.get();
-    if (state != null && state.token() != null && !state.isExpired()) {
+        id -> new AtomicReference<>(new TokenState(config.getCurrentToken(), config.getTokenExpiryTime()))
+    );
+    TokenState state = stateReference.get();
+    if (state != null && state.isExists()) {
       return Mono.just(state.token());
     }
+
     return tokenFetchCache.computeIfAbsent(config.getId(), id ->
-        fetchToken(config, encryption, stateRef)
+        fetchToken(config, encryption, stateReference)
             .cache()
             .doFinally(signal -> tokenFetchCache.remove(config.getId()))
     );
@@ -168,7 +175,7 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
     if (path.startsWith("$.")) {
       try {
         Object value = JsonPath.read(response, path);
-        return value != null ? value.toString() : null;
+        return Optional.ofNullable(value).map(Object::toString).orElse(null);
       } catch (PathNotFoundException e) {
         log.warn(AppLogMessage.message("JSONPath '{}' not found in token response", path));
         return null;
@@ -178,12 +185,12 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
       }
     }
     Object value = response.get(path);
-    return value != null ? value.toString() : null;
+    return Optional.ofNullable(value).map(Object::toString).orElse(null);
   }
 
   private AuthCredential buildCredential(OutboundAuthConfiguration config, String token) {
     String prefix = config.getTokenPrefix();
-    String value = (prefix != null && !prefix.isBlank()) ? prefix + " " + token : token;
+    String value = config.isPrefixNotBlank() ? prefix + " " + token : token;
     return new AuthCredential(
         config.getTokenKeyName(),
         value,

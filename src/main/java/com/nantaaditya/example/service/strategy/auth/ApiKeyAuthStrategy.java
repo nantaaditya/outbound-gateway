@@ -17,7 +17,7 @@ import reactor.core.scheduler.Schedulers;
  * Decryption runs on {@code Schedulers.boundedElastic()} to avoid blocking the event loop.
  *
  * <p>Inject location and header/query-param name are fully configurable via
- * {@code token_key_name} and {@code token_inject_location} in the auth config row.
+ * {@code token_key_name} and {@code token_inject_location} in the authentication config row.
  */
 @Component
 public class ApiKeyAuthStrategy implements AuthStrategy {

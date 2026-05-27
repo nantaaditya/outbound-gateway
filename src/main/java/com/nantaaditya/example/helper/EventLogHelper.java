@@ -7,7 +7,6 @@ import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.properties.LogProperties;
 import com.nantaaditya.example.repository.EventLogRepository;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Component;
@@ -43,7 +42,7 @@ public class EventLogHelper {
       String payload = new String(cachedBody, StandardCharsets.UTF_8);
       String cleanedPayload = GsonHelper.cleanJson(payload, gson);
 
-      Mono.fromSupplier(() -> createEventLog(context, additionalData, cleanedPayload))
+      Mono.fromSupplier(() -> EventLog.create(context, additionalData, cleanedPayload))
           .flatMap(eventLogRepository::save)
           .subscribe(
               success -> log.debug(AppLogMessage.message("#EventLog - success save event log {}", context.getRequestId())),
@@ -54,20 +53,5 @@ public class EventLogHelper {
     } catch (Exception e) {
       log.error(AppLogMessage.message("#EventLog - failed save event log {}, cause {}", context.getRequestId(), e.getMessage()).error(e));
     }
-  }
-
-  private EventLog createEventLog(ContextDTO context, byte[] additionalData, String payload) {
-    return EventLog.builder()
-        .id(TsidHelper.generateStringId())
-        .clientId(context.getClientId())
-        .requestId(context.getRequestId())
-        .method(context.getMethod())
-        .path(context.getPath())
-        .responseCode(context.getResponseCode())
-        .responseDescription(context.getResponseDescription())
-        .payload(payload.getBytes(StandardCharsets.UTF_8))
-        .additionalData(additionalData)
-        .createdDate(LocalDateTime.now())
-        .build();
   }
 }

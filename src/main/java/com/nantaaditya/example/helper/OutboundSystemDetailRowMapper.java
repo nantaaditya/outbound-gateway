@@ -6,9 +6,14 @@ import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse.AuthDetail;
+import com.nantaaditya.example.model.response.OutboundSystemDetailResponse.BulkheadDetail;
+import com.nantaaditya.example.model.response.OutboundSystemDetailResponse.CircuitBreakerDetail;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse.HostConfigDetail;
+import com.nantaaditya.example.model.response.OutboundSystemDetailResponse.RateLimiterDetail;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse.ResilienceDetail;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse.ResponseMapperDetail;
+import com.nantaaditya.example.model.response.OutboundSystemDetailResponse.RetryDetail;
+import com.nantaaditya.example.properties.LogProperties;
 import io.r2dbc.postgresql.codec.Json;
 import io.r2dbc.spi.Readable;
 import java.util.Collections;
@@ -16,7 +21,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -24,7 +28,7 @@ import org.springframework.stereotype.Component;
  * Maps a flat {@code Row} from {@code v_outbound_system_detail} to a nested
  * {@link OutboundSystemDetailResponse}.
  *
- * <p>Each optional config section (resilience, auth, response-mapper, host-config) is present
+ * <p>Each optional config section (resilience, authentication, response-mapper, host-config) is present
  * only when its LEFT JOIN produced a non-null id column (e.g. {@code r_id}).
  *
  * <p>Headers are deserialized from the raw column value: {@code byte[]} in H2 integration tests
@@ -35,13 +39,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class OutboundSystemDetailRowMapper {
 
-  // Same set used in OutboundServiceImpl; kept here so redaction lives next to deserialization.
-  private static final Set<String> SENSITIVE_HEADER_NAMES = Set.of(
-      "authorization", "proxy-authorization", "x-api-key", "x-auth-token",
-      "x-secret", "x-client-secret", "x-access-token"
-  );
-
   private final JsonHelper jsonHelper;
+  private final LogProperties logProperties;
 
   public OutboundSystemDetailResponse map(Readable row) {
     return new OutboundSystemDetailResponse(
@@ -66,20 +65,28 @@ public class OutboundSystemDetailRowMapper {
     if (row.get("r_id", Long.class) == null) return null;
     return new ResilienceDetail(
         getInt(row, "read_time_out_ms"),
-        getFloat(row, "cb_failure_rate_threshold"),
-        getFloat(row, "cb_slow_call_rate_threshold"),
-        getInt(row, "cb_slow_call_duration_ms"),
-        getInt(row, "cb_permitted_in_half_open"),
-        getInt(row, "cb_sliding_window_size"),
-        getInt(row, "cb_wait_duration_open_ms"),
-        getInt(row, "bh_max_concurrent_calls"),
-        getInt(row, "bh_max_wait_duration_ms"),
-        getInt(row, "rl_limit_for_period"),
-        getInt(row, "rl_limit_refresh_period_ms"),
-        getInt(row, "rl_timeout_duration_ms"),
-        getInt(row, "retry_max_attempts"),
-        getInt(row, "retry_wait_duration_ms"),
-        row.get("retry_on_status_codes", String.class),
+        new CircuitBreakerDetail(
+            getFloat(row, "cb_failure_rate_threshold"),
+            getFloat(row, "cb_slow_call_rate_threshold"),
+            getInt(row, "cb_slow_call_duration_ms"),
+            getInt(row, "cb_permitted_in_half_open"),
+            getInt(row, "cb_sliding_window_size"),
+            getInt(row, "cb_wait_duration_open_ms")
+        ),
+        new BulkheadDetail(
+            getInt(row, "bh_max_concurrent_calls"),
+            getInt(row, "bh_max_wait_duration_ms")
+        ),
+        new RateLimiterDetail(
+            getInt(row, "rl_limit_for_period"),
+            getInt(row, "rl_limit_refresh_period_ms"),
+            getInt(row, "rl_timeout_duration_ms")
+        ),
+        new RetryDetail(
+            getInt(row, "retry_max_attempts"),
+            getInt(row, "retry_wait_duration_ms"),
+            row.get("retry_on_status_codes", String.class)
+        ),
         getBool(row, "circuit_breaker_enabled"),
         getBool(row, "bulkhead_enabled"),
         getBool(row, "rate_limiter_enabled"),
@@ -153,8 +160,11 @@ public class OutboundSystemDetailRowMapper {
 
   private Map<String, Object> scrubSensitiveHeaders(Map<String, Object> headers) {
     Map<String, Object> scrubbed = new HashMap<>();
-    headers.forEach((k, v) -> scrubbed.put(k,
-        SENSITIVE_HEADER_NAMES.contains(k.toLowerCase()) ? "***" : v));
+    headers.forEach((key, v) ->
+        scrubbed.put(
+            key,
+            logProperties.getSensitiveFields().contains(key.toLowerCase()) ? "***" : v)
+    );
     return scrubbed;
   }
 

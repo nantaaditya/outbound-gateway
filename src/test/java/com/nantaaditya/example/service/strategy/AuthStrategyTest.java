@@ -45,7 +45,7 @@ class AuthStrategyTest {
   class NoneAuthStrategyTest {
 
     @Test
-    @DisplayName("supports NONE auth type")
+    @DisplayName("supports NONE authentication type")
     void supports_returnsNone() {
       assertThat(new NoneAuthStrategy().supports()).isEqualTo(AuthType.NONE);
     }
@@ -67,7 +67,7 @@ class AuthStrategyTest {
   class ApiKeyAuthStrategyTest {
 
     @Test
-    @DisplayName("supports API_KEY auth type")
+    @DisplayName("supports API_KEY authentication type")
     void supports_returnsApiKey() {
       assertThat(new ApiKeyAuthStrategy().supports()).isEqualTo(AuthType.API_KEY);
     }
@@ -97,7 +97,7 @@ class AuthStrategyTest {
   class BasicAuthStrategyTest {
 
     @Test
-    @DisplayName("supports BASIC auth type")
+    @DisplayName("supports BASIC authentication type")
     void supports_returnsBasic() {
       assertThat(new BasicAuthStrategy().supports()).isEqualTo(AuthType.BASIC);
     }
@@ -129,7 +129,7 @@ class AuthStrategyTest {
   class BearerStaticAuthStrategyTest {
 
     @Test
-    @DisplayName("supports BEARER_STATIC auth type")
+    @DisplayName("supports BEARER_STATIC authentication type")
     void supports_returnsBearerStatic() {
       assertThat(new BearerStaticAuthStrategy().supports()).isEqualTo(AuthType.BEARER_STATIC);
     }
@@ -160,7 +160,7 @@ class AuthStrategyTest {
   class HmacSha256AuthStrategyTest {
 
     @Test
-    @DisplayName("supports HMAC auth type")
+    @DisplayName("supports HMAC authentication type")
     void supports_returnsHmac() {
       assertThat(new HmacSha256AuthStrategy().supports()).isEqualTo(AuthType.HMAC);
     }
@@ -205,7 +205,7 @@ class AuthStrategyTest {
     }
 
     @Test
-    @DisplayName("supports RSA auth type")
+    @DisplayName("supports RSA authentication type")
     void supports_returnsRsa() {
       assertThat(strategy.supports()).isEqualTo(AuthType.RSA);
     }

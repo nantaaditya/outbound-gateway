@@ -36,7 +36,7 @@ public class BearerStaticAuthStrategy implements AuthStrategy {
     return Mono.fromCallable(() -> {
       String token = encryption.decryptToString(config.getClientSecret());
       String prefix = config.getTokenPrefix();
-      String value = (prefix != null && !prefix.isBlank()) ? prefix + " " + token : token;
+      String value = config.isPrefixNotBlank() ? prefix + " " + token : token;
       return new AuthCredential(
           config.getTokenKeyName(),
           value,

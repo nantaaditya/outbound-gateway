@@ -31,7 +31,7 @@ public record LogProperties(
 
     return StringHelper.toCollection(sensitiveField, ",", HashSet.class)
         .stream()
-        .anyMatch(field -> field.equals(key));
+        .anyMatch(field -> field.equalsIgnoreCase(key));
   }
 
   public boolean isIgnoredTraceLogPath(String path) {

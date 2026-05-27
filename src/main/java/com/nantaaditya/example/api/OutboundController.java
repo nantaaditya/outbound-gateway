@@ -113,7 +113,7 @@ public class OutboundController {
   }
 
   @PostMapping(
-      value = "/{code}/auth",
+      value = "/{code}/authentication",
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )

@@ -73,8 +73,7 @@ public class OutboundServiceImpl implements OutboundService {
   public Mono<PageResponse<OutboundSystemDetailResponse>> list(int page, int size) {
     int effectiveSize = size > 0 ? size : DEFAULT_PAGE_SIZE;
     Mono<Long> countMono = systemDetailQuery.count();
-    Mono<List<OutboundSystemDetailResponse>> itemsMono =
-        systemDetailQuery.findAllPaged(page, effectiveSize).collectList();
+    Mono<List<OutboundSystemDetailResponse>> itemsMono = systemDetailQuery.findAllPaged(page, effectiveSize).collectList();
     return Mono.zip(countMono, itemsMono)
         .map(t -> {
           long total = t.getT1();
@@ -175,7 +174,7 @@ public class OutboundServiceImpl implements OutboundService {
                         .doOnSuccess(s -> {
                           authStrategyFactory.getStrategy(s.getAuthType()).evictTokenState(s.getId());
                           gatewayService.evictContext(code);
-                          log.info(AppLogMessage.message("#OutboundService - upserted auth config code={}", code));
+                          log.info(AppLogMessage.message("#OutboundService - upserted authentication config code={}", code));
                         })
                 )
         )

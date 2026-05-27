@@ -19,7 +19,7 @@ import reactor.core.scheduler.Schedulers;
  * Base64-encoded into the standard {@code Authorization: Basic <encoded>} header.
  *
  * <p>The inject location is always {@link com.nantaaditya.example.model.constant.TokenInjectLocation#HEADER}
- * — Basic auth is defined only as a header mechanism.
+ * — Basic authentication is defined only as a header mechanism.
  */
 @Component
 public class BasicAuthStrategy implements AuthStrategy {

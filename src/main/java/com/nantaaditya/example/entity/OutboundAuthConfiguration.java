@@ -1,8 +1,10 @@
 package com.nantaaditya.example.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.request.admin.UpsertAuthRequest;
+import java.beans.Transient;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -64,5 +66,11 @@ public class OutboundAuthConfiguration extends BaseEntity<Long> {
         .currentToken(this.currentToken)
         .tokenExpiryTime(this.tokenExpiryTime)
         .build();
+  }
+
+  @Transient
+  @JsonIgnore
+  public boolean isPrefixNotBlank() {
+    return tokenPrefix != null && !tokenPrefix.isBlank();
   }
 }

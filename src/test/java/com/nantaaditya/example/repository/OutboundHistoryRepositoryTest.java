@@ -39,7 +39,7 @@ class OutboundHistoryRepositoryTest extends BaseIntegrationTest {
     StepVerifier.create(
         outboundHistoryRepository.save(history)
             .then(outboundHistoryRepository
-                .findByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfter(
+                .findFirstByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfterOrderByCreatedDateDesc(
                     1L, "idem-key-001", LocalDateTime.now().minusHours(1)))
     )
         .assertNext(found -> {
@@ -55,7 +55,7 @@ class OutboundHistoryRepositoryTest extends BaseIntegrationTest {
   @DisplayName("findByKey returns empty when key not found")
   void findByKey_unknownKey_returnsEmpty() {
     StepVerifier.create(
-        outboundHistoryRepository.findByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfter(
+        outboundHistoryRepository.findFirstByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfterOrderByCreatedDateDesc(
             1L, "no-such-key", LocalDateTime.now().minusHours(1))
     )
         .verifyComplete();
@@ -76,7 +76,7 @@ class OutboundHistoryRepositoryTest extends BaseIntegrationTest {
     StepVerifier.create(
         outboundHistoryRepository.save(history)
             .then(outboundHistoryRepository
-                .findByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfter(
+                .findFirstByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfterOrderByCreatedDateDesc(
                     2L, "expired-key", LocalDateTime.now().plusHours(1)))
     )
         .verifyComplete();

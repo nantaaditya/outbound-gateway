@@ -7,6 +7,7 @@ import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.service.AuthStrategy;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Optional;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
@@ -39,7 +40,7 @@ public class HmacSha256AuthStrategy implements AuthStrategy {
       OutboundAuthConfiguration config, EncryptionHelper encryption, String requestBody) {
     return Mono.fromCallable(() -> {
       String secret = encryption.decryptToString(config.getClientSecret());
-      String body = requestBody != null ? requestBody : "";
+      String body = Optional.ofNullable(requestBody).orElse("");
       String signature = computeHmac(secret, body);
       return new AuthCredential(
           config.getTokenKeyName(),

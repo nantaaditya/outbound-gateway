@@ -25,28 +25,18 @@ public record OutboundSystemDetailResponse(
     int idempotencyTtlHours,
     ResilienceDetail resilience,
     List<Map<String, Object>> headers,
-    AuthDetail auth,
+    AuthDetail authentication,
     ResponseMapperDetail responseMapper,
-    HostConfigDetail hostConfig
+    HostConfigDetail hostConfiguration
 ) {
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record ResilienceDetail(
       int readTimeOutMs,
-      float cbFailureRateThreshold,
-      float cbSlowCallRateThreshold,
-      int cbSlowCallDurationMs,
-      int cbPermittedInHalfOpen,
-      int cbSlidingWindowSize,
-      int cbWaitDurationOpenMs,
-      int bhMaxConcurrentCalls,
-      int bhMaxWaitDurationMs,
-      int rlLimitForPeriod,
-      int rlLimitRefreshPeriodMs,
-      int rlTimeoutDurationMs,
-      int retryMaxAttempts,
-      int retryWaitDurationMs,
-      String retryOnStatusCodes,
+      CircuitBreakerDetail circuitBreaker,
+      BulkheadDetail bulkhead,
+      RateLimiterDetail rateLimiter,
+      RetryDetail retry,
       boolean circuitBreakerEnabled,
       boolean bulkheadEnabled,
       boolean rateLimiterEnabled,
@@ -56,20 +46,28 @@ public record OutboundSystemDetailResponse(
       if (cfg == null) return null;
       return new ResilienceDetail(
           cfg.getReadTimeOutMs(),
-          cfg.getCbFailureRateThreshold(),
-          cfg.getCbSlowCallRateThreshold(),
-          cfg.getCbSlowCallDurationMs(),
-          cfg.getCbPermittedInHalfOpen(),
-          cfg.getCbSlidingWindowSize(),
-          cfg.getCbWaitDurationOpenMs(),
-          cfg.getBhMaxConcurrentCalls(),
-          cfg.getBhMaxWaitDurationMs(),
-          cfg.getRlLimitForPeriod(),
-          cfg.getRlLimitRefreshPeriodMs(),
-          cfg.getRlTimeoutDurationMs(),
-          cfg.getRetryMaxAttempts(),
-          cfg.getRetryWaitDurationMs(),
-          cfg.getRetryOnStatusCodes(),
+          new CircuitBreakerDetail(
+              cfg.getCbFailureRateThreshold(),
+              cfg.getCbSlowCallRateThreshold(),
+              cfg.getCbSlowCallDurationMs(),
+              cfg.getCbPermittedInHalfOpen(),
+              cfg.getCbSlidingWindowSize(),
+              cfg.getCbWaitDurationOpenMs()
+          ),
+          new BulkheadDetail(
+              cfg.getBhMaxConcurrentCalls(),
+              cfg.getBhMaxWaitDurationMs()
+          ),
+          new RateLimiterDetail(
+              cfg.getRlLimitForPeriod(),
+              cfg.getRlLimitRefreshPeriodMs(),
+              cfg.getRlTimeoutDurationMs()
+          ),
+          new RetryDetail(
+              cfg.getRetryMaxAttempts(),
+              cfg.getRetryWaitDurationMs(),
+              cfg.getRetryOnStatusCodes()
+          ),
           cfg.isCircuitBreakerEnabled(),
           cfg.isBulkheadEnabled(),
           cfg.isRateLimiterEnabled(),
@@ -77,6 +75,36 @@ public record OutboundSystemDetailResponse(
       );
     }
   }
+
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record CircuitBreakerDetail(
+      float failureRateThreshold,
+      float slowCallRateThreshold,
+      int slowCallDurationMs,
+      int permittedInHalfOpen,
+      int slidingWindowSize,
+      int waitDurationOpenMs
+  ) {}
+
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record BulkheadDetail(
+      int maxConcurrentCalls,
+      int maxWaitDurationMs
+  ) {}
+
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record RateLimiterDetail(
+      int limitForPeriod,
+      int limitRefreshPeriodMs,
+      int timeoutDurationMs
+  ) {}
+
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record RetryDetail(
+      int retryMaxAttempts,
+      int retryWaitDurationMs,
+      String retryOnStatusCodes
+  ) {}
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record AuthDetail(

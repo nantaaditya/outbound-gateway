@@ -7,9 +7,11 @@ import com.nantaaditya.example.model.response.OutboundMetricsResponse;
 import com.nantaaditya.example.model.response.OutboundMetricsResponse.StatusBreakdown;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.OutboundMetricsService;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +36,7 @@ public class OutboundMetricsServiceImpl implements OutboundMetricsService {
   private static final String CALCULATE_PERCENTILE_QUERY = """
       SELECT
         COUNT(*)                                                                                        AS total_calls,
-        COALESCE(AVG(CAST(duration_ms AS DOUBLE PRECISION)), 0)                                        AS avg_duration_ms,
+        COALESCE(AVG(CAST(duration_ms AS DOUBLE PRECISION)), 0)                                         AS avg_duration_ms,
         COALESCE(percentile_cont(0.90) WITHIN GROUP (ORDER BY duration_ms), 0)                          AS p90_duration_ms,
         COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms), 0)                          AS p95_duration_ms,
         COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms), 0)                          AS p99_duration_ms,
@@ -108,10 +110,10 @@ public class OutboundMetricsServiceImpl implements OutboundMetricsService {
 
   private long resolveIdempotencyHits(String code) {
     try {
-      var counter = meterRegistry.find("api.public.idempotency")
+      Counter counter = meterRegistry.find("api.public.idempotency")
           .tag("feature", code)
           .counter();
-      return counter != null ? (long) counter.count() : 0L;
+      return Optional.ofNullable(counter).map(c -> (long) c.count()).orElse(0L);
     } catch (Exception e) {
       log.warn(AppLogMessage.message("#OutboundMetrics - failed to resolve idempotency hits code={}", code).error(e));
       return 0L;
@@ -123,11 +125,11 @@ public class OutboundMetricsServiceImpl implements OutboundMetricsService {
         .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }
 
-  private <T> T extractNumber(Object value, Function<Number, T> fn, T zero) {
+  private <T> T extractNumber(Object value, Function<Number, T> function, T zero) {
     if (value == null) return zero;
-    if (value instanceof Number n) return fn.apply(n);
+    if (value instanceof Number n) return function.apply(n);
     try {
-      return fn.apply(Double.parseDouble(value.toString()));
+      return function.apply(Double.parseDouble(value.toString()));
     } catch (Exception ignored) {
       return zero;
     }

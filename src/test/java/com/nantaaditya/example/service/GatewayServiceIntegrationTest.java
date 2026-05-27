@@ -180,7 +180,7 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("execute succeeds as NONE auth when no auth config row exists")
+  @DisplayName("execute succeeds as NONE authentication when no authentication config row exists")
   void execute_systemWithoutAuthConfig_succeedsAsNone() {
     wireMock.stubFor(post(urlEqualTo("/v1/ping"))
         .willReturn(aResponse()
@@ -189,7 +189,7 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
             .withBody("{\"pong\":true}")));
 
     String baseUrl = "http://localhost:" + wireMock.port();
-    OutboundSystem system = saveSystem("no-auth-gw", baseUrl, "/v1/ping");
+    OutboundSystem system = saveSystem("no-authentication-gw", baseUrl, "/v1/ping");
     saveHostConfig(baseUrl);
     saveResilience(system.getId());
     // intentionally no saveAuth call
@@ -197,7 +197,7 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
     GatewayRequest request = new GatewayRequest(java.util.Map.of(), java.util.Map.of());
 
     StepVerifier.create(
-        gatewayService.execute("no-auth-gw", "caller-svc", null, request))
+        gatewayService.execute("no-authentication-gw", "caller-svc", null, request))
         .assertNext(response -> {
           assertThat(response.status()).isEqualTo(200);
           assertThat(response.fromCache()).isFalse();

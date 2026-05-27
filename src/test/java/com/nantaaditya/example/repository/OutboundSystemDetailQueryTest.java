@@ -73,10 +73,10 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
           assertThat(detail.code()).isEqualTo("detail-gw");
           assertThat(detail.resilience()).isNotNull();
           assertThat(detail.resilience().readTimeOutMs()).isEqualTo(5000);
-          assertThat(detail.auth()).isNotNull();
-          assertThat(detail.auth().authType()).isEqualTo(AuthType.API_KEY);
-          assertThat(detail.hostConfig()).isNotNull();
-          assertThat(detail.hostConfig().maxConnections()).isEqualTo(50);
+          assertThat(detail.authentication()).isNotNull();
+          assertThat(detail.authentication().authType()).isEqualTo(AuthType.API_KEY);
+          assertThat(detail.hostConfiguration()).isNotNull();
+          assertThat(detail.hostConfiguration().maxConnections()).isEqualTo(50);
         })
         .verifyComplete();
   }
@@ -108,9 +108,9 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
         .assertNext(detail -> {
           assertThat(detail.code()).isEqualTo("by-code-gw");
           assertThat(detail.resilience()).isNotNull();
-          assertThat(detail.auth()).isNotNull();
-          assertThat(detail.auth().tokenKeyName()).isEqualTo("X-API-Key");
-          assertThat(detail.hostConfig()).isNull();
+          assertThat(detail.authentication()).isNotNull();
+          assertThat(detail.authentication().tokenKeyName()).isEqualTo("X-API-Key");
+          assertThat(detail.hostConfiguration()).isNull();
         })
         .verifyComplete();
   }
@@ -124,9 +124,9 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
         .assertNext(detail -> {
           assertThat(detail.code()).isEqualTo("bare-gw");
           assertThat(detail.resilience()).isNull();
-          assertThat(detail.auth()).isNull();
+          assertThat(detail.authentication()).isNull();
           assertThat(detail.responseMapper()).isNull();
-          assertThat(detail.hostConfig()).isNull();
+          assertThat(detail.hostConfiguration()).isNull();
           assertThat(detail.headers()).isEmpty();
         })
         .verifyComplete();
