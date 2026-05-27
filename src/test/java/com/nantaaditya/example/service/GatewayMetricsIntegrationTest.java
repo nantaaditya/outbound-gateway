@@ -21,8 +21,10 @@ import com.nantaaditya.example.repository.OutboundResilienceConfigurationReposit
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -122,7 +124,7 @@ class GatewayMetricsIntegrationTest extends BaseIntegrationTest {
 
   @Test
   @DisplayName("second call with same idempotency key increments api.public.idempotency timer")
-  void execute_idempotencyHit_incrementsIdempotencyHitsCounter() throws InterruptedException {
+  void execute_idempotencyHit_incrementsIdempotencyHitsCounter() {
     wireMock.stubFor(post(urlEqualTo("/v1/metrics-idem"))
         .willReturn(aResponse().withStatus(200).withBody("{\"ok\":true}")));
 
@@ -136,7 +138,10 @@ class GatewayMetricsIntegrationTest extends BaseIntegrationTest {
     gatewayService.execute(code, "svc", idemKey, request).block();
 
     // Allow async history save to persist before second call queries it
-    Thread.sleep(300);
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(3))
+        .pollInterval(Duration.ofMillis(50))
+        .until(() -> historyRepository.count().block() >= 1);
 
     // Second call — should return from cache
     gatewayService.execute(code, "svc", idemKey, request).block();

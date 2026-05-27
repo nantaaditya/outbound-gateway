@@ -41,7 +41,7 @@ public class BaseIntegrationTest {
   // Singleton: started once when this class is loaded, reused by all test classes via Spring context cache.
   // @Container/@Testcontainers are intentionally omitted — they stop/restart the container between classes,
   // breaking the Spring context cache (each restart gets a different port).
-  static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+  private static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
   static {
     postgres.start();
