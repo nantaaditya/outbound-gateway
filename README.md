@@ -1674,7 +1674,7 @@ Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply mi
 - Java 21+
 - PostgreSQL 14+
 - Maven 3.9+
-- **Docker Desktop** (or any Docker-compatible daemon) — required to run integration tests
+- **Docker Engine ≥26** (Docker Desktop ≥4.29, or any compatible daemon) — required to run integration tests; API version 1.52 is used by Testcontainers and is not available on Docker 24/25
 
 ### Environment Variables
 
