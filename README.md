@@ -58,12 +58,52 @@ package "Internal Services" {
 }
 
 package "Outbound Gateway" {
+  package "API Layer" {
+    [AppFilter]
+    [GatewayController]
+    [GatewayHistoryController]
+    [AdminOutboundController]
+    [OutboundHostController]
+  }
+
+  package "Service Layer" {
+    [GatewayServiceImpl]
+    [GatewayHistoryServiceImpl]
+    [AdminOutboundServiceImpl]
+    [OutboundHostServiceImpl]
+  }
+
+  package "Infrastructure" {
+    [AuthStrategyFactory]
+    [GatewayWebClientBuilder]
+    [ResilienceRegistryService]
+    [JsltResponseMapper]
+    [OutboundMetricsRecorder]
+    [OutboundSystemDetailQuery]
+    [EncryptionHelper]
+    [ObservationHelper]
+  }
+
   [AppFilter] --> [GatewayController]
+  [AppFilter] --> [GatewayHistoryController]
+  [AppFilter] --> [AdminOutboundController]
+  [AppFilter] --> [OutboundHostController]
+
   [GatewayController] --> [GatewayServiceImpl]
+  [GatewayHistoryController] --> [GatewayHistoryServiceImpl]
+  [AdminOutboundController] --> [AdminOutboundServiceImpl]
+  [OutboundHostController] --> [OutboundHostServiceImpl]
+
   [GatewayServiceImpl] --> [AuthStrategyFactory]
   [GatewayServiceImpl] --> [GatewayWebClientBuilder]
   [GatewayServiceImpl] --> [ResilienceRegistryService]
   [GatewayServiceImpl] --> [JsltResponseMapper]
+  [GatewayServiceImpl] --> [OutboundMetricsRecorder]
+  [AdminOutboundServiceImpl] --> [OutboundSystemDetailQuery]
+  [AdminOutboundServiceImpl] --> [EncryptionHelper]
+  [OutboundHostServiceImpl] --> [EncryptionHelper]
+  [AppFilter] --> [ObservationHelper]
+
   [GatewayWebClientBuilder] --> [WebClient Pool per Host]
 }
 
@@ -75,25 +115,32 @@ database "PostgreSQL" {
   [outbound_response_mapper_configuration]
   [outbound_host_configurations]
   [outbound_histories]
+  [event_logs]
 }
 
-[Payment Service] --> [AppFilter] : POST /api/gateway/execute/{code}
+[Payment Service] --> [AppFilter] : POST /gateway/execute/{code}
 [Notification Service] --> [AppFilter]
 [Order Service] --> [AppFilter]
 
 [GatewayServiceImpl] --> [PostgreSQL] : load config (cached)
 [GatewayServiceImpl] ->> [PostgreSQL] : save history (fire-and-forget)
+[OutboundSystemDetailQuery] --> [PostgreSQL] : v_outbound_system_detail view
+[AppFilter] ->> [PostgreSQL] : save event_log (fire-and-forget)
 
 [WebClient Pool per Host] --> [External API A] : HTTPS
 [WebClient Pool per Host] --> [External API B] : HTTPS
 @enduml
 ```
 
-### Execution Flow
+### Execution Flow — Happy Path
 
 ```plantuml
 @startuml
+skinparam sequenceMessageAlign center
+
 actor Caller
+participant AppFilter
+participant GatewayController
 participant GatewayService
 participant AuthStrategy
 participant ResiliencePipeline
@@ -101,32 +148,94 @@ participant WebClient
 participant ExternalAPI
 database OutboundHistories
 
-Caller -> GatewayService : execute(code, callerService, idempotencyKey, request)
-GatewayService -> GatewayService : loadContext(code)\n[cache hit → return; miss → load from DB]
+Caller -> AppFilter : POST /gateway/execute/{code}\n[X-Client-Id, X-Request-Id, X-Request-Time]
+AppFilter -> AppFilter : cache request body\nopen Micrometer observation
+AppFilter -> GatewayController : forward request
+
+GatewayController -> GatewayService : execute(code, callerService, idempotencyKey, request)
+GatewayService -> GatewayService : loadContext(code)\n[contextCache hit → return immediately\n miss → load from DB → put in cache]
 
 alt idempotencyKey present
-  GatewayService -> OutboundHistories : find by (system_id, key, created_date > cutoff)
-  alt found in history
-    GatewayService --> Caller : GatewayResponse (fromCache=true)
-  end
+  GatewayService -> OutboundHistories : findFirst by (system_id, key, created_date > cutoff)
+  OutboundHistories --> GatewayService : empty (not found within TTL)
 end
 
 GatewayService -> AuthStrategy : authenticate(config, encryptionHelper, body)
-AuthStrategy --> GatewayService : AuthCredential
+AuthStrategy --> GatewayService : AuthCredential (headers / query params injected)
 
-GatewayService -> ResiliencePipeline : apply enabled operators\n(RateLimiter → Bulkhead → CB → Retry)
-ResiliencePipeline -> WebClient : HTTP request + headers + auth + query params
-WebClient -> ExternalAPI : HTTPS
-ExternalAPI --> WebClient : response
-WebClient --> ResiliencePipeline : GatewayResponse
+GatewayService -> ResiliencePipeline : buildExecution wrapped with\nenabled operators (RL -> BH -> CB -> Retry)
+ResiliencePipeline -> WebClient : HTTP request\n+ static headers + auth + query params
+WebClient -> ExternalAPI : HTTPS call
+ExternalAPI --> WebClient : HTTP 2xx response + body
+WebClient --> ResiliencePipeline : GatewayResponse(status, headers, body)
+ResiliencePipeline --> GatewayService : GatewayResponse
 
-alt resilience or infra exception
-  ResiliencePipeline --> GatewayService : onErrorResume → internalReject(503/429/502/504)
+GatewayService -> GatewayService : applyMapping\n(JSLT transform or pass-through)
+GatewayService ->> OutboundHistories : saveHistory (fire-and-forget)
+GatewayService --> GatewayController : GatewayResponse(fromCache=false)
+
+GatewayController --> AppFilter : HTTP 200 + GatewayExecuteResponse body
+AppFilter -> AppFilter : stop observation\nsave event_log (fire-and-forget)
+AppFilter --> Caller : HTTP 200
+@enduml
+```
+
+### Execution Flow — Error Path (Resilience Rejection)
+
+```plantuml
+@startuml
+skinparam sequenceMessageAlign center
+
+actor Caller
+participant AppFilter
+participant GatewayController
+participant GatewayService
+participant ResiliencePipeline
+participant WebClient
+participant ExternalAPI
+database OutboundHistories
+
+Caller -> AppFilter : POST /gateway/execute/{code}
+AppFilter -> GatewayController : forward request
+GatewayController -> GatewayService : execute(code, ...)
+
+GatewayService -> GatewayService : loadContext -> auth -> headers resolved
+
+GatewayService -> ResiliencePipeline : buildExecution wrapped with enabled operators
+
+alt RateLimiter exceeded
+  ResiliencePipeline --> GatewayService : RequestNotPermittedException
+  GatewayService -> GatewayService : toInternalRejectResponse\n-> GatewayResponse(429, "rate limit exceeded")
 end
 
-GatewayService -> GatewayService : applyMapping (JSLT or pass-through)
-GatewayService ->> OutboundHistories : saveHistory (fire-and-forget)
-GatewayService --> Caller : GatewayResponse
+alt Bulkhead full
+  ResiliencePipeline --> GatewayService : BulkheadFullException
+  GatewayService -> GatewayService : toInternalRejectResponse\n-> GatewayResponse(503, "bulkhead full")
+end
+
+alt CircuitBreaker OPEN
+  ResiliencePipeline --> GatewayService : CallNotPermittedException
+  GatewayService -> GatewayService : toInternalRejectResponse\n-> GatewayResponse(503, "circuit open")
+end
+
+alt Retry exhausted
+  ResiliencePipeline -> WebClient : HTTP request (attempt N)
+  WebClient -> ExternalAPI : HTTPS call
+  ExternalAPI --> WebClient : HTTP 5xx
+  ResiliencePipeline --> GatewayService : MaxRetriesExceededException
+  GatewayService -> GatewayService : toInternalRejectResponse\n-> GatewayResponse(502, "max retries exceeded")\nnote: 502 saved to history, not real upstream status
+end
+
+alt Read timeout
+  ResiliencePipeline -> WebClient : HTTP request
+  note right : no response within readTimeOutMs
+  GatewayService -> GatewayService : toInternalRejectResponse\n-> GatewayResponse(504, "upstream timed out")
+end
+
+GatewayService ->> OutboundHistories : saveHistory (fire-and-forget)\n[rejection reason in response_payload]
+GatewayService --> GatewayController : GatewayResponse(503/429/502/504)
+GatewayController --> AppFilter : HTTP 200 (envelope; real status in body)
+AppFilter --> Caller : HTTP 200
 @enduml
 ```
 
@@ -137,10 +246,10 @@ GatewayService --> Caller : GatewayResponse
 left to right direction
 
 rectangle "HTTP call (innermost)" as exec
-rectangle "RateLimiter" as rl
-rectangle "Bulkhead" as bh
-rectangle "CircuitBreaker" as cb
-rectangle "Retry (outermost)" as retry
+rectangle "RateLimiter\n[rate_limiter_enabled=true]" as rl
+rectangle "Bulkhead\n[bulkhead_enabled=true]" as bh
+rectangle "CircuitBreaker\n[circuit_breaker_enabled=true]" as cb
+rectangle "Retry (outermost)\n[retry_enabled=true]" as retry
 
 retry --> cb : wraps
 cb --> bh : wraps
@@ -148,6 +257,8 @@ bh --> rl : wraps
 rl --> exec : wraps
 
 note bottom of retry
+  Each mechanism is opt-in per outbound system.
+  Mechanisms with enabled=false are skipped entirely.
   Outermost = re-submits the full pipeline on each attempt.
   CB and Bulkhead are re-evaluated per retry attempt.
   Wrong order (Retry inside CB) defeats the circuit breaker.
@@ -208,13 +319,17 @@ webClientCache (one pool per host)
 
 ## 4. ERD
 
-> Render with [plantuml.com](https://www.plantuml.com/plantuml/uml/), the IntelliJ **PlantUML Integration** plugin, or the VS Code **PlantUML** extension.
-
 ```plantuml
 @startuml Outbound Gateway ERD
 
 skinparam linetype ortho
 hide empty methods
+
+note as auditNote
+  All tables (except outbound_histories and event_logs) carry audit columns:
+  created_by, updated_by, created_date, updated_date, version
+  These are omitted from each entity below for brevity.
+end note
 
 entity "outbound_systems" as sys {
   * id : bigint <<PK>>
@@ -227,11 +342,6 @@ entity "outbound_systems" as sys {
   api_path : varchar
   is_active : boolean
   idempotency_ttl_hours : int
-  created_by : varchar
-  created_date : timestamp
-  updated_by : varchar
-  updated_date : timestamp
-  version : bigint
 }
 
 entity "outbound_host_configurations" as host {
@@ -246,8 +356,8 @@ entity "outbound_host_configurations" as host {
   is_use_proxy : boolean
   proxy_host : varchar
   proxy_port : int
-  proxy_username : bytea
-  proxy_password : bytea
+  proxy_username : bytea <<encrypted>>
+  proxy_password : bytea <<encrypted>>
 }
 
 entity "outbound_auth_configurations" as auth {
@@ -255,9 +365,9 @@ entity "outbound_auth_configurations" as auth {
   * outbound_system_id : bigint <<FK>>
   --
   auth_type : varchar
-  api_key : bytea
-  client_id : bytea
-  client_secret : bytea
+  api_key : bytea <<encrypted>>
+  client_id : bytea <<encrypted>>
+  client_secret : bytea <<encrypted>>
   is_auto_refresh : boolean
   token_method : varchar
   token_url : varchar
@@ -300,7 +410,7 @@ entity "outbound_header_configurations" as hdr {
   * id : bigint <<PK>>
   * outbound_system_id : bigint <<FK>>
   --
-  headers : bytea
+  headers : jsonb
 }
 
 entity "outbound_response_mapper_configuration" as mapper {
@@ -309,7 +419,7 @@ entity "outbound_response_mapper_configuration" as mapper {
   --
   converter_type : varchar
   mapping_script : text
-  mapping_status : bytea
+  mapping_status : jsonb
   is_active : boolean
 }
 
@@ -322,12 +432,28 @@ entity "outbound_histories" as hist {
   request_id : varchar
   request_method : varchar
   request_url : varchar
+  request_headers : jsonb
   request_payload : text
   response_status : int
+  response_headers : jsonb
   response_payload : text
   duration_ms : int
   converted_status : int
   converted_response : text
+  retry_count : int
+  created_date : timestamp
+}
+
+entity "event_logs" as evlog {
+  * id : bigint <<PK>>
+  --
+  client_id : varchar
+  request_id : varchar
+  method : varchar
+  path : varchar
+  payload : text
+  additional_data : text
+  response_code : varchar
   created_date : timestamp
 }
 
@@ -340,6 +466,8 @@ sys ||--o{  hist  : "outbound_system_id"
 
 @enduml
 ```
+
+> Render with [plantuml.com](https://www.plantuml.com/plantuml/uml/), the IntelliJ **PlantUML Integration** plugin, or the VS Code **PlantUML** extension. GitHub does not render PlantUML natively.
 
 **Relationship notes:**
 
@@ -637,6 +765,7 @@ Execute an outbound HTTP call through the configured outbound system.
 |---|---|---|
 | `X-Caller-Service` | No | Calling service name — saved to history |
 | `X-Idempotency-Key` | No | Checks history first; returns cached result if within TTL. Ignored when `idempotencyTtlHours = 0` (idempotency disabled for that system). |
+| `X-Request-Id` | No | Correlation ID handled by `AppFilter` — propagated to `outbound_histories.request_id` automatically |
 
 **Request body:**
 ```json
@@ -713,10 +842,13 @@ Paginated outbound call history with optional filters.
         "outboundSystemId": 3,
         "idempotencyKey": "order-123",
         "callerService": "payment-service",
+        "requestId": "req-abc-123",
         "requestMethod": "POST",
         "requestUrl": "https://api.xendit.co/v2/charges",
+        "requestHeaders": { "Authorization": ["Bearer token"] },
         "requestPayload": { "amount": 100000 },
         "responseStatus": 200,
+        "responseHeaders": { "Content-Type": ["application/json"] },
         "responsePayload": { "id": "charge-abc" },
         "durationMs": 342,
         "convertedStatus": 200,
@@ -750,10 +882,13 @@ Look up a single history record by idempotency key. `code` is **required and mus
     "outboundSystemId": 3,
     "idempotencyKey": "order-123",
     "callerService": "payment-service",
+    "requestId": "req-abc-123",
     "requestMethod": "POST",
     "requestUrl": "https://api.xendit.co/v2/charges",
+    "requestHeaders": { "Authorization": ["Bearer token"] },
     "requestPayload": { "amount": 100000 },
     "responseStatus": 200,
+    "responseHeaders": { "Content-Type": ["application/json"] },
     "responsePayload": { "id": "charge-abc" },
     "durationMs": 342,
     "convertedStatus": 200,
