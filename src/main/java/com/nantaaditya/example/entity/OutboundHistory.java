@@ -1,9 +1,8 @@
 package com.nantaaditya.example.entity;
 
-import com.nantaaditya.example.helper.JsonHelper;
-import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
 import java.time.LocalDateTime;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,7 +17,6 @@ import org.springframework.data.relational.core.mapping.Table;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@SuppressWarnings("java:S1068")
 public class OutboundHistory implements Persistable<Long> {
 
   @Id
@@ -29,10 +27,10 @@ public class OutboundHistory implements Persistable<Long> {
   private String requestId;
   private String requestMethod;
   private String requestUrl;
-  private String requestHeaders;
+  private Map<String, Object> requestHeaders;
   private String requestPayload;
   private Integer responseStatus;
-  private String responseHeaders;
+  private Map<String, Object> responseHeaders;
   private String responsePayload;
   private Integer durationMs;
   private Integer convertedStatus;
@@ -55,16 +53,23 @@ public class OutboundHistory implements Persistable<Long> {
   }
 
   public static OutboundHistory create(OutboundSystem system, String callerService,
-      String idempotencyKey, GatewayRequest request, GatewayResponse response, long durationMs,
-      int retryCount, JsonHelper jsonHelper) {
+      String idempotencyKey, String requestId, String requestPayload,
+      Map<String, Object> requestHeaders, GatewayResponse response,
+      long durationMs, int retryCount) {
+    @SuppressWarnings("unchecked")
+    Map<String, Object> responseHeaders = response.headers().isEmpty() ? null
+        : (Map<String, Object>) (Map<?, ?>) response.headers();
     return OutboundHistory.builder()
         .outboundSystemId(system.getId())
         .idempotencyKey(idempotencyKey)
         .callerService(callerService)
+        .requestId(requestId)
         .requestMethod(system.getHttpMethod())
         .requestUrl(system.getBaseUrl() + system.getApiPath())
-        .requestPayload(request.bodyAsString(jsonHelper))
+        .requestHeaders(requestHeaders)
+        .requestPayload(requestPayload)
         .responseStatus(response.status())
+        .responseHeaders(responseHeaders)
         .responsePayload(response.body())
         .durationMs((int) Math.min(durationMs, Integer.MAX_VALUE))
         .convertedStatus(response.convertedStatus())

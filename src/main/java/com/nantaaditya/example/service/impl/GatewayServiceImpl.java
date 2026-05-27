@@ -15,6 +15,7 @@ import com.nantaaditya.example.helper.OutboundMetricsRecorder;
 import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
+import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
@@ -344,19 +345,36 @@ public class GatewayServiceImpl implements GatewayService {
   private Mono<Void> saveHistory(
       OutboundSystemContext context, String callerService, String idempotencyKey,
       GatewayRequest request, GatewayResponse response, long durationMs, int retryCount) {
-    OutboundSystem system = context.getSystem();
-    OutboundHistory history = OutboundHistory.create(system, callerService, idempotencyKey, request,
-        response, durationMs, retryCount, jsonHelper);
-    if (history.hasIdempotencyKey()) {
-      return historyRepository.insertHistory(
-          history.getOutboundSystemId(), history.getIdempotencyKey(),
-          history.getCallerService(), history.getRequestMethod(), history.getRequestUrl(),
-          history.getRequestPayload(), history.getResponseStatus(), history.getResponsePayload(),
-          history.getDurationMs(), history.getConvertedStatus(), history.getConvertedResponse(),
-          history.getRetryCount()
-      ).then();
+    return Mono.deferContextual(ctx -> {
+      String requestId = ctx.<ContextDTO>getOrEmpty("context")
+          .map(ContextDTO::getRequestId)
+          .orElse(null);
+      String requestPayload = request.bodyAsString(jsonHelper);
+      Map<String, Object> requestHeaders = resolveRequestHeaders(context);
+      OutboundHistory history = OutboundHistory.create(context.getSystem(), callerService,
+          idempotencyKey, requestId, requestPayload, requestHeaders, response, durationMs, retryCount);
+      if (history.hasIdempotencyKey()) {
+        return historyRepository.insertHistory(history).then();
+      }
+      return historyRepository.save(history).then();
+    });
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> resolveRequestHeaders(OutboundSystemContext context) {
+    List<com.nantaaditya.example.entity.OutboundHeaderConfiguration> headerConfigs = context.getHeaders();
+    if (headerConfigs == null || headerConfigs.isEmpty()) {
+      return null;
     }
-    return historyRepository.save(history).then();
+    Map<String, List<String>> merged = headerConfigs.stream()
+        .map(config -> config.getHeaders(jsonHelper))
+        .filter(h -> h != null && !h.isEmpty())
+        .flatMap(h -> h.entrySet().stream())
+        .collect(Collectors.toMap(
+            Map.Entry::getKey,
+            Map.Entry::getValue,
+            (a, b) -> { List<String> m = new ArrayList<>(a); m.addAll(b); return m; }));
+    return merged.isEmpty() ? null : (Map<String, Object>) (Map<?, ?>) merged;
   }
 
   private OutboundResponseMapperConfiguration passthroughMapper() {
@@ -382,7 +400,13 @@ public class GatewayServiceImpl implements GatewayService {
    *   <li>Other → 503 (unexpected internal failure)
    * </ul>
    *
-   * <p>Always returns a value (never re-throws) so that {@code doOnSuccess} in
+   * <p><b>Known behavior (R8-H1)</b>: when retries are exhausted ({@link MaxRetriesExceededException}),
+   * the synthetic {@code responseStatus=502} is saved to outbound_histories — not the real upstream
+   * status (e.g. 500). This is intentional: history reflects the status returned to the caller.
+   * A row with {@code retry_count > 0} and {@code response_status=502} means retries were exhausted
+   * on a failing upstream, not that the upstream itself returned 502.
+   *
+   * <p>Always returns a value (never re-throws) so that {@code onErrorResume} in
    * {@link #executeWithResilience} fires and history is saved for every call.
    */
   private GatewayResponse toInternalRejectResponse(OutboundSystemContext context, Throwable e) {

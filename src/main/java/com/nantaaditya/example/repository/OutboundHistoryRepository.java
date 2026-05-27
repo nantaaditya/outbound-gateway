@@ -2,6 +2,7 @@ package com.nantaaditya.example.repository;
 
 import com.nantaaditya.example.entity.OutboundHistory;
 import java.time.LocalDateTime;
+import java.util.Map;
 import org.springframework.data.r2dbc.repository.Modifying;
 import org.springframework.data.r2dbc.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,27 +21,40 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
   @Modifying
   @Query("""
       INSERT INTO outbound_histories
-        (outbound_system_id, idempotency_key, caller_service, request_method, request_url,
-         request_payload, response_status, response_payload, duration_ms,
-         converted_status, converted_response, retry_count, created_date)
+        (outbound_system_id, idempotency_key, caller_service, request_id,
+         request_method, request_url, request_headers, request_payload,
+         response_status, response_headers, response_payload,
+         duration_ms, converted_status, converted_response, retry_count, created_date)
       VALUES
-        (:outboundSystemId, :idempotencyKey, :callerService, :requestMethod, :requestUrl,
-         :requestPayload, :responseStatus, :responsePayload, :durationMs,
-         :convertedStatus, :convertedResponse, :retryCount, NOW())
+        (:outboundSystemId, :idempotencyKey, :callerService, :requestId,
+         :requestMethod, :requestUrl, :requestHeaders, :requestPayload,
+         :responseStatus, :responseHeaders, :responsePayload,
+         :durationMs, :convertedStatus, :convertedResponse, :retryCount, NOW())
       """)
   Mono<Integer> insertHistory(
       @Param("outboundSystemId") long outboundSystemId,
       @Param("idempotencyKey") String idempotencyKey,
       @Param("callerService") String callerService,
+      @Param("requestId") String requestId,
       @Param("requestMethod") String requestMethod,
       @Param("requestUrl") String requestUrl,
+      @Param("requestHeaders") Map<String, Object> requestHeaders,
       @Param("requestPayload") String requestPayload,
       @Param("responseStatus") Integer responseStatus,
+      @Param("responseHeaders") Map<String, Object> responseHeaders,
       @Param("responsePayload") String responsePayload,
       @Param("durationMs") Integer durationMs,
       @Param("convertedStatus") Integer convertedStatus,
       @Param("convertedResponse") String convertedResponse,
-      @Param("retryCount") int retryCount);
+      @Param("retryCount") int retryCount); // primitive — NOT NULL in schema (DEFAULT 0)
+
+  default Mono<Integer> insertHistory(OutboundHistory h) {
+    return insertHistory(
+        h.getOutboundSystemId(), h.getIdempotencyKey(), h.getCallerService(), h.getRequestId(),
+        h.getRequestMethod(), h.getRequestUrl(), h.getRequestHeaders(), h.getRequestPayload(),
+        h.getResponseStatus(), h.getResponseHeaders(), h.getResponsePayload(),
+        h.getDurationMs(), h.getConvertedStatus(), h.getConvertedResponse(), h.getRetryCount());
+  }
 
   // findFirst + OrderByCreatedDateDesc: tolerates duplicate rows from the async-race window
   // (two concurrent calls with the same key can both INSERT before either commits).

@@ -173,6 +173,34 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
     assertThat(saved.getRetryCount()).isEqualTo(2);
   }
 
+  @Test
+  @DisplayName("execute with idempotency key and retries exhausted saves retryCount via insertHistory")
+  void execute_withIdempotencyKey_retriesExhausted_retryCountSavedViaInsertHistory() {
+    wireMock.stubFor(post(urlEqualTo("/v1/charge"))
+        .willReturn(aResponse().withStatus(500).withBody("{\"error\":\"fail\"}")));
+
+    String baseUrl = "http://localhost:" + wireMock.port();
+    OutboundSystem system = saveSystem("idem-retry-exhaust-gw", baseUrl, "/v1/charge");
+    saveHostConfig(baseUrl);
+    saveResilienceWithRetry(system.getId(), 3);
+    saveAuth(system.getId());
+
+    String idemKey = "idem-retry-key-789";
+    gatewayService.execute("idem-retry-exhaust-gw", "svc", idemKey,
+        new GatewayRequest(Map.of(), Map.of())).block();
+
+    Awaitility.await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(50))
+        .until(() -> historyRepository.count().block() >= 1);
+
+    OutboundHistory saved = historyRepository
+        .findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(
+            system.getId(), idemKey)
+        .block();
+    assertThat(saved).isNotNull();
+    assertThat(saved.getRetryCount()).isEqualTo(2);
+    assertThat(saved.getIdempotencyKey()).isEqualTo(idemKey);
+  }
+
   private OutboundSystem saveSystem(String code, String baseUrl, String apiPath) {
     return systemRepository.save(OutboundSystem.builder()
         .code(code)
