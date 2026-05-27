@@ -1764,20 +1764,32 @@ OAuth tokens are written back to `outbound_auth_configurations.current_token` af
 
 ### Flyway Migrations
 
-Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V20) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
+Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V22) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
 
 | Version | Description |
 |---|---|
-| V1 | `outbound_systems` |
-| V2–V5 | Sub-config tables: host, resilience, auth, headers |
-| V6 | Response mapper configuration |
-| V7 | `outbound_histories` |
-| V8–V11 | Index additions and constraint fixes |
-| V12–V14 | Auth fields: `token_prefix`, `token_response_path`, `current_token` |
-| V15–V17 | HMAC/RSA support columns |
-| V18 | Four boolean enable flags on resilience config (default `false`) |
+| V1 | Create `event_logs` table |
+| V2 | Create `dead_letter_process` table |
+| V3 | Add indexes on `dead_letter_process` |
+| V4 | Create `outbound_systems` table |
+| V5 | Create `outbound_resilience_configurations` table |
+| V6 | Create `outbound_header_configurations` table (`headers` as `jsonb`) |
+| V7 | Create `outbound_auth_configurations` table |
+| V8 | Create `outbound_response_mapper_configuration` table (`mapping_status` as `jsonb`) |
+| V9 | Create `outbound_histories` table |
+| V10 | Add `idempotency_ttl_hours` to `outbound_systems` |
+| V11 | Expand `outbound_resilience_configurations` — add CB/BH/RL/Retry tuning columns |
+| V12 | Add `api_path` to `outbound_systems` |
+| V13 | Create `outbound_host_configurations` table |
+| V14 | Migrate host/proxy/SSL config from `outbound_systems` → `outbound_host_configurations`; drop migrated columns |
+| V15 | Drop `uq_idempotency` unique constraint; rebuild idempotency index with `created_date` |
+| V16 | *(intentionally skipped — reserved branch abandoned before merge)* |
+| V17 | Add connection-pool columns to `outbound_host_configurations`; drop unused columns from `outbound_resilience_configurations` |
+| V18 | Add four boolean enable flags to `outbound_resilience_configurations` (default `false`) |
 | V19 | Rename enable flag columns — remove `is_` prefix to match R2DBC field names |
-| V20 | `v_outbound_system_detail` JOIN view — eliminates N+1 for `list()` and `getDetail()` |
+| V20 | Add `v_outbound_system_detail` JOIN view — eliminates N+1 for `list()` and `getDetail()` |
+| V21 | Add `retry_count` column to `outbound_histories` (default `0`) |
+| V22 | Migrate `request_headers` / `response_headers` in `outbound_histories` from `text` to `jsonb` |
 
 ### SSL Verification Disabled
 
@@ -1868,7 +1880,7 @@ mvn test -Dtest="*IntegrationTest" -DfailIfNoTests=false
 **What happens on first run:**
 - Testcontainers pulls `postgres:16-alpine` if not already cached locally
 - A single shared container starts once per JVM (singleton pattern) — all test classes share it
-- Flyway migrations (V1–V20) run against the container on startup
+- Flyway migrations (V1–V22) run against the container on startup
 - The container stops automatically when the JVM exits
 
 **No configuration needed** — `@DynamicPropertySource` in `BaseIntegrationTest` wires the R2DBC and Flyway URLs directly to the container. `application.yml` values for `R2DBC_URL`, `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` are overridden by the container's generated credentials.
