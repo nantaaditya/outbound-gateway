@@ -17,6 +17,7 @@ public record GatewayHistoryResponse(
     Integer durationMs,
     Integer convertedStatus,
     Object convertedResponse,
+    int retryCount,
     LocalDateTime createdDate
 ) {
 
@@ -34,6 +35,7 @@ public record GatewayHistoryResponse(
         history.getDurationMs(),
         history.getConvertedStatus(),
         jsonHelper.parseJsonOrRaw(history.getConvertedResponse()),
+        history.getRetryCount(),
         history.getCreatedDate()
     );
   }

@@ -5,10 +5,14 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
+import org.awaitility.Awaitility;
+
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.nantaaditya.example.base.BaseIntegrationTest;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
+import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
@@ -127,6 +131,48 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
         .verifyComplete();
   }
 
+  @Test
+  @DisplayName("execute saves retry_count=0 when first attempt succeeds")
+  void execute_firstAttemptSucceeds_retryCountIsZero() {
+    wireMock.stubFor(post(urlEqualTo("/v1/charge"))
+        .willReturn(aResponse().withStatus(200).withBody("{\"ok\":true}")));
+
+    String baseUrl = "http://localhost:" + wireMock.port();
+    OutboundSystem system = saveSystem("retry-zero-gw", baseUrl, "/v1/charge");
+    saveHostConfig(baseUrl);
+    saveResilienceWithRetry(system.getId(), 3);
+    saveAuth(system.getId());
+
+    gatewayService.execute("retry-zero-gw", "svc", "key-zero", new GatewayRequest(Map.of(), Map.of())).block();
+
+    Awaitility.await().atMost(Duration.ofSeconds(3)).pollInterval(Duration.ofMillis(50))
+        .until(() -> historyRepository.count().block() >= 1);
+
+    OutboundHistory saved = historyRepository.findAll().blockFirst();
+    assertThat(saved.getRetryCount()).isEqualTo(0);
+  }
+
+  @Test
+  @DisplayName("execute saves retry_count=maxAttempts-1 when all retries are exhausted")
+  void execute_retriesExhausted_retryCountEqualsMaxAttemptsMinus1() {
+    wireMock.stubFor(post(urlEqualTo("/v1/charge"))
+        .willReturn(aResponse().withStatus(500).withBody("{\"error\":\"server error\"}")));
+
+    String baseUrl = "http://localhost:" + wireMock.port();
+    OutboundSystem system = saveSystem("retry-exhaust-gw", baseUrl, "/v1/charge");
+    saveHostConfig(baseUrl);
+    saveResilienceWithRetry(system.getId(), 3);
+    saveAuth(system.getId());
+
+    gatewayService.execute("retry-exhaust-gw", "svc", null, new GatewayRequest(Map.of(), Map.of())).block();
+
+    Awaitility.await().atMost(Duration.ofSeconds(5)).pollInterval(Duration.ofMillis(50))
+        .until(() -> historyRepository.count().block() >= 1);
+
+    OutboundHistory saved = historyRepository.findAll().blockFirst();
+    assertThat(saved.getRetryCount()).isEqualTo(2);
+  }
+
   private OutboundSystem saveSystem(String code, String baseUrl, String apiPath) {
     return systemRepository.save(OutboundSystem.builder()
         .code(code)
@@ -169,6 +215,28 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
         .retryMaxAttempts(1)
         .retryWaitDurationMs(100)
         .retryOnStatusCodes("500,502,503")
+        .build()).block();
+  }
+
+  private void saveResilienceWithRetry(Long systemId, int maxAttempts) {
+    resilienceRepository.save(OutboundResilienceConfiguration.builder()
+        .outboundSystemId(systemId)
+        .readTimeOutMs(10000)
+        .cbFailureRateThreshold(50f)
+        .cbSlowCallRateThreshold(100f)
+        .cbSlowCallDurationMs(60000)
+        .cbPermittedInHalfOpen(10)
+        .cbSlidingWindowSize(100)
+        .cbWaitDurationOpenMs(60000)
+        .bhMaxConcurrentCalls(25)
+        .bhMaxWaitDurationMs(0)
+        .rlLimitForPeriod(100)
+        .rlLimitRefreshPeriodMs(1000)
+        .rlTimeoutDurationMs(0)
+        .retryMaxAttempts(maxAttempts)
+        .retryWaitDurationMs(10)
+        .retryOnStatusCodes("500,502,503")
+        .retryEnabled(true)
         .build()).block();
   }
 

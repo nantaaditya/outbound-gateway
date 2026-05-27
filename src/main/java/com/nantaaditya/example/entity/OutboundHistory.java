@@ -1,5 +1,8 @@
 package com.nantaaditya.example.entity;
 
+import com.nantaaditya.example.helper.JsonHelper;
+import com.nantaaditya.example.model.request.GatewayRequest;
+import com.nantaaditya.example.model.response.GatewayResponse;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,6 +37,7 @@ public class OutboundHistory implements Persistable<Long> {
   private Integer durationMs;
   private Integer convertedStatus;
   private String convertedResponse;
+  private int retryCount;
   @CreatedDate
   private LocalDateTime createdDate;
 
@@ -48,5 +52,24 @@ public class OutboundHistory implements Persistable<Long> {
 
   public boolean hasIdempotencyKey() {
     return idempotencyKey != null && !idempotencyKey.isBlank();
+  }
+
+  public static OutboundHistory create(OutboundSystem system, String callerService,
+      String idempotencyKey, GatewayRequest request, GatewayResponse response, long durationMs,
+      int retryCount, JsonHelper jsonHelper) {
+    return OutboundHistory.builder()
+        .outboundSystemId(system.getId())
+        .idempotencyKey(idempotencyKey)
+        .callerService(callerService)
+        .requestMethod(system.getHttpMethod())
+        .requestUrl(system.getBaseUrl() + system.getApiPath())
+        .requestPayload(request.bodyAsString(jsonHelper))
+        .responseStatus(response.status())
+        .responsePayload(response.body())
+        .durationMs((int) Math.min(durationMs, Integer.MAX_VALUE))
+        .convertedStatus(response.convertedStatus())
+        .convertedResponse(response.convertedResponse())
+        .retryCount(retryCount)
+        .build();
   }
 }

@@ -22,11 +22,11 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
       INSERT INTO outbound_histories
         (outbound_system_id, idempotency_key, caller_service, request_method, request_url,
          request_payload, response_status, response_payload, duration_ms,
-         converted_status, converted_response, created_date)
+         converted_status, converted_response, retry_count, created_date)
       VALUES
         (:outboundSystemId, :idempotencyKey, :callerService, :requestMethod, :requestUrl,
          :requestPayload, :responseStatus, :responsePayload, :durationMs,
-         :convertedStatus, :convertedResponse, NOW())
+         :convertedStatus, :convertedResponse, :retryCount, NOW())
       """)
   Mono<Integer> insertHistory(
       @Param("outboundSystemId") long outboundSystemId,
@@ -39,7 +39,8 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
       @Param("responsePayload") String responsePayload,
       @Param("durationMs") Integer durationMs,
       @Param("convertedStatus") Integer convertedStatus,
-      @Param("convertedResponse") String convertedResponse);
+      @Param("convertedResponse") String convertedResponse,
+      @Param("retryCount") int retryCount);
 
   // findFirst + OrderByCreatedDateDesc: tolerates duplicate rows from the async-race window
   // (two concurrent calls with the same key can both INSERT before either commits).

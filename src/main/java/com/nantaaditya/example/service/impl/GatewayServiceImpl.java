@@ -46,6 +46,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -202,8 +203,11 @@ public class GatewayServiceImpl implements GatewayService {
       OutboundSystemContext context, String callerService, String idempotencyKey,
       GatewayRequest request) {
     long startTime = System.currentTimeMillis();
-    Observation obs = metricsRecorder.startCall(code(context));
-    Mono<GatewayResponse> execution = buildExecution(context, request);
+    Observation observation = metricsRecorder.startCall(code(context));
+    // One counter per invocation — RetryOperator re-subscribes to buildExecution on each
+    // retry attempt, so doOnSubscribe fires once per attempt. retryCount = attempts - 1.
+    AtomicInteger attempts = new AtomicInteger(0);
+    Mono<GatewayResponse> execution = buildExecution(context, request, attempts);
 
     if (!context.getResilience().isBypassed()) {
       // Operator order matters — transformDeferred builds the chain inside-out.
@@ -228,8 +232,10 @@ public class GatewayServiceImpl implements GatewayService {
         .onErrorResume(e -> Mono.just(toInternalRejectResponse(context, e)))
         .flatMap(response -> {
           long durationMs = System.currentTimeMillis() - startTime;
-          metricsRecorder.finalizeCall(obs, response.status(), callerService);
-          return saveHistory(context, callerService, idempotencyKey, request, response, durationMs)
+          int retryCount = Math.max(0, attempts.get() - 1);
+          metricsRecorder.finalizeCall(observation, response.status(), callerService);
+
+          return saveHistory(context, callerService, idempotencyKey, request, response, durationMs, retryCount)
               .onErrorResume(err -> {
                 log.error(AppLogMessage.message("#GATEWAY - failed to save history for {}: {}", code(context), err.getMessage()).error(err));
                 return Mono.empty();
@@ -239,8 +245,9 @@ public class GatewayServiceImpl implements GatewayService {
   }
 
   private Mono<GatewayResponse> buildExecution(OutboundSystemContext context,
-      GatewayRequest request) {
+      GatewayRequest request, AtomicInteger attempts) {
     return authenticateRequest(context, request)
+        .doOnSubscribe(__ -> attempts.incrementAndGet())
         .flatMap(credential -> executeHttp(context, request, credential))
         .map(response -> applyMapping(context, response));
   }
@@ -301,7 +308,8 @@ public class GatewayServiceImpl implements GatewayService {
         .ifPresent(list -> list.stream()
             .map(config -> config.getHeaders(jsonHelper))
             .filter(h -> h != null && !h.isEmpty())
-            .forEach(h -> h.forEach(headers::addAll)));
+            .forEach(h -> h.forEach(headers::addAll))
+        );
   }
 
   private void applyAuthHeader(AuthCredential credential, HttpHeaders headers) {
@@ -335,27 +343,17 @@ public class GatewayServiceImpl implements GatewayService {
 
   private Mono<Void> saveHistory(
       OutboundSystemContext context, String callerService, String idempotencyKey,
-      GatewayRequest request, GatewayResponse response, long durationMs) {
+      GatewayRequest request, GatewayResponse response, long durationMs, int retryCount) {
     OutboundSystem system = context.getSystem();
-    OutboundHistory history = OutboundHistory.builder()
-        .outboundSystemId(system.getId())
-        .idempotencyKey(idempotencyKey)
-        .callerService(callerService)
-        .requestMethod(system.getHttpMethod())
-        .requestUrl(system.getBaseUrl() + system.getApiPath())
-        .requestPayload(request.bodyAsString(jsonHelper))
-        .responseStatus(response.status())
-        .responsePayload(response.body())
-        .durationMs((int) Math.min(durationMs, Integer.MAX_VALUE))
-        .convertedStatus(response.convertedStatus())
-        .convertedResponse(response.convertedResponse())
-        .build();
+    OutboundHistory history = OutboundHistory.create(system, callerService, idempotencyKey, request,
+        response, durationMs, retryCount, jsonHelper);
     if (history.hasIdempotencyKey()) {
       return historyRepository.insertHistory(
           history.getOutboundSystemId(), history.getIdempotencyKey(),
           history.getCallerService(), history.getRequestMethod(), history.getRequestUrl(),
           history.getRequestPayload(), history.getResponseStatus(), history.getResponsePayload(),
-          history.getDurationMs(), history.getConvertedStatus(), history.getConvertedResponse()
+          history.getDurationMs(), history.getConvertedStatus(), history.getConvertedResponse(),
+          history.getRetryCount()
       ).then();
     }
     return historyRepository.save(history).then();

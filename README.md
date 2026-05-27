@@ -721,6 +721,7 @@ Paginated outbound call history with optional filters.
         "durationMs": 342,
         "convertedStatus": 200,
         "convertedResponse": { "id": "charge-abc" },
+        "retryCount": 0,
         "createdDate": "2026-05-19T07:55:00"
       }
     ],
@@ -757,6 +758,7 @@ Look up a single history record by idempotency key. `code` is **required and mus
     "durationMs": 342,
     "convertedStatus": 200,
     "convertedResponse": { "id": "charge-abc" },
+    "retryCount": 0,
     "createdDate": "2026-05-19T07:55:00"
   }
 }
