@@ -118,7 +118,7 @@ database "PostgreSQL" {
   [event_logs]
 }
 
-[Payment Service] --> [AppFilter] : POST /gateway/execute/{code}
+[Payment Service] --> [AppFilter] : POST /api/gateway/execute/{code}
 [Notification Service] --> [AppFilter]
 [Order Service] --> [AppFilter]
 
@@ -148,7 +148,7 @@ participant WebClient
 participant ExternalAPI
 database OutboundHistories
 
-Caller -> AppFilter : POST /gateway/execute/{code}\n[X-Client-Id, X-Request-Id, X-Request-Time]
+Caller -> AppFilter : POST /api/gateway/execute/{code}\n[X-Client-Id, X-Request-Id, X-Request-Time]
 AppFilter -> AppFilter : cache request body\nopen Micrometer observation
 AppFilter -> GatewayController : forward request
 
@@ -195,7 +195,7 @@ participant WebClient
 participant ExternalAPI
 database OutboundHistories
 
-Caller -> AppFilter : POST /gateway/execute/{code}
+Caller -> AppFilter : POST /api/gateway/execute/{code}
 AppFilter -> GatewayController : forward request
 GatewayController -> GatewayService : execute(code, ...)
 
@@ -548,7 +548,7 @@ Injects a static bearer token. Unlike OAuth, this token never refreshes automati
 | Field | Required | Description |
 |---|---|---|
 | `authType` | Yes | `"BEARER_STATIC"` |
-| `apiKey` | Yes | The raw token value — gateway encrypts on write |
+| `clientSecret` | Yes | The raw static token value — gateway encrypts on write |
 | `tokenPrefix` | No | Prefix prepended to the token (default `"Bearer"`) |
 | `tokenKeyName` | Yes | Header name (usually `"Authorization"`) |
 
@@ -578,14 +578,15 @@ Signs a payload digest with an RSA private key. The signature is Base64-encoded 
 | Field | Required | Description |
 |---|---|---|
 | `authType` | Yes | `"RSA"` |
-| `apiKey` | Yes | RSA private key in PEM format — gateway encrypts on write |
+| `clientId` | Yes | RSA private key in PKCS#8 PEM format — gateway encrypts on write |
+| `clientSecret` | Yes | Key passphrase — gateway encrypts on write |
 | `tokenKeyName` | Yes | Header name to inject the RSA signature |
 
 ---
 
 ### OAUTH
 
-OAuth2 Client Credentials flow. Fetches a token from the token URL, caches it in memory, and persists it to DB for restart survival. Auto-refreshes when expired if `isAutoRefresh = true`.
+OAuth2 Client Credentials flow. Fetches a token from the token URL, caches it in memory, and persists it to DB for restart survival. Auto-refreshes when expired if `autoRefresh = true`.
 
 | Field | Required | Description |
 |---|---|---|
@@ -600,7 +601,7 @@ OAuth2 Client Credentials flow. Fetches a token from the token URL, caches it in
 | `tokenKeyName` | Yes | Header/param name to inject the token (e.g. `"Authorization"`) |
 | `tokenResponsePath` | Yes | Key or JSONPath (`$.access_token`) to extract the token from the token response |
 | `tokenResponseExpiryPath` | No | Key or JSONPath (`$.expires_in`) to extract expiry seconds from the token response |
-| `isAutoRefresh` | No | If `true`, the gateway auto-refreshes the token when expired (default `false`) |
+| `autoRefresh` | No | If `true`, the gateway auto-refreshes the token when expired (default `false`) |
 
 **Thundering-herd protection:** concurrent requests that all find an expired token share one token fetch via `Mono.cache()`. Only one HTTP request is issued regardless of burst.
 
@@ -926,7 +927,7 @@ Create a new outbound system.
   "httpMethod": "POST",
   "baseUrl": "https://api.xendit.co",
   "apiPath": "/v2/charges",
-  "isActive": true,
+  "active": true,
   "idempotencyTtlHours": 24
 }
 ```
@@ -981,26 +982,34 @@ List outbound systems with full configuration (resilience, headers, auth, respon
         "resilience": {
           "readTimeOutMs": 10000,
           "circuitBreakerEnabled": true,
-          "cbFailureRateThreshold": 50.0,
-          "cbSlowCallRateThreshold": 100.0,
-          "cbSlowCallDurationMs": 5000,
-          "cbPermittedInHalfOpen": 10,
-          "cbSlidingWindowSize": 50,
-          "cbWaitDurationOpenMs": 30000,
           "bulkheadEnabled": false,
-          "bhMaxConcurrentCalls": 0,
-          "bhMaxWaitDurationMs": 0,
           "rateLimiterEnabled": false,
-          "rlLimitForPeriod": 0,
-          "rlLimitRefreshPeriodMs": 0,
-          "rlTimeoutDurationMs": 0,
           "retryEnabled": true,
-          "retryMaxAttempts": 3,
-          "retryWaitDurationMs": 500,
-          "retryOnStatusCodes": "500,502,503"
+          "circuitBreaker": {
+            "failureRateThreshold": 50.0,
+            "slowCallRateThreshold": 100.0,
+            "slowCallDurationMs": 5000,
+            "permittedInHalfOpen": 10,
+            "slidingWindowSize": 50,
+            "waitDurationOpenMs": 30000
+          },
+          "bulkhead": {
+            "maxConcurrentCalls": 0,
+            "maxWaitDurationMs": 0
+          },
+          "rateLimiter": {
+            "limitForPeriod": 0,
+            "limitRefreshPeriodMs": 0,
+            "timeoutDurationMs": 0
+          },
+          "retry": {
+            "retryMaxAttempts": 3,
+            "retryWaitDurationMs": 500,
+            "retryOnStatusCodes": "500,502,503"
+          }
         },
-        "headers": { "Content-Type": "application/json", "Accept": "application/json" },
-        "auth": {
+        "headers": { "Content-Type": ["application/json"], "Accept": ["application/json"] },
+        "authentication": {
           "authType": "API_KEY",
           "autoRefresh": false,
           "tokenMethod": null,
@@ -1017,7 +1026,7 @@ List outbound systems with full configuration (resilience, headers, auth, respon
           "mappingStatus": { "404": 400, "422": 400 },
           "active": true
         },
-        "hostConfig": {
+        "hostConfiguration": {
           "id": 1,
           "baseUrl": "https://api.xendit.co",
           "connectTimeOutMs": 3000,
@@ -1042,9 +1051,9 @@ List outbound systems with full configuration (resilience, headers, auth, respon
         "idempotencyTtlHours": 12,
         "resilience": null,
         "headers": {},
-        "auth": null,
+        "authentication": null,
         "responseMapper": null,
-        "hostConfig": null
+        "hostConfiguration": null
       }
     ],
     "page": 0,
@@ -1055,7 +1064,7 @@ List outbound systems with full configuration (resilience, headers, auth, respon
 }
 ```
 
-> `hostConfig: null` means the system uses production-default connection pool settings and no host configuration has been explicitly registered. Use `POST /api/outbound/host` to configure it.
+> `hostConfiguration: null` means the system uses production-default connection pool settings and no host configuration has been explicitly registered. Use `POST /api/outbound/host` to configure it.
 
 ---
 
@@ -1080,26 +1089,34 @@ Get full detail including all sub-configurations. Sensitive fields (`apiKey`, `c
     "resilience": {
       "readTimeOutMs": 10000,
       "circuitBreakerEnabled": true,
-      "cbFailureRateThreshold": 50.0,
-      "cbSlowCallRateThreshold": 100.0,
-      "cbSlowCallDurationMs": 5000,
-      "cbPermittedInHalfOpen": 10,
-      "cbSlidingWindowSize": 50,
-      "cbWaitDurationOpenMs": 30000,
       "bulkheadEnabled": false,
-      "bhMaxConcurrentCalls": 0,
-      "bhMaxWaitDurationMs": 0,
       "rateLimiterEnabled": false,
-      "rlLimitForPeriod": 0,
-      "rlLimitRefreshPeriodMs": 0,
-      "rlTimeoutDurationMs": 0,
       "retryEnabled": true,
-      "retryMaxAttempts": 3,
-      "retryWaitDurationMs": 500,
-      "retryOnStatusCodes": "500,502,503"
+      "circuitBreaker": {
+        "failureRateThreshold": 50.0,
+        "slowCallRateThreshold": 100.0,
+        "slowCallDurationMs": 5000,
+        "permittedInHalfOpen": 10,
+        "slidingWindowSize": 50,
+        "waitDurationOpenMs": 30000
+      },
+      "bulkhead": {
+        "maxConcurrentCalls": 0,
+        "maxWaitDurationMs": 0
+      },
+      "rateLimiter": {
+        "limitForPeriod": 0,
+        "limitRefreshPeriodMs": 0,
+        "timeoutDurationMs": 0
+      },
+      "retry": {
+        "retryMaxAttempts": 3,
+        "retryWaitDurationMs": 500,
+        "retryOnStatusCodes": "500,502,503"
+      }
     },
-    "headers": { "Content-Type": "application/json", "Accept": "application/json" },
-    "auth": {
+    "headers": { "Content-Type": ["application/json"], "Accept": ["application/json"] },
+    "authentication": {
       "authType": "API_KEY",
       "autoRefresh": false,
       "tokenMethod": null,
@@ -1116,7 +1133,7 @@ Get full detail including all sub-configurations. Sensitive fields (`apiKey`, `c
       "mappingStatus": { "404": 400, "422": 400 },
       "active": true
     },
-    "hostConfig": {
+    "hostConfiguration": {
       "id": 1,
       "baseUrl": "https://api.xendit.co",
       "connectTimeOutMs": 3000,
@@ -1132,7 +1149,7 @@ Get full detail including all sub-configurations. Sensitive fields (`apiKey`, `c
 }
 ```
 
-> `hostConfig: null` means no host configuration has been explicitly registered — the system uses production-default connection pool settings.
+> `hostConfiguration: null` means no host configuration has been explicitly registered — the system uses production-default connection pool settings.
 
 ---
 
@@ -1148,7 +1165,7 @@ Update system-level fields. Sub-configs (auth, resilience, headers, mapper) are 
   "httpMethod": "POST",
   "baseUrl": "https://api.xendit.co",
   "apiPath": "/v2/charges",
-  "isActive": true,
+  "active": true,
   "idempotencyTtlHours": 48
 }
 ```
@@ -1237,7 +1254,7 @@ Create or replace the resilience configuration. `circuitBreaker`, `bulkHead`, `r
 
 ---
 
-#### `POST /api/outbound/{code}/auth`
+#### `POST /api/outbound/{code}/authentication`
 
 Create or replace the auth configuration. Send raw plaintext values — the gateway encrypts on write.
 
@@ -1269,7 +1286,7 @@ Create or replace the auth configuration. Send raw plaintext values — the gate
 ```json
 {
   "authType": "BEARER_STATIC",
-  "apiKey": "my-static-token",
+  "clientSecret": "my-static-token",
   "tokenPrefix": "Bearer",
   "tokenKeyName": "Authorization"
 }
@@ -1289,7 +1306,8 @@ Create or replace the auth configuration. Send raw plaintext values — the gate
 ```json
 {
   "authType": "RSA",
-  "apiKey": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
+  "clientId": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
+  "clientSecret": "key-passphrase",
   "tokenKeyName": "X-RSA-Signature"
 }
 ```
@@ -1300,7 +1318,7 @@ Create or replace the auth configuration. Send raw plaintext values — the gate
   "authType": "OAUTH",
   "clientId": "my-client-id",
   "clientSecret": "my-client-secret",
-  "isAutoRefresh": true,
+  "autoRefresh": true,
   "tokenMethod": "POST",
   "tokenUrl": "https://auth.xendit.co/oauth/token",
   "tokenPrefix": "Bearer",
@@ -1356,7 +1374,7 @@ Create or replace the response mapper.
   "converterType": "JSLT",
   "mappingScript": "{\"transactionId\": .id, \"amount\": .amount, \"status\": .status}",
   "mappingStatus": { "404": 400, "422": 400 },
-  "isActive": true
+  "active": true
 }
 ```
 
@@ -1364,7 +1382,7 @@ Create or replace the response mapper.
 ```json
 {
   "converterType": "NONE",
-  "isActive": false
+  "active": false
 }
 ```
 
@@ -1907,7 +1925,7 @@ Content-Type: application/json
   "httpMethod": "POST",
   "baseUrl": "https://api.xendit.co",
   "apiPath": "/v2/charges",
-  "isActive": true,
+  "active": true,
   "idempotencyTtlHours": 24
 }
 ```
@@ -1924,8 +1942,8 @@ Content-Type: application/json
   "maxConnections": 200,
   "pendingAcquireMaxCount": 500,
   "pendingAcquireTimeoutMs": 5000,
-  "isDisableSslVerification": false,
-  "isUseProxy": false
+  "disableSslVerification": false,
+  "useProxy": false
 }
 ```
 
@@ -1959,7 +1977,7 @@ Content-Type: application/json
 
 **API Key:**
 ```http
-POST /api/outbound/xendit-charge/auth
+POST /api/outbound/xendit-charge/authentication
 Content-Type: application/json
 
 {
@@ -1972,14 +1990,14 @@ Content-Type: application/json
 
 **OAuth2:**
 ```http
-POST /api/outbound/xendit-charge/auth
+POST /api/outbound/xendit-charge/authentication
 Content-Type: application/json
 
 {
   "authType": "OAUTH",
   "clientId": "my-client-id",
   "clientSecret": "my-client-secret",
-  "isAutoRefresh": true,
+  "autoRefresh": true,
   "tokenMethod": "POST",
   "tokenUrl": "https://auth.xendit.co/oauth/token",
   "tokenPrefix": "Bearer",
@@ -2014,14 +2032,14 @@ Content-Type: application/json
   "converterType": "JSLT",
   "mappingScript": "{\"transactionId\": .id, \"amount\": .amount, \"status\": .status}",
   "mappingStatus": { "404": 400, "422": 400 },
-  "isActive": true
+  "active": true
 }
 ```
 
 #### Step 7 — Execute a call
 
 ```http
-POST /api/gateway/execute/xendit-charge
+POST /gateway/execute/xendit-charge
 X-Client-Id: payment-service
 X-Request-Id: req-abc-123
 X-Request-Time: 2026-05-20T08:01:00+07:00

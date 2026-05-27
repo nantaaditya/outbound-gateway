@@ -10,13 +10,16 @@ import org.springframework.util.AntPathMatcher;
 @Getter
 public enum FeatureConstant {
 
-  GET_EXAMPLE(HttpMethod.GET, "/api/example"),
-  POST_EXAMPLE(HttpMethod.POST, "/api/example"),
   REMOVE_OBSOLETE_EVENT_LOG(HttpMethod.DELETE, "/internal-api/event_log"),
   REMOVE_OBSOLETE_DEAD_LETTER_PROCESS(HttpMethod.DELETE, "/internal-api/dead_letter_process"),
-  OUTBOUND_HISTORIES(HttpMethod.GET, "/gateway/histories"),
+  OUTBOUND_HISTORIES(HttpMethod.GET, "/api/gateway/histories"),
   CHECK_IDEMPOTENT_REQUEST(HttpMethod.GET, "/api/gateway/histories/*"),
   OUTBOUND_CALL(HttpMethod.POST, "/api/gateway/execute/*"),
+  CREATE_OUTBOUND_HOST(HttpMethod.POST, "/api/outbound/host"),
+  LIST_OUTBOUND_HOST(HttpMethod.GET, "/api/outbound/host"),
+  GET_OUTBOUND_HOST(HttpMethod.GET, "/api/outbound/host/*"),
+  UPDATE_OUTBOUND_HOST(HttpMethod.PUT, "/api/outbound/host/*"),
+  RELOAD_OUTBOUND_HOST(HttpMethod.GET, "/api/outbound/host/*/reload"),
   CREATE_OUTBOUND(HttpMethod.POST, "/api/outbound"),
   LIST_OUTBOUNDS(HttpMethod.GET, "/api/outbound"),
   GET_OUTBOUND(HttpMethod.GET, "/api/outbound/*"),
