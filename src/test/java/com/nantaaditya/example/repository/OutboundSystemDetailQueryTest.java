@@ -48,7 +48,7 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("count returns total number of outbound systems")
+  @DisplayName("count returns total number of rows in v_outbound_system_detail view")
   void count_withTwoSystems_returnsTwo() {
     systemRepository.save(system("count-gw-1", "http://count-1.test")).block();
     systemRepository.save(system("count-gw-2", "http://count-2.test")).block();
@@ -145,10 +145,9 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
         .assertNext(items -> {
           assertThat(items).hasSize(1);
           OutboundSystemDetailResponse detail = items.get(0);
-          assertThat(detail.headers()).hasSize(1);
-          Map<String, Object> headerMap = detail.headers().get(0);
-          assertThat(headerMap.get("Authorization")).isEqualTo("***");
-          assertThat(headerMap.get("Content-Type")).isEqualTo("application/json");
+          assertThat(detail.headers()).hasSize(2);
+          assertThat(detail.headers().get("Authorization")).isEqualTo("***");
+          assertThat(detail.headers().get("Content-Type")).isEqualTo("application/json");
         })
         .verifyComplete();
   }

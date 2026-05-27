@@ -862,9 +862,7 @@ List outbound systems with full configuration (resilience, headers, auth, respon
           "retryWaitDurationMs": 500,
           "retryOnStatusCodes": "500,502,503"
         },
-        "headers": [
-          { "Content-Type": ["application/json"], "Accept": ["application/json"] }
-        ],
+        "headers": { "Content-Type": "application/json", "Accept": "application/json" },
         "auth": {
           "authType": "API_KEY",
           "autoRefresh": false,
@@ -906,7 +904,7 @@ List outbound systems with full configuration (resilience, headers, auth, respon
         "active": true,
         "idempotencyTtlHours": 12,
         "resilience": null,
-        "headers": [],
+        "headers": {},
         "auth": null,
         "responseMapper": null,
         "hostConfig": null
@@ -963,9 +961,7 @@ Get full detail including all sub-configurations. Sensitive fields (`apiKey`, `c
       "retryWaitDurationMs": 500,
       "retryOnStatusCodes": "500,502,503"
     },
-    "headers": [
-      { "Content-Type": ["application/json"], "Accept": ["application/json"] }
-    ],
+    "headers": { "Content-Type": "application/json", "Accept": "application/json" },
     "auth": {
       "authType": "API_KEY",
       "autoRefresh": false,
@@ -1739,6 +1735,8 @@ mvn test -Dtest="*IntegrationTest" -DfailIfNoTests=false
 - The container stops automatically when the JVM exits
 
 **No configuration needed** — `@DynamicPropertySource` in `BaseIntegrationTest` wires the R2DBC and Flyway URLs directly to the container. `application.yml` values for `R2DBC_URL`, `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` are overridden by the container's generated credentials.
+
+The test base uses `WebEnvironment.RANDOM_PORT` so integration tests never conflict with a running local server on port 8080. `@AutoConfigureWebTestClient` automatically targets the assigned port.
 
 ---
 

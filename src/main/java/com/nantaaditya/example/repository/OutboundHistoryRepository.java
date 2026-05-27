@@ -28,7 +28,7 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
          :requestPayload, :responseStatus, :responsePayload, :durationMs,
          :convertedStatus, :convertedResponse, NOW())
       """)
-  Mono<Integer> upsertHistory(
+  Mono<Integer> insertHistory(
       @Param("outboundSystemId") long outboundSystemId,
       @Param("idempotencyKey") String idempotencyKey,
       @Param("callerService") String callerService,

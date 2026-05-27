@@ -9,7 +9,6 @@ import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
-import java.util.List;
 import java.util.Map;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -24,7 +23,7 @@ public record OutboundSystemDetailResponse(
     boolean active,
     int idempotencyTtlHours,
     ResilienceDetail resilience,
-    List<Map<String, Object>> headers,
+    Map<String, Object> headers,
     AuthDetail authentication,
     ResponseMapperDetail responseMapper,
     HostConfigDetail hostConfiguration
@@ -187,7 +186,7 @@ public record OutboundSystemDetailResponse(
   public static OutboundSystemDetailResponse from(
       OutboundSystem system,
       OutboundResilienceConfiguration resilience,
-      List<Map<String, Object>> headers,
+      Map<String, Object> headers,
       OutboundAuthConfiguration auth,
       OutboundResponseMapperConfiguration responseMapper
   ) {
@@ -197,7 +196,7 @@ public record OutboundSystemDetailResponse(
   public static OutboundSystemDetailResponse from(
       OutboundSystem system,
       OutboundResilienceConfiguration resilience,
-      List<Map<String, Object>> headers,
+      Map<String, Object> headers,
       OutboundAuthConfiguration auth,
       OutboundResponseMapperConfiguration responseMapper,
       OutboundHostConfiguration hostConfig

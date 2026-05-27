@@ -351,7 +351,7 @@ public class GatewayServiceImpl implements GatewayService {
         .convertedResponse(response.convertedResponse())
         .build();
     if (history.hasIdempotencyKey()) {
-      return historyRepository.upsertHistory(
+      return historyRepository.insertHistory(
           history.getOutboundSystemId(), history.getIdempotencyKey(),
           history.getCallerService(), history.getRequestMethod(), history.getRequestUrl(),
           history.getRequestPayload(), history.getResponseStatus(), history.getResponsePayload(),

@@ -23,6 +23,11 @@ public class PGConfiguration {
 
   @Bean
   public R2dbcCustomConversions customConversions(ConnectionFactory connectionFactory) {
+    // Both PGJsonToMapConverter (Json → Map<String,Object>) and PGJsonToIntegerMapConverter
+    // (Json → Map<String,Integer>) must be registered. Spring Data R2DBC resolves them via
+    // ResolvableType generic matching — the target type (Object vs Integer value) determines
+    // which converter is selected. Removing either will cause a ConversionFailedException at
+    // runtime for the columns that use the other target type.
     List<Converter<?, ?>> converters = List.of(
         new PGJsonToMapConverter(jsonHelper),
         new PGJsonToIntegerMapConverter(jsonHelper),

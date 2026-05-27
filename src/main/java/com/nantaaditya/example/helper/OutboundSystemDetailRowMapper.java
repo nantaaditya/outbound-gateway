@@ -18,7 +18,6 @@ import io.r2dbc.postgresql.codec.Json;
 import io.r2dbc.spi.Readable;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -94,19 +93,22 @@ public class OutboundSystemDetailRowMapper {
     );
   }
 
-  private List<Map<String, Object>> mapHeaders(Readable row) {
+  private Map<String, Object> mapHeaders(Readable row) {
     Object raw = row.get("h_headers", Object.class);
-    if (raw == null) return Collections.emptyList();
+    if (raw == null) return Collections.emptyMap();
     Map<String, Object> headers;
+    // Two branches coexist because R2DBC drivers expose jsonb differently:
+    // - r2dbc-h2 (integration tests) returns byte[] for all binary columns
+    // - r2dbc-postgresql (production) returns io.r2dbc.postgresql.codec.Json for jsonb
     if (raw instanceof byte[] bytes) {
       headers = jsonHelper.convert(bytes, new TypeReference<>() {});
     } else if (raw instanceof Json json) {
       headers = jsonHelper.fromJson(json, new TypeReference<>() {});
     } else {
-      return Collections.emptyList();
+      return Collections.emptyMap();
     }
-    if (headers == null || headers.isEmpty()) return Collections.emptyList();
-    return List.of(scrubSensitiveHeaders(headers));
+    if (headers == null || headers.isEmpty()) return Collections.emptyMap();
+    return scrubSensitiveHeaders(headers);
   }
 
   private AuthDetail mapAuth(Readable row) {

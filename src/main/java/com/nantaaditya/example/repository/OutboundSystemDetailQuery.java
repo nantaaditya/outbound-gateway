@@ -25,10 +25,10 @@ public class OutboundSystemDetailQuery {
   private final DatabaseClient databaseClient;
   private final OutboundSystemDetailRowMapper rowMapper;
 
-  /** Returns the total number of rows in {@code outbound_systems}. */
+  /** Returns the total number of rows in {@code v_outbound_system_detail}. */
   public Mono<Long> count() {
     return databaseClient
-        .sql("SELECT COUNT(*) FROM outbound_systems")
+        .sql("SELECT COUNT(*) FROM " + VIEW)
         .map(row -> row.get(0, Long.class))
         .one();
   }

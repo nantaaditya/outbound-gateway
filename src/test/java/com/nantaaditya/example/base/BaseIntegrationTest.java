@@ -32,7 +32,7 @@ import reactor.core.scheduler.Schedulers;
 @Log4j2
 @SpringBootTest(
     classes = SingleModuleReactiveApplication.class,
-    webEnvironment = WebEnvironment.DEFINED_PORT
+    webEnvironment = WebEnvironment.RANDOM_PORT
 )
 @AutoConfigureWebTestClient
 @AutoConfigureObservability
