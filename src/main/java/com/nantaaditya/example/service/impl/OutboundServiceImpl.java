@@ -6,6 +6,7 @@ import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
+import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
@@ -26,7 +27,6 @@ import com.nantaaditya.example.repository.OutboundResilienceConfigurationReposit
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemDetailQuery;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
-import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.service.GatewayService;
 import com.nantaaditya.example.service.OutboundService;
 import java.time.Duration;
@@ -244,7 +244,7 @@ public class OutboundServiceImpl implements OutboundService {
 
   private byte[] encryptIfNotNull(String value) {
     if (value == null || value.isBlank()) {
-      return null;
+      return null; //NOSONAR
     }
     return encryptionHelper.encryptString(value);
   }

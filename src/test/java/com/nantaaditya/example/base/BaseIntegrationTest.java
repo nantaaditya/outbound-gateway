@@ -2,7 +2,7 @@ package com.nantaaditya.example.base;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.nantaaditya.example.SingleModuleReactiveApplication;
+import com.nantaaditya.example.OutboxGatewayApplication;
 import com.nantaaditya.example.helper.DateTimeHelper;
 import com.nantaaditya.example.helper.TsidHelper;
 import com.nantaaditya.example.model.constant.HeaderConstant;
@@ -31,12 +31,12 @@ import reactor.core.scheduler.Schedulers;
 
 @Log4j2
 @SpringBootTest(
-    classes = SingleModuleReactiveApplication.class,
+    classes = OutboxGatewayApplication.class,
     webEnvironment = WebEnvironment.RANDOM_PORT
 )
 @AutoConfigureWebTestClient
 @AutoConfigureObservability
-public class BaseIntegrationTest {
+public class BaseIntegrationTest { //NOSONAR
 
   // Singleton: started once when this class is loaded, reused by all test classes via Spring context cache.
   // @Container/@Testcontainers are intentionally omitted — they stop/restart the container between classes,

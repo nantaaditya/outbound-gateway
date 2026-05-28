@@ -55,7 +55,7 @@ public class HmacSha256AuthStrategy implements AuthStrategy {
       mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM));
       return Base64.getEncoder().encodeToString(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
     } catch (Exception e) {
-      throw new RuntimeException("HMAC computation failed", e);
+      throw new IllegalArgumentException("HMAC computation failed", e);
     }
   }
 }

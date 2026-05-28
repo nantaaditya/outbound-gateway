@@ -146,8 +146,8 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
           assertThat(items).hasSize(1);
           OutboundSystemDetailResponse detail = items.get(0);
           assertThat(detail.headers()).hasSize(2);
-          assertThat(detail.headers().get("Authorization")).isEqualTo("***");
-          assertThat(detail.headers().get("Content-Type")).isEqualTo("application/json");
+          assertThat(detail.headers()).containsEntry("Authorization","***");
+          assertThat(detail.headers()).containsEntry("Content-Type", "application/json");
         })
         .verifyComplete();
   }

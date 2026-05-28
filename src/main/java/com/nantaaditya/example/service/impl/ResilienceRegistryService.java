@@ -1,6 +1,7 @@
 package com.nantaaditya.example.service.impl;
 
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
+import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.response.GatewayResponse;
 import io.github.resilience4j.bulkhead.Bulkhead;
 import io.github.resilience4j.bulkhead.BulkheadConfig;
@@ -23,10 +24,9 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
-import org.springframework.web.reactive.function.client.WebClientRequestException;
-import com.nantaaditya.example.model.logger.AppLogMessage;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 
 /**
  * Manages Resilience4j instances (CB, Bulkhead, RateLimiter, Retry) per outbound system code.

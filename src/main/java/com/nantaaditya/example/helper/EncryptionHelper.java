@@ -39,7 +39,7 @@ public class EncryptionHelper {
           .put(ciphertext)
           .array();
     } catch (Exception e) {
-      throw new RuntimeException("Encryption failed", e);
+      throw new IllegalArgumentException("Encryption failed", e);
     }
   }
 
@@ -55,7 +55,7 @@ public class EncryptionHelper {
       cipher.init(Cipher.DECRYPT_MODE, secretKey, new GCMParameterSpec(TAG_LENGTH_BITS, iv));
       return cipher.doFinal(ciphertext);
     } catch (Exception e) {
-      throw new RuntimeException("Decryption failed", e);
+      throw new IllegalArgumentException("Decryption failed", e);
     }
   }
 

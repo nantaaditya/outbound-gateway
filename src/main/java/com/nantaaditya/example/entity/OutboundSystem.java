@@ -2,11 +2,11 @@ package com.nantaaditya.example.entity;
 
 import com.nantaaditya.example.model.request.admin.CreateOutboundSystemRequest;
 import com.nantaaditya.example.model.request.admin.UpdateOutboundSystemRequest;
+import java.util.Locale;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import java.util.Locale;
 import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
 import org.springframework.http.HttpMethod;

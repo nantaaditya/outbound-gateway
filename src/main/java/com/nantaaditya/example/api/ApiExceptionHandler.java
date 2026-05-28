@@ -10,8 +10,6 @@ import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.ResponseCode;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.web.bind.support.WebExchangeBindException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.response.BaseResponse;
 import jakarta.validation.ConstraintViolation;
@@ -27,6 +25,7 @@ import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.core.MethodParameter;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.r2dbc.BadSqlGrammarException;
 import org.springframework.validation.method.ParameterValidationResult;
@@ -34,6 +33,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.reactive.resource.NoResourceFoundException;
 import reactor.core.publisher.Sinks.EmissionException;
@@ -55,6 +55,7 @@ public class ApiExceptionHandler {
   private static final String EXCEPTION_KEY = "exception";
   private static final String EXCEPTION_DETAIL = "exception_detail";
   private static final int START_INDEX = 0;
+  private static final String NOT_VALID_ERROR = "NotValid";
 
   @ResponseBody
   @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -102,7 +103,7 @@ public class ApiExceptionHandler {
           .toList();
       Map<String, List<String>> errors = new HashMap<>();
       for (String errorKey : errorKeys) {
-        errors.put(errorKey, List.of("NotValid"));
+        errors.put(errorKey, List.of(NOT_VALID_ERROR));
       }
       BaseResponse<Object> response = responseHelper.failed(ResponseCode.INVALID_PARAMS, errors);
       return Tuples.of(errors, response);
@@ -169,10 +170,10 @@ public class ApiExceptionHandler {
       Map<String, List<String>> map = new HashMap<>();
       error.getFieldErrors().forEach(fe ->
           putEntry(map, fe.getField(),
-              fe.getDefaultMessage() != null ? fe.getDefaultMessage() : "NotValid"));
+              fe.getDefaultMessage() != null ? fe.getDefaultMessage() : NOT_VALID_ERROR));
       error.getGlobalErrors().forEach(ge ->
           putEntry(map, ge.getObjectName(),
-              ge.getDefaultMessage() != null ? ge.getDefaultMessage() : "NotValid"));
+              ge.getDefaultMessage() != null ? ge.getDefaultMessage() : NOT_VALID_ERROR));
       BaseResponse<Object> response = responseHelper.failed(ResponseCode.INVALID_PARAMS, map);
       return Tuples.of(map, response);
     });

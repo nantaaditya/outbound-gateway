@@ -149,7 +149,7 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
         .until(() -> historyRepository.count().block() >= 1);
 
     OutboundHistory saved = historyRepository.findAll().blockFirst();
-    assertThat(saved.getRetryCount()).isEqualTo(0);
+    assertThat(saved.getRetryCount()).isZero();
   }
 
   @Test

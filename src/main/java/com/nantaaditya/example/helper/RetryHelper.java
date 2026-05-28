@@ -62,12 +62,12 @@ public class RetryHelper {
         }
 
         retry = retry
-          .doBeforeRetry(retrySignal -> {
-            reactorEventBusHelper.publish(getRetryEvent(key, BEFORE_SUFFIX_EVENT), retrySignal);
-          })
-          .doAfterRetry(retrySignal -> {
-            reactorEventBusHelper.publish(getRetryEvent(key, AFTER_SUFFIX_EVENT), retrySignal);
-          });
+          .doBeforeRetry(retrySignal ->
+            reactorEventBusHelper.publish(getRetryEvent(key, BEFORE_SUFFIX_EVENT), retrySignal)
+          )
+          .doAfterRetry(retrySignal ->
+            reactorEventBusHelper.publish(getRetryEvent(key, AFTER_SUFFIX_EVENT), retrySignal)
+          );
 
         retries.put(key, retry);
       }

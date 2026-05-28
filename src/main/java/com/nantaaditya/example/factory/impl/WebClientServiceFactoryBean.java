@@ -36,7 +36,10 @@ public class WebClientServiceFactoryBean implements FactoryBean<WebClientService
         .configurations()
         .entrySet()
         .stream()
-        .peek(item -> log.debug(AppLogMessage.message("#WebClient - initializing {}", item.getKey())))
+        .map(item -> {
+          log.debug(AppLogMessage.message("#WebClient - initializing {}", item.getKey()));
+          return item;
+        })
         .collect(Collectors.toMap(
             Entry::getKey,
             entry -> new WebClientServiceImpl(entry.getKey(), webClientFactory)

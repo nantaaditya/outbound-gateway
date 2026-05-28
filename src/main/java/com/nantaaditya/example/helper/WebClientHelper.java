@@ -53,8 +53,8 @@ public class WebClientHelper {
         .bodyToMono(request.getResponseType());
   }
 
-  public static <RESPONSE> Mono<RESPONSE> toResponse(WebClientRequest<RESPONSE> request,
-      Mono<RESPONSE> result) {
+  public static <R> Mono<R> toResponse(WebClientRequest<R> request,
+      Mono<R> result) {
     return result
         .onErrorResume(error -> {
           log.error(AppLogMessage.message("#CLIENT - got an error and return fallback {}, cause {}", error.getMessage()).error(error));

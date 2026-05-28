@@ -84,7 +84,7 @@ class GatewayHistoryServiceTest {
         .thenReturn(Flux.empty());
 
     StepVerifier.create(service.findHistories("  ", null, null, null, 0, 20))
-        .assertNext(page -> assertThat(page.totalElements()).isEqualTo(0L))
+        .assertNext(page -> assertThat(page.totalElements()).isZero())
         .verifyComplete();
   }
 
@@ -107,7 +107,7 @@ class GatewayHistoryServiceTest {
         .thenReturn(Flux.empty());
 
     StepVerifier.create(service.findHistories("xendit", null, null, 500, 0, 20))
-        .assertNext(page -> assertThat(page.totalElements()).isEqualTo(0L))
+        .assertNext(page -> assertThat(page.totalElements()).isZero())
         .verifyComplete();
   }
 

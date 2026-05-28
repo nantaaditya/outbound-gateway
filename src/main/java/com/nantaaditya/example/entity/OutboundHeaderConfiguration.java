@@ -28,12 +28,12 @@ public class OutboundHeaderConfiguration extends BaseEntity<Long> {
   public void setHeaders(JsonHelper jsonHelper, Object headers) {
     if (headers == null) return;
 
-    if (headers instanceof byte[]) {
-      this.headers = jsonHelper.convert((byte[]) headers, new TypeReference<Map<String, Object>>() {});
-    } else if (headers instanceof Json) {
-      this.headers = jsonHelper.fromJson((Json) headers, new TypeReference<Map<String, Object>>() {});
-    } else if (headers instanceof Map) {
-      this.headers = jsonHelper.convert((Map<String, Object>) headers, new TypeReference<Map<String, Object>>() {});
+    if (headers instanceof byte[] b) {
+      this.headers = jsonHelper.convert(b, new TypeReference<Map<String, Object>>() {});
+    } else if (headers instanceof Json j) {
+      this.headers = jsonHelper.fromJson(j, new TypeReference<Map<String, Object>>() {});
+    } else if (headers instanceof Map m) {
+      this.headers = jsonHelper.convert(m, new TypeReference<Map<String, Object>>() {});
     } else {
       throw new IllegalArgumentException(OBJECT_NOT_VALID_ERROR);
     }

@@ -2,7 +2,6 @@ package com.nantaaditya.example.model.constant;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Predicate;
 import lombok.Getter;
 import org.springframework.http.HttpMethod;
 import org.springframework.util.AntPathMatcher;
@@ -22,9 +21,9 @@ public enum FeatureConstant {
   RELOAD_OUTBOUND_HOST(HttpMethod.GET, "/api/outbound/host/*/reload"),
   CREATE_OUTBOUND(HttpMethod.POST, "/api/outbound"),
   LIST_OUTBOUNDS(HttpMethod.GET, "/api/outbound"),
-  GET_OUTBOUND(HttpMethod.GET, "/api/outbound/*"),
-  UPDATE_OUTBOUND(HttpMethod.PUT, "/api/outbound/*"),
-  DELETE_OUTBOUND(HttpMethod.DELETE, "/api/outbound/*"),
+  GET_OUTBOUND(HttpMethod.GET, "/api/outbound/*"), //NOSONAR
+  UPDATE_OUTBOUND(HttpMethod.PUT, "/api/outbound/*"), //NOSONAR
+  DELETE_OUTBOUND(HttpMethod.DELETE, "/api/outbound/*"), //NOSONAR
   UPSERT_RESILIENCE(HttpMethod.POST, "/api/outbound/*/resilience"),
   UPSERT_HEADERS(HttpMethod.POST, "/api/outbound/*/headers"),
   UPSERT_AUTH(HttpMethod.POST, "/api/outbound/*/authentication"),

@@ -28,7 +28,7 @@ public class TracerHelper {
   public void setBaggage(String key, String value) {
     try {
         Baggage baggage = Optional.ofNullable(baggageManager.getBaggage(key))
-            .orElseGet(() -> baggageManager.createBaggage(key));
+            .orElseGet(() -> baggageManager.createBaggage(key)); //NOSONAR
         baggage.makeCurrent(value);
     } catch (Exception e) {
       log.error(AppLogMessage.message("#Baggage - failed to set baggage {} with value {}, error {}",

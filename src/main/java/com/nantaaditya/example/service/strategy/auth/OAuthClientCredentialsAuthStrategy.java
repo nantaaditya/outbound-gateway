@@ -134,40 +134,53 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
               .with("client_secret", clientSecret))
           .retrieve()
           .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
-          .flatMap(response -> {
-            String token = extractPath(response, config.getTokenResponsePath());
-            if (token == null || token.isBlank()) {
-              return Mono.error(new RuntimeException(
-                  "OAuth token response missing field: " + config.getTokenResponsePath()));
-            }
-            if (!config.isAutoRefresh()) {
-              return Mono.just(token);
-            }
-            LocalDateTime expiry = null;
-            String expiryPath = config.getTokenResponseExpiryPath();
-            if (expiryPath == null || expiryPath.isBlank()) {
-              log.warn(AppLogMessage.message(
-                  "OAuth expiry path not configured for config {} — token will be refetched on every call. " +
-                  "Set token_response_expiry_path to enable token caching.", config.getId()));
-            } else {
-              String expiryStr = extractPath(response, expiryPath);
-              if (expiryStr != null) {
-                try {
-                  expiry = LocalDateTime.now().plusSeconds(Long.parseLong(expiryStr));
-                } catch (NumberFormatException ignored) {
-                  log.warn(AppLogMessage.message("Cannot parse token expiry: {}", expiryStr));
-                }
-              }
-            }
-            stateRef.set(new TokenState(token, expiry));
-            return authRepository.updateToken(config.getId(), config.getOutboundSystemId(), token, expiry)
-                .thenReturn(token)
-                .onErrorResume(e -> {
-                  log.warn(AppLogMessage.message("Failed to persist OAuth token for config {}: {}", config.getId(), e.getMessage()).error(e));
-                  return Mono.just(token);
-                });
-          });
+          .flatMap(response -> processTokenResponse(response, config, stateRef));
     }).subscribeOn(Schedulers.boundedElastic());
+  }
+
+  private Mono<String> processTokenResponse(
+      Map<String, Object> response, OutboundAuthConfiguration config, AtomicReference<TokenState> stateRef) {
+    String token = extractPath(response, config.getTokenResponsePath());
+    if (token == null || token.isBlank()) {
+      return Mono.error(new RuntimeException(
+          "OAuth token response missing field: " + config.getTokenResponsePath()));
+    }
+    if (!config.isAutoRefresh()) {
+      return Mono.just(token);
+    }
+    LocalDateTime expiry = resolveExpiry(response, config);
+    stateRef.set(new TokenState(token, expiry));
+    return persistToken(config, token, expiry);
+  }
+
+  // Only call when config.isAutoRefresh() is true — the "not configured" warn assumes that context.
+  private LocalDateTime resolveExpiry(Map<String, Object> response, OutboundAuthConfiguration config) {
+    String expiryPath = config.getTokenResponseExpiryPath();
+    if (expiryPath == null || expiryPath.isBlank()) {
+      log.warn(AppLogMessage.message(
+          "OAuth expiry path not configured for config {} — token will be refetched on every call. " +
+          "Set token_response_expiry_path to enable token caching.", config.getId()));
+      return null;
+    }
+    String expiryStr = extractPath(response, expiryPath);
+    if (expiryStr == null) {
+      return null;
+    }
+    try {
+      return LocalDateTime.now().plusSeconds(Long.parseLong(expiryStr));
+    } catch (NumberFormatException ignored) {
+      log.warn(AppLogMessage.message("Cannot parse token expiry: {}", expiryStr));
+      return null;
+    }
+  }
+
+  private Mono<String> persistToken(OutboundAuthConfiguration config, String token, LocalDateTime expiry) {
+    return authRepository.updateToken(config.getId(), config.getOutboundSystemId(), token, expiry)
+        .thenReturn(token)
+        .onErrorResume(e -> {
+          log.warn(AppLogMessage.message("Failed to persist OAuth token for config {}: {}", config.getId(), e.getMessage()).error(e));
+          return Mono.just(token);
+        });
   }
 
   private String extractPath(Map<String, Object> response, String path) {

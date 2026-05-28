@@ -1,14 +1,14 @@
 package com.nantaaditya.example.service.impl;
 
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
-import com.nantaaditya.example.helper.EncryptionHelper;
-import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.entity.OutboundHeaderConfiguration;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
+import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
+import com.nantaaditya.example.model.logger.AppLogMessage;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -104,7 +104,7 @@ public class GatewayWebClientBuilder {
         try {
           spec.sslContext(insecureSsl());
         } catch (SSLException e) {
-          throw new RuntimeException("SSL config failed", e);
+          throw new IllegalArgumentException("SSL config failed", e);
         }
       });
     }
@@ -169,7 +169,7 @@ public class GatewayWebClientBuilder {
         try {
           spec.sslContext(insecureSsl());
         } catch (SSLException e) {
-          throw new RuntimeException("SSL config failed", e);
+          throw new IllegalArgumentException("SSL config failed", e);
         }
       });
     }

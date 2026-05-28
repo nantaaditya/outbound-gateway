@@ -184,7 +184,7 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         .returnResult()
         .getResponseBody();
     JsonNode histRoot = objectMapper.readTree(histBody);
-    assertThat(histRoot.path("data").path("totalElements").asLong()).isGreaterThanOrEqualTo(1L);
+    assertThat(histRoot.path("data").path("totalElements").asLong()).isPositive();
     awaitEventLog(rid6);
 
     // Step 7: delete system
@@ -311,7 +311,7 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         .returnResult()
         .getResponseBody();
     JsonNode metricsRoot = objectMapper.readTree(metricsBody);
-    assertThat(metricsRoot.path("data").path("idempotencyHits").asLong()).isGreaterThanOrEqualTo(0L);
+    assertThat(metricsRoot.path("data").path("idempotencyHits").asLong()).isNotNegative();
     awaitEventLog(rid3);
 
     // Total event_logs: 3
@@ -585,7 +585,7 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
 
     JsonNode data = root.path("data");
     assertThat(data.path("totalCalls").asLong()).isEqualTo(5L);
-    assertThat(data.path("avgDurationMs").asLong()).isGreaterThanOrEqualTo(0L);
+    assertThat(data.path("avgDurationMs").asLong()).isNotNegative();
     assertThat(data.path("p90DurationMs").asLong())
         .isGreaterThanOrEqualTo(data.path("avgDurationMs").asLong());
     assertThat(data.path("p99DurationMs").asLong())

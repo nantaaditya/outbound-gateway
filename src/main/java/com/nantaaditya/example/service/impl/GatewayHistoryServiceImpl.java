@@ -1,5 +1,6 @@
 package com.nantaaditya.example.service.impl;
 
+import com.nantaaditya.example.entity.BaseEntity;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.response.GatewayHistoryResponse;
@@ -67,7 +68,7 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
       return Mono.just(ALL_SYSTEMS_ID);
     }
     return systemRepository.findByCode(code)
-        .map(system -> system.getId())
+        .map(BaseEntity::getId)
         .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }
 }

@@ -18,7 +18,7 @@ public class ThreadPoolSchedulerStrategy implements SchedulerStrategy {
   public Scheduler createScheduler(SchedulerConfiguration schedulerConfiguration) {
     return Optional.ofNullable(schedulerConfiguration)
         .map(SchedulerConfiguration::getThreadPool)
-        .map(configuration -> buildThreadPool(configuration))
+        .map(this::buildThreadPool)
         .orElseThrow(() -> new IllegalArgumentException("thread pool scheduler configuration is null"));
   }
 

@@ -38,11 +38,11 @@ public class ReactorEventBusConfiguration {
 
     if (null != reactorEventProperties.configurations()) {
       reactorEventProperties.configurations()
-          .forEach((key, value) -> {
+          .forEach((key, value) ->
             reactorEventBusHelper.createSinks(
                 key,
-                Sinks.many().multicast().onBackpressureBuffer(value.bufferSize()));
-          });
+                Sinks.many().multicast().onBackpressureBuffer(value.bufferSize()))
+          );
     }
   }
 }

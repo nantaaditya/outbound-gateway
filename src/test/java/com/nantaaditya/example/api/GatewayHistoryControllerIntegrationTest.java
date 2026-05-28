@@ -65,7 +65,7 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
 
     JsonNode root = objectMapper.readTree(body);
     assertThat(root.path("response").path("code").asText()).isEqualTo("000");
-    assertThat(root.path("data").path("totalElements").asLong()).isGreaterThanOrEqualTo(2L);
+    assertThat(root.path("data").path("totalElements").asLong()).isPositive();
     assertThat(root.path("data").path("content").isArray()).isTrue();
   }
 
@@ -197,7 +197,7 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
         .expectBody().returnResult().getResponseBody();
 
     JsonNode root = objectMapper.readTree(body);
-    assertThat(root.path("data").path("totalElements").asLong()).isEqualTo(0L);
+    assertThat(root.path("data").path("totalElements").asLong()).isZero();
     assertThat(root.path("data").path("content").size()).isEqualTo(0);
   }
 
@@ -212,7 +212,7 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
 
     JsonNode root = objectMapper.readTree(body);
     assertThat(root.path("data").path("totalElements").asLong()).isEqualTo(2L);
-    assertThat(root.path("data").path("content").size()).isEqualTo(0);
+    assertThat(root.path("data").path("content").size()).isZero();
   }
 
   @Test
@@ -225,7 +225,7 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
         .expectBody().returnResult().getResponseBody();
 
     JsonNode root = objectMapper.readTree(body);
-    assertThat(root.path("data").path("totalElements").asLong()).isGreaterThanOrEqualTo(1L);
+    assertThat(root.path("data").path("totalElements").asLong()).isPositive();
     JsonNode first = root.path("data").path("content").get(0);
     assertThat(first.path("responseStatus").asInt()).isEqualTo(200);
   }

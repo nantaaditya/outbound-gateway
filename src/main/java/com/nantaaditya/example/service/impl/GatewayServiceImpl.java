@@ -1,17 +1,18 @@
 package com.nantaaditya.example.service.impl;
 
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
+import com.nantaaditya.example.entity.OutboundHeaderConfiguration;
 import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
-import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.helper.JsltResponseMapper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.OutboundMetricsRecorder;
+import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
@@ -29,24 +30,24 @@ import com.nantaaditya.example.repository.OutboundResilienceConfigurationReposit
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.GatewayService;
-import io.micrometer.observation.Observation;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.ratelimiter.RequestNotPermitted;
-import io.github.resilience4j.retry.MaxRetriesExceededException;
 import io.github.resilience4j.reactor.bulkhead.operator.BulkheadOperator;
 import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
 import io.github.resilience4j.reactor.ratelimiter.operator.RateLimiterOperator;
 import io.github.resilience4j.reactor.retry.RetryOperator;
+import io.github.resilience4j.retry.MaxRetriesExceededException;
+import io.micrometer.observation.Observation;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.concurrent.TimeoutException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -127,10 +128,10 @@ public class GatewayServiceImpl implements GatewayService {
   }
 
   public void evictContext(String code) {
-    Optional.ofNullable(contextCache.get(code))
-        .filter(ctx -> ctx.getHostConfig() != null)
-        .ifPresent(ctx -> contextBuilder.evictWebClient(ctx.getHostConfig().getBaseUrl()));
-    contextCache.remove(code);
+    OutboundSystemContext evicted = contextCache.remove(code);
+    if (evicted != null && evicted.getHostConfig() != null) {
+      contextBuilder.evictWebClient(evicted.getHostConfig().getBaseUrl());
+    }
     contextLoadCache.remove(code);
   }
 
@@ -362,9 +363,9 @@ public class GatewayServiceImpl implements GatewayService {
 
   @SuppressWarnings("unchecked")
   private Map<String, Object> resolveRequestHeaders(OutboundSystemContext context) {
-    List<com.nantaaditya.example.entity.OutboundHeaderConfiguration> headerConfigs = context.getHeaders();
+    List<OutboundHeaderConfiguration> headerConfigs = context.getHeaders();
     if (headerConfigs == null || headerConfigs.isEmpty()) {
-      return null;
+      return null; //NOSONAR
     }
     Map<String, List<String>> merged = headerConfigs.stream()
         .map(config -> config.getHeaders(jsonHelper))

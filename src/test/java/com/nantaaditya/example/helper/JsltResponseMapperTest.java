@@ -44,11 +44,12 @@ class JsltResponseMapperTest {
 
     String result = mapper.map(body, script);
 
-    assertThat(result).contains("\"code\"");
-    assertThat(result).contains("\"success\"");
-    assertThat(result).contains("\"value\"");
-    assertThat(result).contains("10000");
-    assertThat(result).doesNotContain("currency");
+    assertThat(result)
+        .contains("\"code\"")
+        .contains("\"success\"")
+        .contains("\"value\"")
+        .contains("10000")
+        .doesNotContain("currency");
   }
 
   @Test

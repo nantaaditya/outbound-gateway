@@ -33,7 +33,6 @@ import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
-import com.nantaaditya.example.service.AuthStrategy;
 import com.nantaaditya.example.service.impl.GatewayServiceImpl;
 import com.nantaaditya.example.service.impl.GatewayWebClientBuilder;
 import java.util.List;
@@ -54,20 +53,34 @@ import reactor.core.publisher.Mono;
 @ExtendWith(MockitoExtension.class)
 class GatewayServiceImplTest {
 
-  @Mock OutboundSystemRepository systemRepository;
-  @Mock OutboundHostConfigurationRepository hostConfigRepository;
-  @Mock OutboundResilienceConfigurationRepository resilienceRepository;
-  @Mock OutboundHeaderConfigurationRepository headerRepository;
-  @Mock OutboundAuthConfigurationRepository authRepository;
-  @Mock OutboundResponseMapperConfigurationRepository mapperRepository;
-  @Mock OutboundHistoryRepository historyRepository;
-  @Mock GatewayWebClientBuilder contextBuilder;
-  @Mock AuthStrategyFactory authStrategyFactory;
-  @Mock EncryptionHelper encryptionHelper;
-  @Mock JsltResponseMapper jsltResponseMapper;
-  @Mock JsonHelper jsonHelper;
-  @Mock OutboundMetricsRecorder metricsRecorder;
-  @Mock AuthStrategy authStrategy;
+  @Mock
+  OutboundSystemRepository systemRepository;
+  @Mock
+  OutboundHostConfigurationRepository hostConfigRepository;
+  @Mock
+  OutboundResilienceConfigurationRepository resilienceRepository;
+  @Mock
+  OutboundHeaderConfigurationRepository headerRepository;
+  @Mock
+  OutboundAuthConfigurationRepository authRepository;
+  @Mock
+  OutboundResponseMapperConfigurationRepository mapperRepository;
+  @Mock
+  OutboundHistoryRepository historyRepository;
+  @Mock
+  GatewayWebClientBuilder contextBuilder;
+  @Mock
+  AuthStrategyFactory authStrategyFactory;
+  @Mock
+  EncryptionHelper encryptionHelper;
+  @Mock
+  JsltResponseMapper jsltResponseMapper;
+  @Mock
+  JsonHelper jsonHelper;
+  @Mock
+  OutboundMetricsRecorder metricsRecorder;
+  @Mock
+  AuthStrategy authStrategy;
 
   @InjectMocks
   GatewayServiceImpl gatewayService;
@@ -141,14 +154,16 @@ class GatewayServiceImplTest {
         .build());
 
     when(authStrategyFactory.getStrategy(AuthType.NONE)).thenReturn(authStrategy);
-    when(authStrategy.authenticate(any(), any(), any())).thenReturn(Mono.just(AuthCredential.empty()));
-    when(historyRepository.save(any())).thenReturn(Mono.just(OutboundHistory.builder().id(1L).build()));
+    when(authStrategy.authenticate(any(), any(), any())).thenReturn(
+        Mono.just(AuthCredential.empty()));
+    when(historyRepository.save(any())).thenReturn(
+        Mono.just(OutboundHistory.builder().id(1L).build()));
 
     gatewayService.execute("no-key-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
 
     ArgumentCaptor<OutboundHistory> captor = ArgumentCaptor.forClass(OutboundHistory.class);
     verify(historyRepository).save(captor.capture());
-    assertThat(captor.getValue().getRetryCount()).isEqualTo(0);
+    assertThat(captor.getValue().getRetryCount()).isZero();
   }
 
   @SuppressWarnings("unchecked")

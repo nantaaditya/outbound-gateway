@@ -5,10 +5,10 @@ import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.service.AuthStrategy;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.PrivateKey;
 import java.security.Signature;
-import java.nio.charset.StandardCharsets;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Optional;
@@ -74,7 +74,7 @@ public class RsaAuthStrategy implements AuthStrategy {
       KeyFactory kf = KeyFactory.getInstance("RSA");
       return kf.generatePrivate(new PKCS8EncodedKeySpec(der));
     } catch (Exception e) {
-      throw new RuntimeException("Failed to load RSA private key", e);
+      throw new IllegalArgumentException("Failed to load RSA private key", e);
     }
   }
 
@@ -85,7 +85,7 @@ public class RsaAuthStrategy implements AuthStrategy {
       sig.update(data.getBytes(StandardCharsets.UTF_8));
       return Base64.getEncoder().encodeToString(sig.sign());
     } catch (Exception e) {
-      throw new RuntimeException("RSA signing failed", e);
+      throw new IllegalArgumentException("RSA signing failed", e);
     }
   }
 }

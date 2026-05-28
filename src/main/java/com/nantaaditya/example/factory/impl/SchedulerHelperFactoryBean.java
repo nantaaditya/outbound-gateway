@@ -12,6 +12,7 @@ import com.nantaaditya.example.service.strategy.schedulers.ParallelSchedulerStra
 import com.nantaaditya.example.service.strategy.schedulers.SingleSchedulerStrategy;
 import com.nantaaditya.example.service.strategy.schedulers.ThreadPoolSchedulerStrategy;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +25,7 @@ import reactor.core.scheduler.Schedulers;
 public class SchedulerHelperFactoryBean implements FactoryBean<SchedulerHelper> {
 
   private final SchedulerProperties schedulerProperties;
-  private Map<SchedulerType, SchedulerStrategy> schedulerStrategies = new HashMap<>();
+  private Map<SchedulerType, SchedulerStrategy> schedulerStrategies = new EnumMap<>(SchedulerType.class);
   
   public SchedulerHelperFactoryBean(SchedulerProperties schedulerProperties) {
     this.schedulerProperties = schedulerProperties;
@@ -83,8 +84,7 @@ public class SchedulerHelperFactoryBean implements FactoryBean<SchedulerHelper> 
     } catch (Exception e) {
       log.error(AppLogMessage.message("#Scheduler - failed to build scheduler {}, error {}",
           name, e.getMessage()).error(e));
-    } finally {
-      return scheduler;
     }
+    return scheduler;
   }
 }

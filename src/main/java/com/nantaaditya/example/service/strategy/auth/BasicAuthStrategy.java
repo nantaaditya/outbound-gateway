@@ -6,6 +6,7 @@ import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.service.AuthStrategy;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -35,7 +36,7 @@ public class BasicAuthStrategy implements AuthStrategy {
     return Mono.fromCallable(() -> {
       String clientId = encryption.decryptToString(config.getClientId());
       String clientSecret = encryption.decryptToString(config.getClientSecret());
-      String encoded = Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes());
+      String encoded = Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes(StandardCharsets.UTF_8));
       return new AuthCredential("Authorization", "Basic " + encoded, TokenInjectLocation.HEADER);
     }).subscribeOn(Schedulers.boundedElastic());
   }

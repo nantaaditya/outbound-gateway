@@ -1,12 +1,12 @@
 package com.nantaaditya.example.service.impl;
 
+import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.admin.CreateHostConfigRequest;
 import com.nantaaditya.example.model.request.admin.UpdateHostConfigRequest;
 import com.nantaaditya.example.model.response.OutboundHostConfigResponse;
-import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.service.OutboundHostService;
 import java.util.List;
@@ -89,7 +89,7 @@ public class OutboundHostServiceImpl implements OutboundHostService {
   }
 
   private byte[] encryptIfNotNull(String value) {
-    if (value == null || value.isBlank()) return null;
+    if (value == null || value.isBlank()) return null; //NOSONAR
     return encryptionHelper.encryptString(value);
   }
 }

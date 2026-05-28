@@ -22,11 +22,11 @@ import reactor.core.publisher.Hooks;
     RetryProperties.class,
     SchedulerProperties.class
 })
-public class SingleModuleReactiveApplication {
+public class OutboxGatewayApplication {
 
   public static void main(String[] args) {
     Hooks.enableAutomaticContextPropagation();
-    SpringApplication.run(SingleModuleReactiveApplication.class, args);
+    SpringApplication.run(OutboxGatewayApplication.class, args);
   }
 
 }

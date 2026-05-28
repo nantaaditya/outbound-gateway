@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLException;
@@ -55,7 +56,7 @@ public class WebClientFactoryBean implements FactoryBean<WebClientFactory> {
     Map<String, WebClient> webClients = clientProperties.configurations()
         .entrySet()
         .stream()
-        .collect(Collectors.toMap(entry -> entry.getKey(), entry -> createWebClient(entry.getValue())));
+        .collect(Collectors.toMap(Entry::getKey, entry -> createWebClient(entry.getValue())));
     return new WebClientFactoryImpl(webClients);
   }
 
@@ -71,7 +72,7 @@ public class WebClientFactoryBean implements FactoryBean<WebClientFactory> {
         try {
           context.sslContext(createSsl());
         } catch (SSLException e) {
-          throw new RuntimeException("web client ssl verification failed", e);
+          throw new IllegalArgumentException("web client ssl verification failed", e);
         }
       });
     }

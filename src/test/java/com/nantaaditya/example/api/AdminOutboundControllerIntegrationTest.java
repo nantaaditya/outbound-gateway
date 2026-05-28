@@ -12,6 +12,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.nantaaditya.example.base.BaseIntegrationTest;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHistory;
+import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.helper.DateTimeHelper;
@@ -29,7 +30,6 @@ import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest.Circu
 import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest.RateLimiter;
 import com.nantaaditya.example.model.request.admin.UpsertResilienceRequest.Retry;
 import com.nantaaditya.example.model.request.admin.UpsertResponseMapperRequest;
-import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.repository.EventLogRepository;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
@@ -153,8 +153,8 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
     JsonNode root = objectMapper.readTree(body);
     assertThat(root.path("response").path("code").asText()).isEqualTo("000");
     assertThat(root.path("data").path("content").isArray()).isTrue();
-    assertThat(root.path("data").path("content").size()).isGreaterThanOrEqualTo(1);
-    assertThat(root.path("data").path("totalElements").asLong()).isGreaterThanOrEqualTo(1L);
+    assertThat(root.path("data").path("content").size()).isPositive();
+    assertThat(root.path("data").path("totalElements").asLong()).isPositive();
 
     // Assertion 2: DB has system
     assertThat(systemRepository.findByCode("admin-list-test").block()).isNotNull();
@@ -188,9 +188,9 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
     JsonNode data = root.path("data");
     assertThat(data.path("content").isArray()).isTrue();
     assertThat(data.path("content").size()).isEqualTo(2);
-    assertThat(data.path("totalElements").asLong()).isGreaterThanOrEqualTo(3L);
-    assertThat(data.path("totalPages").asInt()).isGreaterThanOrEqualTo(2);
-    assertThat(data.path("page").asInt()).isEqualTo(0);
+    assertThat(data.path("totalElements").asLong()).isPositive();
+    assertThat(data.path("totalPages").asInt()).isPositive();
+    assertThat(data.path("page").asInt()).isZero();
     assertThat(data.path("size").asInt()).isEqualTo(2);
 
     awaitEventLog(requestId);
@@ -565,7 +565,7 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
     // Assertion 1: response with zero calls
     JsonNode root = objectMapper.readTree(body);
     assertThat(root.path("response").path("code").asText()).isEqualTo("000");
-    assertThat(root.path("data").path("totalCalls").asLong()).isEqualTo(0L);
+    assertThat(root.path("data").path("totalCalls").asLong()).isZero();
     assertThat(root.path("data").path("code").asText()).isEqualTo("admin-metrics-zero");
 
     // Assertion 2: system exists

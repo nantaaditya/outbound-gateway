@@ -86,7 +86,7 @@ public class AppLogMessage implements Message {
         } else {
           sb.append("{}");
         }
-        i++;
+        i++; //NOSONAR
       } else {
         sb.append(this.message.charAt(i));
       }
