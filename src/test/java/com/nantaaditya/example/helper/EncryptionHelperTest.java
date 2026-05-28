@@ -25,8 +25,7 @@ class EncryptionHelperTest {
 
     byte[] encrypted = encryptionHelper.encrypt(plaintext);
 
-    assertThat(encrypted).isNotNull();
-    assertThat(encrypted).isNotEqualTo(plaintext);
+    assertThat(encrypted).isNotNull().isNotEqualTo(plaintext);
     assertThat(encrypted.length).isGreaterThan(plaintext.length);
   }
 
@@ -75,5 +74,15 @@ class EncryptionHelperTest {
     String decrypted = encryptionHelper.decryptToString(encrypted);
 
     assertThat(decrypted).isEqualTo(original);
+  }
+
+  @Test
+  @DisplayName("constructor throws when key is not 32 bytes after Base64 decode")
+  void construct_invalidKeyLength_throwsIllegalArgument() {
+    String shortKey = Base64.getEncoder().encodeToString(new byte[16]);
+
+    assertThatThrownBy(() -> new EncryptionHelper(shortKey))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("32 bytes");
   }
 }

@@ -18,34 +18,35 @@ import reactor.core.scheduler.Schedulers;
 @Component
 public class ReactorEventBusHelper {
 
-  private final Map<String, Sinks.Many> sinks = new ConcurrentHashMap<>();
-  private final Lock lock = new ReentrantLock(true);
-  private final long timeOut = 5l;
-  private final TimeUnit timeOutTimeUnit = TimeUnit.SECONDS;
+  private static final Map<String, Sinks.Many> SINKS = new ConcurrentHashMap<>(); //NOSONAR
+  private static final Lock LOCK = new ReentrantLock(true);
+  private static final long TIME_OUT = 5l;
+  private static final TimeUnit TIME_OUT_TIME_UNIT = TimeUnit.SECONDS;
 
   public <T> void createSinks(String name, Sinks.Many<T> sink) {
     try {
       log.info(AppLogMessage.message("#Event - create sinks for {}", name));
-      sinks.put(name, sink);
+      SINKS.put(name, sink);
     } catch (Exception e) {
       log.error(AppLogMessage.message("#Event - create sinks {} error {}", name, e.getMessage()).error(e));
     }
   }
 
   public <T> Sinks.Many<T> getSinks(String name) {
-    return sinks.get(name);
+    return SINKS.get(name);
   }
 
   public <T> void publish(String name, T event) {
+    boolean locked = false;
     try {
-      if (event == null || event == null) {
+      if (name == null || event == null) {
         log.warn(AppLogMessage.message("#Event - event payload is null"));
         return;
       }
 
-      lock.tryLock(timeOut, timeOutTimeUnit);
+      locked = LOCK.tryLock(TIME_OUT, TIME_OUT_TIME_UNIT);
 
-      Sinks.Many<T> sink = sinks.get(name);
+      Sinks.Many<T> sink = SINKS.get(name);
       if (sink == null) {
         log.warn(AppLogMessage.message("#Event - sinks for {} not found", name));
         return;
@@ -57,9 +58,10 @@ public class ReactorEventBusHelper {
         emitResult.orThrow();
       }
     } catch (InterruptedException ex) {
-      log.error(AppLogMessage.message("#Event - interrupted while waiting for sinks for {}, error {} ", name, ex.getCause()).error(ex));
+      log.error(AppLogMessage.message("#Event - interrupted while waiting for sinks for {}, error {} ", name, ex.getCause()).error(ex)); //NOSONAR
+      Thread.currentThread().interrupt();
     } finally {
-      lock.unlock();
+      if (locked) LOCK.unlock();
     }
   }
 
@@ -68,7 +70,7 @@ public class ReactorEventBusHelper {
       scheduler = Schedulers.immediate();
     }
 
-    Sinks.Many<T> sink = sinks.get(name);
+    Sinks.Many<T> sink = SINKS.get(name);
     if (sink == null) {
       return Flux.empty();
     }
