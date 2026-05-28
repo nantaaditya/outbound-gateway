@@ -21,7 +21,9 @@ import com.nantaaditya.example.repository.OutboundHistoryRepository;
 import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
+import java.time.Duration;
 import java.util.Map;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -122,7 +124,10 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
         .expectStatus().isOk();
 
     // Allow async history save to persist
-    Thread.sleep(300);
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(5))
+        .pollInterval(Duration.ofMillis(200))
+        .until(() -> historyRepository.count().block() >= 1L);
 
     // Second call — should return from cache
     byte[] body = webTestClient.post()

@@ -26,7 +26,9 @@ import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.GatewayService;
+import java.time.Duration;
 import java.util.Map;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -107,7 +109,10 @@ class GatewayExecuteValidationIntegrationTest extends BaseIntegrationTest {
         .exchange()
         .expectStatus().isOk();
 
-    Thread.sleep(300);
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(5))
+        .pollInterval(Duration.ofMillis(200))
+        .until(() -> historyRepository.count().block() >= 1L);
 
     Long count = historyRepository.count().block();
     assertThat(count).isEqualTo(1L);

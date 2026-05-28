@@ -267,7 +267,10 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
     awaitEventLog(rid1);
 
     // Allow async history save
-    Thread.sleep(300);
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(5))
+        .pollInterval(Duration.ofMillis(200))
+        .until(() -> historyRepository.count().block() >= 1L);
 
     // Step 2: second call same idempotency key — fromCache=true
     String rid2 = newRequestId();
@@ -375,7 +378,10 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
     awaitEventLog(rid2);
 
     // Allow first execute's history to save
-    Thread.sleep(300);
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(5))
+        .pollInterval(Duration.ofMillis(200))
+        .until(() -> historyRepository.count().block() >= 1L);
 
     // Step 3: second execute — fresh load from DB
     String rid3 = newRequestId();
@@ -390,9 +396,6 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         .exchange()
         .expectStatus().isOk();
     awaitEventLog(rid3);
-
-    // Allow second history to save
-    Thread.sleep(300);
 
     // outbound_histories count >= 2
     OutboundSystem system = systemRepository.findByCode(code).block();
