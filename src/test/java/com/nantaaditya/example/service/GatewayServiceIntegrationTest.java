@@ -174,8 +174,8 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("execute with idempotency key and retries exhausted saves retryCount via insertHistory")
-  void execute_withIdempotencyKey_retriesExhausted_retryCountSavedViaInsertHistory() {
+  @DisplayName("execute with idempotency key and retries exhausted saves retryCount via saveHistory")
+  void execute_withIdempotencyKey_retriesExhausted_retryCountSavedViaSaveHistory() {
     wireMock.stubFor(post(urlEqualTo("/v1/charge"))
         .willReturn(aResponse().withStatus(500).withBody("{\"error\":\"fail\"}")));
 
@@ -202,19 +202,25 @@ class GatewayServiceIntegrationTest extends BaseIntegrationTest {
   }
 
   private OutboundSystem saveSystem(String code, String baseUrl, String apiPath) {
+    OutboundHostConfiguration hostConfig = saveHostConfig(baseUrl);
     return systemRepository.save(OutboundSystem.builder()
         .code(code)
         .name(code)
         .httpMethod("POST")
-        .baseUrl(baseUrl)
+        .hostConfigurationId(hostConfig.getId())
         .apiPath(apiPath)
         .active(true)
         .idempotencyTtlHours(24)
         .build()).block();
   }
 
-  private void saveHostConfig(String baseUrl) {
-    hostConfigRepository.save(OutboundHostConfiguration.builder()
+  /** host_configuration_id is a mandatory FK — reuse an existing row for {@code baseUrl} or create one. */
+  private OutboundHostConfiguration saveHostConfig(String baseUrl) {
+    OutboundHostConfiguration existing = hostConfigRepository.findByBaseUrl(baseUrl).block();
+    if (existing != null) {
+      return existing;
+    }
+    return hostConfigRepository.save(OutboundHostConfiguration.builder()
         .baseUrl(baseUrl)
         .connectTimeOutMs(5000)
         .maxConnections(50)

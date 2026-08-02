@@ -1,19 +1,35 @@
 package com.nantaaditya.example.helper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nantaaditya.example.model.constant.CacheType;
+import com.nantaaditya.example.properties.CacheProperties;
+import com.nantaaditya.example.properties.embedded.CacheConfiguration;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+@ExtendWith(MockitoExtension.class)
 class JsltResponseMapperTest {
 
   private JsltResponseMapper mapper;
 
+  @Mock
+  private CacheProperties cacheProperties;
+
   @BeforeEach
   void setUp() {
-    mapper = new JsltResponseMapper(new ObjectMapper());
+    when(cacheProperties.get(anyString()))
+        .thenReturn(new CacheConfiguration(CacheType.SIZE, 100, 0, TimeUnit.MILLISECONDS));
+    mapper = new JsltResponseMapper(new ObjectMapper(), cacheProperties);
+    mapper.onStart();
   }
 
   @Test

@@ -1,18 +1,19 @@
 package com.nantaaditya.example.helper;
 
 import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.RemovalListener;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.logger.AppLogMessage;
+import com.nantaaditya.example.properties.CacheProperties;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map.Entry;
-import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.slf4j.MDC;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 @Log4j2
@@ -20,17 +21,16 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ContextHelper {
 
-  private final Cache<String, ContextDTO> contexts = Caffeine.newBuilder()
-      .expireAfterWrite(10, TimeUnit.MINUTES)
-      .evictionListener((RemovalListener<String, ContextDTO>) (key, value, cause)
-          -> log.debug("#Context - remove key: {}, cause: {}", key, cause))
-      .build();
+  private final CacheProperties cacheProperties;
 
-  private final Cache<String, String> additionalContexts = Caffeine.newBuilder()
-      .expireAfterWrite(10, TimeUnit.MINUTES)
-      .evictionListener((RemovalListener<String, String>) (key, value, cause)
-          -> log.debug("#Context - remove key: {}, cause: {}", key, cause))
-      .build();
+  private Cache<String, ContextDTO> contexts;
+  private Cache<String, String> additionalContexts;
+
+  @EventListener(ApplicationReadyEvent.class)
+  public void onStart() {
+    this.contexts = CacheHelper.create(ConstantName.CONTEXTS_CACHE, cacheProperties.get(ConstantName.CONTEXTS_CACHE));
+    this.additionalContexts = CacheHelper.create(ConstantName.ADDITIONAL_DATA_CACHE, cacheProperties.get(ConstantName.ADDITIONAL_DATA_CACHE));
+  }
 
   public void put(ContextDTO contextDTO) {
     try {

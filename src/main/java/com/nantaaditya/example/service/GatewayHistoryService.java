@@ -2,7 +2,7 @@ package com.nantaaditya.example.service;
 
 import com.nantaaditya.example.model.response.GatewayHistoryResponse;
 import com.nantaaditya.example.model.response.PageResponse;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import org.springframework.lang.Nullable;
 import reactor.core.publisher.Mono;
 
@@ -10,8 +10,8 @@ public interface GatewayHistoryService {
 
   Mono<PageResponse<GatewayHistoryResponse>> findHistories(
       @Nullable String code,
-      @Nullable LocalDateTime startDate,
-      @Nullable LocalDateTime endDate,
+      @Nullable LocalDate startDate,
+      @Nullable LocalDate endDate,
       @Nullable Integer status,
       int page, int size);
 

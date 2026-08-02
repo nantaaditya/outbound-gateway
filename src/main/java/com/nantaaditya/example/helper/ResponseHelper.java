@@ -4,6 +4,7 @@ import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.ResponseCode;
 import com.nantaaditya.example.model.response.BaseResponse;
 import com.nantaaditya.example.model.response.BaseResponse.ErrorMetadata;
+import com.nantaaditya.example.model.response.BaseResponse.PageMetadata;
 import com.nantaaditya.example.model.response.BaseResponse.ResponseMetadata;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -53,6 +54,33 @@ public class ResponseHelper {
             .violations(errors)
             .build()
         )
+        .build();
+  }
+
+  public <T> BaseResponse<T> response(ResponseCode responseCode, T data, Map<String, List<String>> errors, PageMetadata pageMetadata) {
+    ResponseMetadata responseMetadata = ResponseMetadata.builder()
+        .code(responseCode.getCode())
+        .description(responseCode.getMessage())
+        .time(DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
+        .build();
+
+    String requestId = tracerHelper.getBaggage(HeaderConstant.REQUEST_ID);
+    contextHelper.update(requestId, contextDTO ->
+        contextDTO.withResponse(responseMetadata)
+    );
+
+    ErrorMetadata errorMetadata = null;
+    if (errors != null && !errors.isEmpty()) {
+      errorMetadata = ErrorMetadata.builder()
+          .violations(errors)
+          .build();
+    }
+
+    return BaseResponse.<T>builder()
+        .response(responseMetadata)
+        .data(data)
+        .error(errorMetadata)
+        .pagination(pageMetadata)
         .build();
   }
 }

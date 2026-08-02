@@ -52,7 +52,7 @@ public class OutboundHistory implements Persistable<Long> {
     return idempotencyKey != null && !idempotencyKey.isBlank();
   }
 
-  public static OutboundHistory create(OutboundSystem system, String callerService,
+  public static OutboundHistory create(OutboundSystem system, String baseUrl, String callerService,
       String idempotencyKey, String requestId, String requestPayload,
       Map<String, Object> requestHeaders, GatewayResponse response,
       long durationMs, int retryCount) {
@@ -65,7 +65,7 @@ public class OutboundHistory implements Persistable<Long> {
         .callerService(callerService)
         .requestId(requestId)
         .requestMethod(system.getHttpMethod())
-        .requestUrl(system.getBaseUrl() + system.getApiPath())
+        .requestUrl(system.getFullPath(baseUrl))
         .requestHeaders(requestHeaders)
         .requestPayload(requestPayload)
         .responseStatus(response.status())

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.nantaaditya.example.helper.ApiLogbookFormatter;
 import com.nantaaditya.example.helper.ApiLogbookWriter;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.properties.LogProperties;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +37,7 @@ public class LogbookWebClientConfiguration {
 
   private String composeCorrelationId(HttpRequest httpRequest) {
     String requestId = httpRequest.getHeaders().getFirst(HeaderConstant.REQUEST_ID.getHeader());
-    MDC.put("reqId", requestId);
+    MDC.put(ConstantName.REQUEST_ID_MDC, requestId);
     return requestId;
   }
 }

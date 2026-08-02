@@ -73,4 +73,11 @@ public class OutboundAuthConfiguration extends BaseEntity<Long> {
   public boolean isPrefixNotBlank() {
     return tokenPrefix != null && !tokenPrefix.isBlank();
   }
+
+  public static OutboundAuthConfiguration empty(long outboundSystemId) {
+    return OutboundAuthConfiguration.builder()
+        .outboundSystemId(outboundSystemId)
+        .authType(AuthType.NONE)
+        .build();
+  }
 }

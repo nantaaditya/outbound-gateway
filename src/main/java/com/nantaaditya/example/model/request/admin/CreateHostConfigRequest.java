@@ -4,9 +4,11 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import org.hibernate.validator.constraints.URL;
 
 public record CreateHostConfigRequest(
     @NotBlank(message = "NotBlank")
+    @URL(message = "NotValid")
     String baseUrl,
     @Min(value = 1, message = "Min")
     int connectTimeOutMs,

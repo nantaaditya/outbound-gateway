@@ -5,8 +5,12 @@ import com.nantaaditya.example.model.request.admin.CreateHostConfigRequest;
 import com.nantaaditya.example.model.request.admin.UpdateHostConfigRequest;
 import com.nantaaditya.example.model.response.BaseResponse;
 import com.nantaaditya.example.model.response.OutboundHostConfigResponse;
+import com.nantaaditya.example.model.response.OutboundSystemResponse;
 import com.nantaaditya.example.service.OutboundHostService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -16,12 +20,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 
 @RestController
 @RequestMapping("/api/outbound/host")
 @RequiredArgsConstructor
+@Tag(name = "outbound host api", description = "api to configure outbound host")
 public class OutboundHostController {
 
   private final OutboundHostService outboundHostService;
@@ -31,6 +37,7 @@ public class OutboundHostController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "create outbound host", description = "create outbound host")
   public Mono<BaseResponse<OutboundHostConfigResponse>> create(
       @RequestBody @Valid CreateHostConfigRequest request) {
     return outboundHostService.create(request)
@@ -40,8 +47,12 @@ public class OutboundHostController {
   @GetMapping(
       produces = MediaType.APPLICATION_JSON_VALUE
   )
-  public Mono<BaseResponse<List<OutboundHostConfigResponse>>> list() {
-    return outboundHostService.list()
+  @Operation(summary = "list outbound host", description = "list outbound host")
+  public Mono<BaseResponse<List<OutboundHostConfigResponse>>> list(
+      @RequestParam(required = false, defaultValue = "0") @Min(value = 0, message = "NotValid") int page,
+      @RequestParam(required = false, defaultValue = "10") @Min(value = 1, message = "NotValid") int size
+  ) {
+    return outboundHostService.list(page, size)
         .map(responseHelper::success);
   }
 
@@ -49,7 +60,8 @@ public class OutboundHostController {
       value = "/{id}",
       produces = MediaType.APPLICATION_JSON_VALUE
   )
-  public Mono<BaseResponse<OutboundHostConfigResponse>> getById(@PathVariable long id) {
+  @Operation(summary = "get outbound host by id", description = "get outbound host by id")
+  public Mono<BaseResponse<OutboundHostConfigResponse>> getById(@PathVariable @Min(value = 1, message = "NotValid") long id) {
     return outboundHostService.getById(id)
         .map(responseHelper::success);
   }
@@ -59,8 +71,9 @@ public class OutboundHostController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "update outbound host", description = "update outbound host")
   public Mono<BaseResponse<OutboundHostConfigResponse>> update(
-      @PathVariable long id,
+      @PathVariable @Min(value = 1, message = "NotValid") long id,
       @RequestBody @Valid UpdateHostConfigRequest request) {
     return outboundHostService.update(id, request)
         .map(responseHelper::success);
@@ -70,8 +83,19 @@ public class OutboundHostController {
       value = "/{id}/reload",
       produces = MediaType.APPLICATION_JSON_VALUE
   )
-  public Mono<BaseResponse<Boolean>> reload(@PathVariable long id) {
+  @Operation(summary = "reload outbound host", description = "reload outbound host")
+  public Mono<BaseResponse<Boolean>> reload(@PathVariable @Min(value = 1, message = "NotValid") long id) {
     return outboundHostService.reload(id)
+        .map(responseHelper::success);
+  }
+
+  @GetMapping(
+      value = "/{id}/systems",
+      produces = MediaType.APPLICATION_JSON_VALUE
+  )
+  @Operation(summary = "list outbound system", description = "list outbound system")
+  public Mono<BaseResponse<List<OutboundSystemResponse>>> listSystems(@PathVariable @Min(value = 1, message = "NotValid") long id) {
+    return outboundHostService.listSystems(id)
         .map(responseHelper::success);
   }
 }

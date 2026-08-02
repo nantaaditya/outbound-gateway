@@ -9,16 +9,20 @@ import org.hibernate.validator.constraints.Range;
 public record UpsertResilienceRequest(
     @Min(value = 1, message = "NotValid")
     int readTimeOutMs,
-    @Valid CircuitBreaker circuitBreaker,
-    @Valid BulkHead bulkHead,
-    @Valid RateLimiter rateLimiter,
-    @Valid Retry retry
+    @Valid
+    CircuitBreaker circuitBreaker,
+    @Valid
+    BulkHead bulkHead,
+    @Valid
+    RateLimiter rateLimiter,
+    @Valid
+    Retry retry
 ) {
 
   public static record CircuitBreaker(
-      @Range(min = 1, max = 100, message = "NotValid")
+      @Range(min = 1, max = Integer.MAX_VALUE, message = "NotValid")
       float cbFailureRateThreshold,
-      @Range(min = 1, max = 100, message = "NotValid")
+      @Range(min = 1, max = Integer.MAX_VALUE, message = "NotValid")
       float cbSlowCallRateThreshold,
       @Range(min = 1, max = Integer.MAX_VALUE, message = "NotValid")
       int cbSlowCallDurationMs,

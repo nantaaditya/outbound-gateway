@@ -1,6 +1,9 @@
 logs/*
 target/**
 .idea/**
+.DS_Store
 PLAN.md
 CODE_REVIEW.md
+DB_MIGRATION_CONSOLIDATION_PLAN.md
+SEQUENTIAL_INTEGRATION_TEST_PLAN.md
 .claude/**

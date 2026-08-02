@@ -2,10 +2,13 @@ package com.nantaaditya.example.api;
 
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.ResponseHelper;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.BaseResponse;
 import com.nantaaditya.example.model.response.GatewayExecuteResponse;
 import com.nantaaditya.example.service.GatewayService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +22,7 @@ import reactor.core.publisher.Mono;
 @RestController
 @RequestMapping("/api/gateway")
 @RequiredArgsConstructor
+@Tag(name = "gateway api", description = "api for calling to outbound host")
 public class GatewayController {
 
   private final GatewayService gatewayService;
@@ -30,10 +34,11 @@ public class GatewayController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "call outbound host", description = "call outbound host")
   public Mono<BaseResponse<GatewayExecuteResponse>> execute(
       @PathVariable String code,
-      @RequestHeader(value = "X-Caller-Service", required = false) String callerService,
-      @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey,
+      @RequestHeader(value = ConstantName.CALLER_SERVICE_HEADER, required = false) String callerService,
+      @RequestHeader(value = ConstantName.IDEMPOTENT_HEADER, required = false) String idempotencyKey,
       @RequestBody GatewayRequest request
   ) {
     return gatewayService.execute(code, callerService, idempotencyKey, request)

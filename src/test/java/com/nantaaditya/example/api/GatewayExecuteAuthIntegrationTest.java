@@ -279,14 +279,14 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
   // --- helpers ---
 
   private OutboundSystem seedSystem(String code, String baseUrl, String apiPath) {
-    OutboundSystem system = systemRepository.save(OutboundSystem.builder()
-        .code(code).name(code).httpMethod("POST").baseUrl(baseUrl).apiPath(apiPath)
-        .active(true).idempotencyTtlHours(24).build()).block();
-
-    hostConfigRepository.save(OutboundHostConfiguration.builder()
+    OutboundHostConfiguration hostConfig = hostConfigRepository.save(OutboundHostConfiguration.builder()
         .baseUrl(baseUrl).connectTimeOutMs(5000).maxConnections(50)
         .pendingAcquireMaxCount(100).pendingAcquireTimeoutMs(5000)
         .disableSslVerification(false).useProxy(false).build()).block();
+
+    OutboundSystem system = systemRepository.save(OutboundSystem.builder()
+        .code(code).name(code).httpMethod("POST").hostConfigurationId(hostConfig.getId()).apiPath(apiPath)
+        .active(true).idempotencyTtlHours(24).build()).block();
 
     resilienceRepository.save(OutboundResilienceConfiguration.builder()
         .outboundSystemId(system.getId()).readTimeOutMs(10000)

@@ -1,6 +1,7 @@
 package com.nantaaditya.example;
 
 import com.nantaaditya.example.properties.AsyncTaskProperties;
+import com.nantaaditya.example.properties.CacheProperties;
 import com.nantaaditya.example.properties.ClientProperties;
 import com.nantaaditya.example.properties.LogProperties;
 import com.nantaaditya.example.properties.ReactorEventProperties;
@@ -16,12 +17,14 @@ import reactor.core.publisher.Hooks;
 @EnableR2dbcAuditing
 @EnableConfigurationProperties(value = {
     AsyncTaskProperties.class,
+    CacheProperties.class,
     ClientProperties.class,
     LogProperties.class,
     ReactorEventProperties.class,
     RetryProperties.class,
     SchedulerProperties.class
 })
+//TODO: swagger configuration
 public class OutboxGatewayApplication {
 
   public static void main(String[] args) {

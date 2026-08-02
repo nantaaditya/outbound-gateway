@@ -3,6 +3,7 @@ package com.nantaaditya.example.helper;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collection;
 import java.util.StringTokenizer;
+import java.util.function.Function;
 
 public class StringHelper {
 
@@ -39,4 +40,20 @@ public class StringHelper {
 
     return String.valueOf(character).repeat(maxLength - value.length()) + value;
   }
+
+  public static <T> T extractNumber(Object value, Function<Number, T> function, T zero) {
+    if (value == null) return zero;
+    if (value instanceof Number n) return function.apply(n);
+    try {
+      return function.apply(Double.parseDouble(value.toString()));
+    } catch (Exception ignored) {
+      return zero;
+    }
+  }
+
+  public static long toLong(Object value) { return extractNumber(value, Number::longValue, 0L); }
+
+  public static int toInt(Object value) { return extractNumber(value, Number::intValue, 0); }
+
+  public static double toDouble(Object value) { return extractNumber(value, Number::doubleValue, 0.0); }
 }

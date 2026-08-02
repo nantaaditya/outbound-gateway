@@ -54,25 +54,29 @@ public class RsaAuthStrategy implements AuthStrategy {
 
   @Override
   public Mono<AuthCredential> authenticate(
-      OutboundAuthConfiguration config, EncryptionHelper encryption, String requestBody) {
+      OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption, String requestBody) {
     return Mono.fromCallable(() -> {
-      PrivateKey privateKey = keyCache.computeIfAbsent(config.getId(), id -> {
-        byte[] der = encryption.decrypt(config.getClientSecret());
-        return loadPrivateKey(der);
-      });
-      String body = Optional.ofNullable(requestBody).orElse("");
+      PrivateKey privateKey = keyCache.computeIfAbsent(
+          authConfiguration.getId(),
+          id -> {
+            byte[] privateKeyBytes = encryption.decrypt(authConfiguration.getClientSecret());
+            return loadPrivateKey(privateKeyBytes);
+          }
+      );
+      String body = Optional.ofNullable(requestBody)
+          .orElse("");
       String signature = sign(privateKey, body);
       return new AuthCredential(
-          config.getTokenKeyName(),
+          authConfiguration.getTokenKeyName(),
           signature,
-          config.getTokenInjectLocation());
+          authConfiguration.getTokenInjectLocation());
     }).subscribeOn(Schedulers.boundedElastic());
   }
 
-  private PrivateKey loadPrivateKey(byte[] der) {
+  private PrivateKey loadPrivateKey(byte[] privateKeyBytes) {
     try {
       KeyFactory kf = KeyFactory.getInstance("RSA");
-      return kf.generatePrivate(new PKCS8EncodedKeySpec(der));
+      return kf.generatePrivate(new PKCS8EncodedKeySpec(privateKeyBytes));
     } catch (Exception e) {
       throw new IllegalArgumentException("Failed to load RSA private key", e);
     }

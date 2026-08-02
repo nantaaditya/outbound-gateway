@@ -33,7 +33,7 @@ class GatewayWebClientBuilderTest {
     return OutboundSystem.builder()
         .code("xendit")
         .name("Xendit")
-        .baseUrl("https://api.xendit.co")
+        .hostConfigurationId(1L)
         .apiPath("/v1/charges")
         .httpMethod("POST")
         .active(true)

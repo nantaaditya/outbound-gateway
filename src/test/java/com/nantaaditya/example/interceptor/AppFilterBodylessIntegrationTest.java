@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.nantaaditya.example.base.BaseIntegrationTest;
 import com.nantaaditya.example.entity.OutboundHistory;
+import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
+import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,17 +31,29 @@ class AppFilterBodylessIntegrationTest extends BaseIntegrationTest {
   @Autowired
   private OutboundSystemRepository systemRepository;
   @Autowired
+  private OutboundHostConfigurationRepository hostConfigRepository;
+  @Autowired
   private OutboundHistoryRepository historyRepository;
 
   private Long systemId;
 
   @BeforeEach
   void seed() {
+    OutboundHostConfiguration hostConfig = hostConfigRepository.save(OutboundHostConfiguration.builder()
+        .baseUrl("https://api.example.com")
+        .connectTimeOutMs(5000)
+        .maxConnections(50)
+        .pendingAcquireMaxCount(100)
+        .pendingAcquireTimeoutMs(5000)
+        .disableSslVerification(false)
+        .useProxy(false)
+        .build()).block();
+
     OutboundSystem system = systemRepository.save(OutboundSystem.builder()
         .code("filter-test")
         .name("Filter Test")
         .httpMethod("POST")
-        .baseUrl("https://api.example.com")
+        .hostConfigurationId(hostConfig.getId())
         .apiPath("/v1/charge")
         .active(true)
         .idempotencyTtlHours(24)
@@ -54,6 +68,7 @@ class AppFilterBodylessIntegrationTest extends BaseIntegrationTest {
   void cleanup() {
     historyRepository.deleteAll().block();
     systemRepository.deleteAll().block();
+    hostConfigRepository.deleteAll().block();
   }
 
   @Test

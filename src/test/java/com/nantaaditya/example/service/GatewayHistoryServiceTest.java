@@ -17,6 +17,7 @@ import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.impl.GatewayHistoryServiceImpl;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -141,8 +142,8 @@ class GatewayHistoryServiceTest {
   @Test
   @DisplayName("findHistories passes date range to repository")
   void findHistories_withDateRange_passesToRepo() {
-    LocalDateTime start = LocalDateTime.of(2026, 5, 1, 0, 0);
-    LocalDateTime end = LocalDateTime.of(2026, 5, 31, 23, 59);
+    LocalDate start = LocalDate.of(2026, 5, 1);
+    LocalDate end = LocalDate.of(2026, 5, 31);
 
     when(historyRepository.countByFilters(eq(0L), eq(0), eq(start), eq(end))).thenReturn(Mono.just(5L));
     when(historyRepository.findPageByFilters(eq(0L), eq(0), eq(start), eq(end), anyInt(), anyLong()))
@@ -201,7 +202,7 @@ class GatewayHistoryServiceTest {
         .code(code)
         .name(code)
         .httpMethod("POST")
-        .baseUrl("https://api.example.com")
+        .hostConfigurationId(1L)
         .apiPath("/v1/test")
         .active(true)
         .idempotencyTtlHours(24)

@@ -7,11 +7,16 @@ import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.admin.CreateHostConfigRequest;
 import com.nantaaditya.example.model.request.admin.UpdateHostConfigRequest;
 import com.nantaaditya.example.model.response.OutboundHostConfigResponse;
+import com.nantaaditya.example.model.response.OutboundSystemResponse;
 import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
+import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.OutboundHostService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Sort.Direction;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -22,23 +27,24 @@ import reactor.core.scheduler.Schedulers;
 public class OutboundHostServiceImpl implements OutboundHostService {
 
   private final OutboundHostConfigurationRepository hostConfigRepository;
+  private final OutboundSystemRepository systemRepository;
   private final GatewayWebClientBuilder webClientBuilder;
   private final EncryptionHelper encryptionHelper;
 
   @Override
   public Mono<OutboundHostConfigResponse> create(CreateHostConfigRequest request) {
     return encryptCredentials(request.proxyUsername(), request.proxyPassword())
-        .flatMap(creds -> hostConfigRepository.save(
-            OutboundHostConfiguration.create(request, creds[0], creds[1])))
-        .doOnSuccess(c -> log.info(
-            AppLogMessage.message("#OutboundHostService - created host config baseUrl={}",
-                c.getBaseUrl())))
+        .flatMap(credentials -> saveOutboundHostConfiguration(OutboundHostConfiguration.create(request, credentials[0], credentials[1])))
+        .doOnSuccess(c -> log.info(AppLogMessage.message("#OutboundHostService - created host config baseUrl={}", c.getBaseUrl())))
         .map(OutboundHostConfigResponse::from);
   }
 
   @Override
-  public Mono<List<OutboundHostConfigResponse>> list() {
-    return hostConfigRepository.findAll()
+  public Mono<List<OutboundHostConfigResponse>> list(int page, int size) {
+    PageRequest pageRequest = PageRequest.of(page, size);
+    pageRequest.withSort(Sort.by(Direction.ASC, "createdDate"));
+
+    return hostConfigRepository.findAllBy(pageRequest)
         .map(OutboundHostConfigResponse::from)
         .collectList();
   }
@@ -54,12 +60,11 @@ public class OutboundHostServiceImpl implements OutboundHostService {
     return requireHostConfig(id)
         .flatMap(existing ->
             encryptCredentials(request.proxyUsername(), request.proxyPassword())
-                .flatMap(creds -> hostConfigRepository.save(
-                    existing.updated(request, creds[0], creds[1]))))
+                .flatMap(credentials -> saveOutboundHostConfiguration(existing.updated(request, credentials[0], credentials[1])))
+        )
         .doOnSuccess(c -> {
           webClientBuilder.evictWebClient(c.getBaseUrl());
-          log.info(AppLogMessage.message(
-              "#OutboundHostService - updated host config id={} baseUrl={}", id, c.getBaseUrl()));
+          log.info(AppLogMessage.message("#OutboundHostService - updated host config id={} baseUrl={}", id, c.getBaseUrl()));
         })
         .map(OutboundHostConfigResponse::from);
   }
@@ -69,10 +74,17 @@ public class OutboundHostServiceImpl implements OutboundHostService {
     return requireHostConfig(id)
         .flatMap(cfg -> Mono.fromRunnable(() -> {
           webClientBuilder.evictWebClient(cfg.getBaseUrl());
-          log.info(AppLogMessage.message(
-              "#OutboundHostService - reloaded host config id={} baseUrl={}", id, cfg.getBaseUrl()));
+          log.info(AppLogMessage.message("#OutboundHostService - reloaded host config id={} baseUrl={}", id, cfg.getBaseUrl()));
         }).subscribeOn(Schedulers.boundedElastic()))
         .thenReturn(Boolean.TRUE);
+  }
+
+  @Override
+  public Mono<List<OutboundSystemResponse>> listSystems(long id) {
+    return requireHostConfig(id)
+        .flatMapMany(hostConfig -> systemRepository.findByHostConfigurationId(hostConfig.getId())
+            .map(system -> OutboundSystemResponse.from(system, hostConfig)))
+        .collectList();
   }
 
   private Mono<OutboundHostConfiguration> requireHostConfig(long id) {
@@ -91,5 +103,9 @@ public class OutboundHostServiceImpl implements OutboundHostService {
   private byte[] encryptIfNotNull(String value) {
     if (value == null || value.isBlank()) return null; //NOSONAR
     return encryptionHelper.encryptString(value);
+  }
+
+  private Mono<OutboundHostConfiguration> saveOutboundHostConfiguration(OutboundHostConfiguration outboundHostConfiguration) {
+    return hostConfigRepository.save(outboundHostConfiguration);
   }
 }

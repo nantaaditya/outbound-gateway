@@ -15,6 +15,8 @@ import com.nantaaditya.example.model.response.PageResponse;
 import com.nantaaditya.example.model.response.TestConnectionResponse;
 import com.nantaaditya.example.service.OutboundMetricsService;
 import com.nantaaditya.example.service.OutboundService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -32,6 +34,7 @@ import reactor.core.publisher.Mono;
 @RestController
 @RequestMapping("/api/outbound")
 @RequiredArgsConstructor
+@Tag(name = "outbound api", description = "api to get outbound gateway history")
 public class OutboundController {
   private final OutboundService outboundService;
   private final OutboundMetricsService outboundMetricsService;
@@ -41,6 +44,7 @@ public class OutboundController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "create outbound system", description = "create outbound system")
   public Mono<BaseResponse<OutboundSystemResponse>> create(
       @RequestBody @Valid CreateOutboundSystemRequest request) {
     return outboundService.create(request)
@@ -50,6 +54,7 @@ public class OutboundController {
   @GetMapping(
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "list outbound system", description = "list outbound system")
   public Mono<BaseResponse<PageResponse<OutboundSystemDetailResponse>>> list(
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
@@ -61,6 +66,7 @@ public class OutboundController {
       value = "/{code}",
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "get outbound system", description = "get outbound system")
   public Mono<BaseResponse<OutboundSystemDetailResponse>> getDetail(
       @PathVariable String code) {
     return outboundService.getDetail(code)
@@ -72,6 +78,7 @@ public class OutboundController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "update outbound system", description = "update outbound system")
   public Mono<BaseResponse<OutboundSystemResponse>> update(
       @PathVariable String code,
       @RequestBody @Valid UpdateOutboundSystemRequest request) {
@@ -83,6 +90,7 @@ public class OutboundController {
       value = "/{code}",
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "delete outbound system", description = "delete outbound system")
   public Mono<BaseResponse<Boolean>> delete(@PathVariable String code) {
     return outboundService.delete(code)
         .map(responseHelper::success);
@@ -93,6 +101,7 @@ public class OutboundController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "update outbound system resilience configuration", description = "update outbound system resilience configuration")
   public Mono<BaseResponse<Boolean>> upsertResilience(
       @PathVariable String code,
       @RequestBody @Valid UpsertResilienceRequest request) {
@@ -105,6 +114,7 @@ public class OutboundController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "update outbound system headers configuration", description = "update outbound system headers configuration")
   public Mono<BaseResponse<Boolean>> upsertHeaders(
       @PathVariable String code,
       @RequestBody @Valid UpsertHeadersRequest request) {
@@ -117,6 +127,7 @@ public class OutboundController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "update outbound system auth configuration", description = "update outbound system auth configuration")
   public Mono<BaseResponse<Boolean>> upsertAuth(
       @PathVariable String code,
       @RequestBody @Valid UpsertAuthRequest request) {
@@ -129,6 +140,7 @@ public class OutboundController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "update outbound system response mapper configuration", description = "update outbound system response mapper configuration")
   public Mono<BaseResponse<Boolean>> upsertResponseMapper(
       @PathVariable String code,
       @RequestBody @Valid UpsertResponseMapperRequest request) {
@@ -140,6 +152,7 @@ public class OutboundController {
       value = "/{code}/reload",
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "reload outbound system configuration", description = "reload outbound system configuration")
   public Mono<BaseResponse<Boolean>> reload(@PathVariable String code) {
     return outboundService.reload(code)
         .map(responseHelper::success);
@@ -149,6 +162,7 @@ public class OutboundController {
       value = "/{code}/test",
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "test outbound system configuration", description = "test outbound system configuration")
   public Mono<BaseResponse<TestConnectionResponse>> testConnection(
       @PathVariable String code) {
     return outboundService.testConnection(code)
@@ -159,6 +173,7 @@ public class OutboundController {
       value = "/{code}/metrics",
       produces = MediaType.APPLICATION_JSON_VALUE
   )
+  @Operation(summary = "get outbound system metrics", description = "get outbound system metrics")
   public Mono<BaseResponse<OutboundMetricsResponse>> getMetrics(
       @PathVariable String code) {
     return outboundMetricsService.getMetrics(code)

@@ -43,15 +43,17 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
     resilienceRepository.deleteAll().block();
     headerRepository.deleteAll().block();
     authRepository.deleteAll().block();
-    hostConfigRepository.deleteAll().block();
     systemRepository.deleteAll().block();
+    hostConfigRepository.deleteAll().block();
   }
 
   @Test
   @DisplayName("count returns total number of rows in v_outbound_system_detail view")
   void count_withTwoSystems_returnsTwo() {
-    systemRepository.save(system("count-gw-1", "http://count-1.test")).block();
-    systemRepository.save(system("count-gw-2", "http://count-2.test")).block();
+    Long hostId1 = hostConfigRepository.save(hostConfig("http://count-1.test")).block().getId();
+    Long hostId2 = hostConfigRepository.save(hostConfig("http://count-2.test")).block().getId();
+    systemRepository.save(system("count-gw-1", hostId1)).block();
+    systemRepository.save(system("count-gw-2", hostId2)).block();
 
     StepVerifier.create(query.count())
         .assertNext(count -> assertThat(count).isEqualTo(2))
@@ -61,10 +63,10 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
   @Test
   @DisplayName("findAllPaged returns page of systems with their joined config details")
   void findAllPaged_withFullyConfiguredSystem_returnsDetailWithAllConfigs() {
-    OutboundSystem saved = systemRepository.save(system("detail-gw", "http://detail.test")).block();
+    Long hostConfigId = hostConfigRepository.save(hostConfig("http://detail.test")).block().getId();
+    OutboundSystem saved = systemRepository.save(system("detail-gw", hostConfigId)).block();
     resilienceRepository.save(resilience(saved.getId())).block();
     authRepository.save(auth(saved.getId())).block();
-    hostConfigRepository.save(hostConfig("http://detail.test")).block();
 
     StepVerifier.create(query.findAllPaged(0, 10).collectList())
         .assertNext(items -> {
@@ -85,7 +87,8 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
   @DisplayName("findAllPaged respects page and size parameters")
   void findAllPaged_pagination_returnsCorrectPage() {
     for (int i = 1; i <= 3; i++) {
-      systemRepository.save(system("page-gw-" + i, "http://page-" + i + ".test")).block();
+      Long hostId = hostConfigRepository.save(hostConfig("http://page-" + i + ".test")).block().getId();
+      systemRepository.save(system("page-gw-" + i, hostId)).block();
     }
 
     StepVerifier.create(query.findAllPaged(0, 2).collectList())
@@ -100,7 +103,8 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
   @Test
   @DisplayName("findByCode returns system with all joined detail when system exists")
   void findByCode_existingSystem_returnsDetailWithResilience() {
-    OutboundSystem saved = systemRepository.save(system("by-code-gw", "http://bycode.test")).block();
+    Long hostConfigId = hostConfigRepository.save(hostConfig("http://bycode.test")).block().getId();
+    OutboundSystem saved = systemRepository.save(system("by-code-gw", hostConfigId)).block();
     resilienceRepository.save(resilience(saved.getId())).block();
     authRepository.save(auth(saved.getId())).block();
 
@@ -110,7 +114,10 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
           assertThat(detail.resilience()).isNotNull();
           assertThat(detail.authentication()).isNotNull();
           assertThat(detail.authentication().tokenKeyName()).isEqualTo("X-API-Key");
-          assertThat(detail.hostConfiguration()).isNull();
+          // host_configuration_id is now a mandatory FK (V23/V25) — the join is an INNER JOIN,
+          // so hostConfiguration is always present, unlike the old base_url LEFT JOIN.
+          assertThat(detail.hostConfiguration()).isNotNull();
+          assertThat(detail.hostConfiguration().baseUrl()).isEqualTo("http://bycode.test");
         })
         .verifyComplete();
   }
@@ -118,7 +125,8 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
   @Test
   @DisplayName("findByCode returns null for absent optional configs when no configs are saved")
   void findByCode_systemWithoutOptionalConfigs_returnsNullForAllOptionals() {
-    systemRepository.save(system("bare-gw", "http://bare.test")).block();
+    Long hostConfigId = hostConfigRepository.save(hostConfig("http://bare.test")).block().getId();
+    systemRepository.save(system("bare-gw", hostConfigId)).block();
 
     StepVerifier.create(query.findByCode("bare-gw"))
         .assertNext(detail -> {
@@ -126,7 +134,9 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
           assertThat(detail.resilience()).isNull();
           assertThat(detail.authentication()).isNull();
           assertThat(detail.responseMapper()).isNull();
-          assertThat(detail.hostConfiguration()).isNull();
+          // host_configuration_id is a mandatory FK — hostConfiguration is never null now.
+          assertThat(detail.hostConfiguration()).isNotNull();
+          assertThat(detail.hostConfiguration().baseUrl()).isEqualTo("http://bare.test");
           assertThat(detail.headers()).isEmpty();
         })
         .verifyComplete();
@@ -135,7 +145,8 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
   @Test
   @DisplayName("findAllPaged scrubs sensitive header values")
   void findAllPaged_sensitiveHeaders_areRedacted() {
-    OutboundSystem saved = systemRepository.save(system("header-gw", "http://hdr.test")).block();
+    Long hostConfigId = hostConfigRepository.save(hostConfig("http://hdr.test")).block().getId();
+    OutboundSystem saved = systemRepository.save(system("header-gw", hostConfigId)).block();
     headerRepository.save(OutboundHeaderConfiguration.builder()
         .outboundSystemId(saved.getId())
         .headers(Map.of("Authorization", "Bearer secret", "Content-Type", "application/json"))
@@ -159,12 +170,12 @@ class OutboundSystemDetailQueryTest extends BaseIntegrationTest {
         .verifyComplete();
   }
 
-  private OutboundSystem system(String code, String baseUrl) {
+  private OutboundSystem system(String code, Long hostConfigurationId) {
     return OutboundSystem.builder()
         .code(code)
         .name(code)
         .httpMethod("POST")
-        .baseUrl(baseUrl)
+        .hostConfigurationId(hostConfigurationId)
         .apiPath("/api")
         .active(true)
         .idempotencyTtlHours(24)

@@ -84,8 +84,8 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
     resilienceRepository.deleteAll().block();
     authRepository.deleteAll().block();
     historyRepository.deleteAll().block();
-    hostConfigRepository.deleteAll().block();
     systemRepository.deleteAll().block();
+    hostConfigRepository.deleteAll().block();
     eventLogRepository.deleteAll().block();
   }
 
@@ -102,10 +102,11 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
             .withHeader("Content-Type", "application/json")
             .withBody("{\"result\":\"ok\"}")));
 
-    // Step 1: create system
+    // Step 1: create system (host_configuration_id is a mandatory FK — seed it first)
+    OutboundHostConfiguration hostConfig = seedOrGetHostConfig(baseUrl);
     String rid1 = newRequestId();
     CreateOutboundSystemRequest createReq = new CreateOutboundSystemRequest(
-        code, code + "-name", "desc", "POST", baseUrl, "/v1/perm1", true, 24);
+        code, code + "-name", "desc", "POST", hostConfig.getId(), "/v1/perm1", true, 24);
     doPost("/api/outbound", createReq, rid1).expectStatus().isOk();
     awaitEventLog(rid1);
 
@@ -138,17 +139,6 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         Map.of("X-Source", List.of("perm-test")));
     doPost("/api/outbound/" + code + "/headers", headersReq, rid4).expectStatus().isOk();
     awaitEventLog(rid4);
-
-    // Also seed host config so gateway can build web client
-    hostConfigRepository.save(OutboundHostConfiguration.builder()
-        .baseUrl(baseUrl)
-        .connectTimeOutMs(5000)
-        .maxConnections(50)
-        .pendingAcquireMaxCount(100)
-        .pendingAcquireTimeoutMs(5000)
-        .disableSslVerification(false)
-        .useProxy(false)
-        .build()).block();
 
     // Step 5: execute via gateway
     String rid5 = newRequestId();
@@ -184,7 +174,7 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         .returnResult()
         .getResponseBody();
     JsonNode histRoot = objectMapper.readTree(histBody);
-    assertThat(histRoot.path("data").path("totalElements").asLong()).isPositive();
+    assertThat(histRoot.path("pagination").path("totalElements").asLong()).isPositive();
     awaitEventLog(rid6);
 
     // Step 7: delete system
@@ -234,15 +224,6 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
             .withBody("{\"idem\":true}")));
 
     setupSystemInDb(code, baseUrl, "/v1/perm2");
-    hostConfigRepository.save(OutboundHostConfiguration.builder()
-        .baseUrl(baseUrl)
-        .connectTimeOutMs(5000)
-        .maxConnections(50)
-        .pendingAcquireMaxCount(100)
-        .pendingAcquireTimeoutMs(5000)
-        .disableSslVerification(false)
-        .useProxy(false)
-        .build()).block();
 
     GatewayRequest gwReq = new GatewayRequest(Map.of(), Map.of("x", 1));
 
@@ -334,15 +315,6 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
             .withBody("{\"reload\":true}")));
 
     setupSystemInDb(code, baseUrl, "/v1/perm3");
-    hostConfigRepository.save(OutboundHostConfiguration.builder()
-        .baseUrl(baseUrl)
-        .connectTimeOutMs(5000)
-        .maxConnections(50)
-        .pendingAcquireMaxCount(100)
-        .pendingAcquireTimeoutMs(5000)
-        .disableSslVerification(false)
-        .useProxy(false)
-        .build()).block();
 
     GatewayRequest gwReq = new GatewayRequest(Map.of(), Map.of("step", 1));
 
@@ -423,10 +395,11 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
             .withStatus(200)
             .withBody("{\"authentication\":\"ok\"}")));
 
-    // Step 1: create system
+    // Step 1: create system (host_configuration_id is a mandatory FK — seed it first)
+    OutboundHostConfiguration hostConfig = seedOrGetHostConfig(baseUrl);
     String rid1 = newRequestId();
     CreateOutboundSystemRequest createReq = new CreateOutboundSystemRequest(
-        code, code + "-name", null, "POST", baseUrl, "/v1/perm4", true, 24);
+        code, code + "-name", null, "POST", hostConfig.getId(), "/v1/perm4", true, 24);
     doPost("/api/outbound", createReq, rid1).expectStatus().isOk();
     awaitEventLog(rid1);
 
@@ -438,7 +411,7 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
     doPost("/api/outbound/" + code + "/authentication", authReq, rid2).expectStatus().isOk();
     awaitEventLog(rid2);
 
-    // Seed resilience + host config for gateway
+    // Seed resilience for gateway (host config already seeded before create above)
     OutboundSystem system = systemRepository.findByCode(code).block();
     resilienceRepository.save(OutboundResilienceConfiguration.builder()
         .outboundSystemId(system.getId())
@@ -447,15 +420,6 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         .bulkheadEnabled(false)
         .rateLimiterEnabled(false)
         .retryEnabled(false)
-        .build()).block();
-    hostConfigRepository.save(OutboundHostConfiguration.builder()
-        .baseUrl(baseUrl)
-        .connectTimeOutMs(5000)
-        .maxConnections(50)
-        .pendingAcquireMaxCount(100)
-        .pendingAcquireTimeoutMs(5000)
-        .disableSslVerification(false)
-        .useProxy(false)
         .build()).block();
 
     // Step 3: execute
@@ -492,11 +456,12 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
   void permutation5_metricsAfterCalls() throws Exception {
     String code = "perm5-metrics";
 
+    OutboundHostConfiguration hostConfig = seedOrGetHostConfig("http://localhost:9999");
     OutboundSystem system = systemRepository.save(OutboundSystem.builder()
         .code(code)
         .name(code + "-name")
         .httpMethod("POST")
-        .baseUrl("http://localhost:9999")
+        .hostConfigurationId(hostConfig.getId())
         .apiPath("/v1/perm5")
         .active(true)
         .idempotencyTtlHours(24)
@@ -597,11 +562,12 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
   // --- Helpers ---
 
   private void setupSystemInDb(String code, String baseUrl, String apiPath) {
+    OutboundHostConfiguration hostConfig = seedOrGetHostConfig(baseUrl);
     OutboundSystem system = systemRepository.save(OutboundSystem.builder()
         .code(code)
         .name(code + "-name")
         .httpMethod("POST")
-        .baseUrl(baseUrl)
+        .hostConfigurationId(hostConfig.getId())
         .apiPath(apiPath)
         .active(true)
         .idempotencyTtlHours(24)
@@ -619,6 +585,23 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
     authRepository.save(OutboundAuthConfiguration.builder()
         .outboundSystemId(system.getId())
         .authType(AuthType.NONE)
+        .build()).block();
+  }
+
+  /** host_configuration_id is a mandatory FK — reuse an existing row for {@code baseUrl} or create one. */
+  private OutboundHostConfiguration seedOrGetHostConfig(String baseUrl) {
+    OutboundHostConfiguration existing = hostConfigRepository.findByBaseUrl(baseUrl).block();
+    if (existing != null) {
+      return existing;
+    }
+    return hostConfigRepository.save(OutboundHostConfiguration.builder()
+        .baseUrl(baseUrl)
+        .connectTimeOutMs(5000)
+        .maxConnections(50)
+        .pendingAcquireMaxCount(100)
+        .pendingAcquireTimeoutMs(5000)
+        .disableSslVerification(false)
+        .useProxy(false)
         .build()).block();
   }
 

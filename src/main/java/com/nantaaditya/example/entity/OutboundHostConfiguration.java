@@ -90,27 +90,4 @@ public class OutboundHostConfiguration extends BaseEntity<Long> {
         .build();
   }
 
-  public static OutboundHostConfiguration productionDefault(String baseUrl) {
-    return OutboundHostConfiguration.builder()
-        .baseUrl(baseUrl)
-        .connectTimeOutMs(5000)
-        .maxConnections(500)
-        .pendingAcquireMaxCount(1000)
-        .pendingAcquireTimeoutMs(30000)
-        .disableSslVerification(false)
-        .useProxy(false)
-        .build();
-  }
-
-  public static OutboundHostConfiguration testDefault(String baseUrl) {
-    return OutboundHostConfiguration.builder()
-        .baseUrl(baseUrl)
-        .connectTimeOutMs(5000)
-        .maxConnections(50)
-        .pendingAcquireMaxCount(100)
-        .pendingAcquireTimeoutMs(5000)
-        .disableSslVerification(false)
-        .useProxy(false)
-        .build();
-  }
 }

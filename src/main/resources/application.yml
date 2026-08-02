@@ -26,6 +26,11 @@ spring:
     validate-on-migrate: ${FLYWAY_VALIDATION_ENABLED:false}
     locations: classpath:db/migration
 
+springdoc:
+  swagger-ui:
+    operations-sorter: method
+    tags-sorter: alpha
+
 management:
   server:
     port: ${ACTUATOR_PORT:1000}
@@ -101,3 +106,15 @@ apps:
         core-pool-size: 10
         queue-size: 20
         ttl-in-seconds: 60
+  cache.configurations:
+    jslt:
+      type: ${JSLT_CACHE_TYPE:SIZE}
+      size: ${JSLT_CACHE_SIZE:200}
+    contexts:
+      type: ${CONTEXTS_CACHE_TYPE:TIME}
+      time-out: ${CONTEXTS_CACHE_TIME_OUT:10}
+      time-unit: ${CONTEXTS_CACHE_TIME_UNIT:MINUTES}
+    additional-data:
+      type: ${ADDITIONAL_DATA_CACHE_TYPE:TIME}
+      time-out: ${ADDITIONAL_DATA_CACHE_TIME_OUT:10}
+      time-unit: ${ADDITIONAL_DATA_CACHE_TIME_UNIT:MINUTES}

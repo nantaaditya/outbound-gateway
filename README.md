@@ -333,12 +333,12 @@ end note
 
 entity "outbound_systems" as sys {
   * id : bigint <<PK>>
+  * host_configuration_id : bigint <<FK>>
   --
   * code : varchar <<unique>>
   name : varchar
   description : varchar
   http_method : varchar
-  base_url : varchar
   api_path : varchar
   is_active : boolean
   idempotency_ttl_hours : int
@@ -461,7 +461,7 @@ sys ||--o| auth   : "outbound_system_id"
 sys ||--o| res    : "outbound_system_id"
 sys ||--o| hdr    : "outbound_system_id"
 sys ||--o| mapper : "outbound_system_id"
-sys }o--||  host  : "base_url (logical)"
+host||--o{  sys   : "host_configuration_id"
 sys ||--o{  hist  : "outbound_system_id"
 
 @enduml
@@ -918,6 +918,8 @@ Create a new outbound system.
 
 > **`idempotencyTtlHours`**: set to `0` to disable idempotency for this system. Any positive value enables idempotency with that TTL window in hours.
 
+> **`hostConfigurationId`**: `outbound_host_configurations` is the source of truth for connection pool, SSL, and proxy settings — one host configuration, many outbound systems. Create the host configuration first via `POST /api/outbound/host`, then reference its `id` here. There is no `baseUrl` field on the system itself; the system's effective base URL is always the referenced host configuration's `baseUrl`.
+
 **Request body:**
 ```json
 {
@@ -925,7 +927,7 @@ Create a new outbound system.
   "name": "Xendit Charge",
   "description": "Create payment charge via Xendit",
   "httpMethod": "POST",
-  "baseUrl": "https://api.xendit.co",
+  "hostConfigurationId": 1,
   "apiPath": "/v2/charges",
   "active": true,
   "idempotencyTtlHours": 24
@@ -942,6 +944,7 @@ Create a new outbound system.
     "name": "Xendit Charge",
     "description": "Create payment charge via Xendit",
     "httpMethod": "POST",
+    "hostConfigurationId": 1,
     "baseUrl": "https://api.xendit.co",
     "apiPath": "/v2/charges",
     "active": true,
@@ -975,6 +978,7 @@ List outbound systems with full configuration (resilience, headers, auth, respon
         "name": "Xendit Charge",
         "description": "Create payment charge via Xendit",
         "httpMethod": "POST",
+        "hostConfigurationId": 1,
         "baseUrl": "https://api.xendit.co",
         "apiPath": "/v2/charges",
         "active": true,
@@ -1045,6 +1049,7 @@ List outbound systems with full configuration (resilience, headers, auth, respon
         "name": "Midtrans Charge",
         "description": "Create payment charge via Midtrans",
         "httpMethod": "POST",
+        "hostConfigurationId": 2,
         "baseUrl": "https://api.midtrans.com",
         "apiPath": "/v2/charge",
         "active": true,
@@ -1053,7 +1058,18 @@ List outbound systems with full configuration (resilience, headers, auth, respon
         "headers": {},
         "authentication": null,
         "responseMapper": null,
-        "hostConfiguration": null
+        "hostConfiguration": {
+          "id": 2,
+          "baseUrl": "https://api.midtrans.com",
+          "connectTimeOutMs": 5000,
+          "maxConnections": 500,
+          "pendingAcquireMaxCount": 1000,
+          "pendingAcquireTimeoutMs": 30000,
+          "disableSslVerification": false,
+          "useProxy": false,
+          "proxyHost": null,
+          "proxyPort": 0
+        }
       }
     ],
     "page": 0,
@@ -1064,7 +1080,7 @@ List outbound systems with full configuration (resilience, headers, auth, respon
 }
 ```
 
-> `hostConfiguration: null` means the system uses production-default connection pool settings and no host configuration has been explicitly registered. Use `POST /api/outbound/host` to configure it.
+> `hostConfiguration` is never `null` — `host_configuration_id` is a mandatory foreign key (`outbound_systems.host_configuration_id NOT NULL REFERENCES outbound_host_configurations(id)`). Multiple systems commonly share the same `hostConfigurationId`/`hostConfiguration` block when they hit the same host — that's the intended one-host-many-systems relationship, not duplication. See `GET /api/outbound/host/{id}/systems` to list every system attached to a given host configuration.
 
 ---
 
@@ -1082,6 +1098,7 @@ Get full detail including all sub-configurations. Sensitive fields (`apiKey`, `c
     "name": "Xendit Charge",
     "description": "Create payment charge via Xendit",
     "httpMethod": "POST",
+    "hostConfigurationId": 1,
     "baseUrl": "https://api.xendit.co",
     "apiPath": "/v2/charges",
     "active": true,
@@ -1149,7 +1166,7 @@ Get full detail including all sub-configurations. Sensitive fields (`apiKey`, `c
 }
 ```
 
-> `hostConfiguration: null` means no host configuration has been explicitly registered — the system uses production-default connection pool settings.
+> `hostConfiguration` is always present — see the mandatory-FK note under `GET /api/outbound` above.
 
 ---
 
@@ -1163,7 +1180,7 @@ Update system-level fields. Sub-configs (auth, resilience, headers, mapper) are 
   "name": "Xendit Charge v2",
   "description": "Updated description",
   "httpMethod": "POST",
-  "baseUrl": "https://api.xendit.co",
+  "hostConfigurationId": 1,
   "apiPath": "/v2/charges",
   "active": true,
   "idempotencyTtlHours": 48
@@ -1180,6 +1197,7 @@ Update system-level fields. Sub-configs (auth, resilience, headers, mapper) are 
     "name": "Xendit Charge v2",
     "description": "Updated description",
     "httpMethod": "POST",
+    "hostConfigurationId": 1,
     "baseUrl": "https://api.xendit.co",
     "apiPath": "/v2/charges",
     "active": true,
@@ -1457,7 +1475,7 @@ Real-time call statistics for the past hour. Percentiles computed with PostgreSQ
 
 ### Host Configuration API
 
-Manage the TCP connection pool and proxy settings for each unique `baseUrl`. One host config row covers all outbound systems sharing the same `baseUrl`.
+Manage the TCP connection pool and proxy settings for each unique `baseUrl`. `outbound_host_configurations` is the source of truth for `baseUrl` — one host configuration, many outbound systems (`outbound_systems.host_configuration_id` is a mandatory FK). Create the host configuration before creating any system that references it.
 
 > **Pool sizing invariants** (admin responsibility — not enforced in code):
 > - `maxConnections` ≥ sum of `bhMaxConcurrentCalls` across **all** outbound systems on this host. If the pool is smaller, the pool becomes the real concurrency limiter and bulkhead metrics become misleading.
@@ -1658,6 +1676,38 @@ Evict the WebClient connection pool for this host's `baseUrl` without changing a
 
 ---
 
+#### `GET /api/outbound/host/{id}/systems`
+
+List every outbound system attached to this host configuration — the child side of the one-host-many-systems relationship. Useful before editing or reloading a shared host configuration, since the change affects every system in this list.
+
+**Response:**
+```json
+{
+  "response": { "code": "000", "description": "success" },
+  "data": [
+    {
+      "id": 1,
+      "code": "xendit-charge",
+      "name": "Xendit Charge",
+      "description": "Create payment charge via Xendit",
+      "httpMethod": "POST",
+      "hostConfigurationId": 1,
+      "baseUrl": "https://api.xendit.co",
+      "apiPath": "/v2/charges",
+      "active": true,
+      "idempotencyTtlHours": 24
+    }
+  ]
+}
+```
+
+**Error (unknown id):**
+```json
+{ "response": { "code": "400", "description": "bad request" }, "data": { "id": ["NotFound"] } }
+```
+
+---
+
 ## 10. Metrics
 
 ### Actuator Endpoints
@@ -1782,7 +1832,7 @@ OAuth tokens are written back to `outbound_auth_configurations.current_token` af
 
 ### Flyway Migrations
 
-Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V22) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
+Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V25) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
 
 | Version | Description |
 |---|---|
@@ -1808,6 +1858,9 @@ Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply mi
 | V20 | Add `v_outbound_system_detail` JOIN view — eliminates N+1 for `list()` and `getDetail()` |
 | V21 | Add `retry_count` column to `outbound_histories` (default `0`) |
 | V22 | Migrate `request_headers` / `response_headers` in `outbound_histories` from `text` to `jsonb` |
+| V23 | Add `host_configuration_id` FK to `outbound_systems`, backfilling `outbound_host_configurations` rows for any `base_url` that didn't already have one |
+| V24 | Rebuild `v_outbound_system_detail` to `INNER JOIN` on `host_configuration_id` (was a `LEFT JOIN` string-matched on `base_url`) — must run before V25 since the view still referenced `outbound_systems.base_url` |
+| V25 | Drop `base_url` from `outbound_systems` — `outbound_host_configurations` is now the sole source of truth |
 
 ### SSL Verification Disabled
 

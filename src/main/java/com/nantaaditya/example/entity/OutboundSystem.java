@@ -22,7 +22,7 @@ public class OutboundSystem extends BaseEntity<Long> {
   private String name;
   private String description;
   private String httpMethod;
-  private String baseUrl;
+  private Long hostConfigurationId;
   private String apiPath;
   @Column("is_active")
   private boolean active;
@@ -34,7 +34,7 @@ public class OutboundSystem extends BaseEntity<Long> {
         .name(request.name())
         .description(request.description())
         .httpMethod(request.httpMethod().toUpperCase(Locale.US))
-        .baseUrl(request.baseUrl())
+        .hostConfigurationId(request.hostConfigurationId())
         .apiPath(request.apiPath())
         .active(request.active())
         .idempotencyTtlHours(request.idempotencyTtlHours())
@@ -51,14 +51,15 @@ public class OutboundSystem extends BaseEntity<Long> {
         .name(request.name())
         .description(request.description())
         .httpMethod(request.httpMethod().toUpperCase(Locale.US))
-        .baseUrl(request.baseUrl())
+        .hostConfigurationId(request.hostConfigurationId())
         .apiPath(request.apiPath())
         .active(request.active())
         .idempotencyTtlHours(request.idempotencyTtlHours())
         .build();
   }
 
-  public String getFullPath() {
+  /** {@code baseUrl} comes from the referenced {@code OutboundHostConfiguration} — the master record. */
+  public String getFullPath(String baseUrl) {
     return baseUrl + apiPath;
   }
 

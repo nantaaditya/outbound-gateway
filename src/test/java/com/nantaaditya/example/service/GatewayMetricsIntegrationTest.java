@@ -172,17 +172,7 @@ class GatewayMetricsIntegrationTest extends BaseIntegrationTest {
   }
 
   private void setupSystem(String code, String baseUrl, String apiPath) {
-    OutboundSystem system = systemRepository.save(OutboundSystem.builder()
-        .code(code)
-        .name(code)
-        .httpMethod("POST")
-        .baseUrl(baseUrl)
-        .apiPath(apiPath)
-        .active(true)
-        .idempotencyTtlHours(24)
-        .build()).block();
-
-    hostConfigRepository.save(OutboundHostConfiguration.builder()
+    OutboundHostConfiguration hostConfig = hostConfigRepository.save(OutboundHostConfiguration.builder()
         .baseUrl(baseUrl)
         .connectTimeOutMs(5000)
         .maxConnections(50)
@@ -190,6 +180,16 @@ class GatewayMetricsIntegrationTest extends BaseIntegrationTest {
         .pendingAcquireTimeoutMs(5000)
         .disableSslVerification(false)
         .useProxy(false)
+        .build()).block();
+
+    OutboundSystem system = systemRepository.save(OutboundSystem.builder()
+        .code(code)
+        .name(code)
+        .httpMethod("POST")
+        .hostConfigurationId(hostConfig.getId())
+        .apiPath(apiPath)
+        .active(true)
+        .idempotencyTtlHours(24)
         .build()).block();
 
     resilienceRepository.save(OutboundResilienceConfiguration.builder()

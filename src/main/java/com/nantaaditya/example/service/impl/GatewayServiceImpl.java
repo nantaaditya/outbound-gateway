@@ -1,23 +1,22 @@
 package com.nantaaditya.example.service.impl;
 
+import com.google.gson.Gson;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
-import com.nantaaditya.example.entity.OutboundHeaderConfiguration;
 import com.nantaaditya.example.entity.OutboundHistory;
-import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
-import com.nantaaditya.example.helper.JsltResponseMapper;
+import com.nantaaditya.example.helper.GatewayHelper;
+import com.nantaaditya.example.helper.GsonHelper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.OutboundMetricsRecorder;
-import com.nantaaditya.example.model.constant.AuthType;
-import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
+import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.GatewayRequest;
@@ -30,29 +29,20 @@ import com.nantaaditya.example.repository.OutboundResilienceConfigurationReposit
 import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.GatewayService;
-import io.github.resilience4j.bulkhead.BulkheadFullException;
-import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
-import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import io.github.resilience4j.reactor.bulkhead.operator.BulkheadOperator;
 import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
 import io.github.resilience4j.reactor.ratelimiter.operator.RateLimiterOperator;
 import io.github.resilience4j.reactor.retry.RetryOperator;
-import io.github.resilience4j.retry.MaxRetriesExceededException;
 import io.micrometer.observation.Observation;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -70,9 +60,9 @@ import reactor.core.publisher.Mono;
  *       the configured TTL window using the composite index
  *       {@code (outbound_system_id, idempotency_key, created_date)}.</li>
  *   <li>{@link #executeWithResilience} — runs authentication, HTTP call, and the resilience pipeline.</li>
- *   <li>{@link #applyMapping} — JSLT transform or pass-through.</li>
- *   <li>{@link #saveHistory} — fire-and-forget; uses upsert when an idempotency key is present
- *       so a successful retry always overwrites an earlier failure record.</li>
+ *   <li>{@link com.nantaaditya.example.helper.GatewayHelper#applyMapping} — JSLT transform or pass-through.</li>
+ *   <li>{@link #saveHistory} — fire-and-forget; saves the execution history for auditing
+ *       and idempotency support.</li>
  * </ol>
  *
  * <h3>Resilience operator order</h3>
@@ -101,9 +91,10 @@ public class GatewayServiceImpl implements GatewayService {
   private final GatewayWebClientBuilder contextBuilder;
   private final AuthStrategyFactory authStrategyFactory;
   private final EncryptionHelper encryptionHelper;
-  private final JsltResponseMapper jsltResponseMapper;
   private final JsonHelper jsonHelper;
   private final OutboundMetricsRecorder metricsRecorder;
+  private final Gson gson;
+  private final GatewayHelper gatewayHelper;
 
   private final ConcurrentMap<String, OutboundSystemContext> contextCache = new ConcurrentHashMap<>();
 
@@ -113,15 +104,14 @@ public class GatewayServiceImpl implements GatewayService {
   private final ConcurrentMap<String, Mono<OutboundSystemContext>> contextLoadCache = new ConcurrentHashMap<>();
 
   @Override
-  public Mono<GatewayResponse> execute(
-      String code, String callerService, String idempotencyKey, GatewayRequest request) {
+  public Mono<GatewayResponse> execute(String code, String callerService, String idempotencyKey,
+      GatewayRequest request) {
     return loadContext(code)
         .flatMap(context -> {
           if (hasIdempotencyKey(idempotencyKey)) {
             return checkIdempotency(context, idempotencyKey)
                 .doOnNext(r -> metricsRecorder.recordIdempotencyHit(code))
-                .switchIfEmpty(Mono.defer(
-                    () -> executeWithResilience(context, callerService, idempotencyKey, request)));
+                .switchIfEmpty(Mono.defer(() -> executeWithResilience(context, callerService, idempotencyKey, request)));
           }
           return executeWithResilience(context, callerService, idempotencyKey, request);
         });
@@ -178,14 +168,11 @@ public class GatewayServiceImpl implements GatewayService {
                   headerRepository.findByOutboundSystemId(systemId).collectList(),
                   // No authentication row → treat as NONE so execution proceeds without authentication headers
                   authRepository.findByOutboundSystemId(systemId)
-                      .defaultIfEmpty(OutboundAuthConfiguration.builder()
-                          .outboundSystemId(systemId)
-                          .authType(AuthType.NONE)
-                          .build()),
+                      .defaultIfEmpty(OutboundAuthConfiguration.empty(systemId)),
                   mapperRepository.findByOutboundSystemIdAndActiveTrue(systemId)
-                      .defaultIfEmpty(passthroughMapper()),
-                  hostConfigRepository.findByBaseUrl(system.getBaseUrl())
-                      .defaultIfEmpty(defaultHostConfig(system.getBaseUrl()))
+                      .defaultIfEmpty(OutboundResponseMapperConfiguration.empty(systemId)),
+                  hostConfigRepository.findById(system.getHostConfigurationId())
+                      .switchIfEmpty(Mono.error(new HostConfigNotFoundException(system.getHostConfigurationId())))
               )
               .map(t -> contextBuilder.buildContext(
                   system,
@@ -205,12 +192,34 @@ public class GatewayServiceImpl implements GatewayService {
       OutboundSystemContext context, String callerService, String idempotencyKey,
       GatewayRequest request) {
     long startTime = System.currentTimeMillis();
-    Observation observation = metricsRecorder.startCall(code(context));
+    Observation observation = metricsRecorder.startCall(gatewayHelper.code(context));
     // One counter per invocation — RetryOperator re-subscribes to buildExecution on each
     // retry attempt, so doOnSubscribe fires once per attempt. retryCount = attempts - 1.
     AtomicInteger attempts = new AtomicInteger(0);
     Mono<GatewayResponse> execution = buildExecution(context, request, attempts);
+    execution = decorateResilience(context, execution);
 
+    // onErrorResume converts ALL resilience/infra exceptions → GatewayResponse.internalReject(),
+    // so flatMap fires for every execution path and history is always saved.
+    return execution
+        .onErrorResume(e -> Mono.just(gatewayHelper.toInternalRejectResponse(context, e)))
+        .flatMap(response -> {
+          long durationMs = System.currentTimeMillis() - startTime;
+          int retryCount = Math.max(0, attempts.get() - 1);
+          metricsRecorder.finalizeCall(observation, response.status(), callerService);
+
+          return saveHistory(context, callerService, idempotencyKey, request, response, durationMs, retryCount)
+              .onErrorResume(err -> {
+                log.error(AppLogMessage.message("#GATEWAY - failed to save history for {}: {}",
+                    gatewayHelper.code(context), err.getMessage()).error(err));
+                return Mono.empty();
+              })
+              .thenReturn(response);
+        });
+  }
+
+  private Mono<GatewayResponse> decorateResilience(OutboundSystemContext context,
+      Mono<GatewayResponse> execution) {
     if (!context.getResilience().isBypassed()) {
       // Operator order matters — transformDeferred builds the chain inside-out.
       // Applied left-to-right here means right is outermost at execution time:
@@ -227,23 +236,7 @@ public class GatewayServiceImpl implements GatewayService {
       if (context.getRetry() != null)
         execution = execution.transformDeferred(RetryOperator.of(context.getRetry()));
     }
-
-    // onErrorResume converts ALL resilience/infra exceptions → GatewayResponse.internalReject(),
-    // so flatMap fires for every execution path and history is always saved.
-    return execution
-        .onErrorResume(e -> Mono.just(toInternalRejectResponse(context, e)))
-        .flatMap(response -> {
-          long durationMs = System.currentTimeMillis() - startTime;
-          int retryCount = Math.max(0, attempts.get() - 1);
-          metricsRecorder.finalizeCall(observation, response.status(), callerService);
-
-          return saveHistory(context, callerService, idempotencyKey, request, response, durationMs, retryCount)
-              .onErrorResume(err -> {
-                log.error(AppLogMessage.message("#GATEWAY - failed to save history for {}: {}", code(context), err.getMessage()).error(err));
-                return Mono.empty();
-              })
-              .thenReturn(response);
-        });
+    return execution;
   }
 
   private Mono<GatewayResponse> buildExecution(OutboundSystemContext context,
@@ -251,18 +244,19 @@ public class GatewayServiceImpl implements GatewayService {
     return authenticateRequest(context, request)
         .doOnSubscribe(__ -> attempts.incrementAndGet())
         .flatMap(credential -> executeHttp(context, request, credential))
-        .map(response -> applyMapping(context, response));
+        .map(response -> gatewayHelper.applyMapping(context, response));
   }
 
   private Mono<AuthCredential> authenticateRequest(OutboundSystemContext context,
       GatewayRequest request) {
+    String jsonString = request.bodyAsString(jsonHelper);
     return authStrategyFactory
         .getStrategy(context.getAuth().getAuthType())
-        .authenticate(context.getAuth(), encryptionHelper, request.bodyAsString(jsonHelper));
+        .authenticate(context.getAuth(), encryptionHelper, GsonHelper.cleanJson(jsonString, gson));
   }
 
-  private Mono<GatewayResponse> executeHttp(
-      OutboundSystemContext context, GatewayRequest request, AuthCredential credential) {
+  private Mono<GatewayResponse> executeHttp(OutboundSystemContext context, GatewayRequest request,
+      AuthCredential credential) {
     OutboundSystem system = context.getSystem();
     HttpMethod httpMethod = system.getHttpMethodEnum();
 
@@ -279,8 +273,8 @@ public class GatewayServiceImpl implements GatewayService {
           return uriBuilder.build();
         })
         .headers(headers -> {
-          applyConfiguredHeaders(context, headers);
-          applyAuthHeader(credential, headers);
+          gatewayHelper.applyConfiguredHeaders(context, headers);
+          gatewayHelper.applyAuthHeader(credential, headers);
         });
 
     Mono<GatewayResponse> httpMono = (request.hasBody()
@@ -291,56 +285,13 @@ public class GatewayServiceImpl implements GatewayService {
             .defaultIfEmpty("")
             .map(body -> GatewayResponse.passThrough(
                 response.statusCode().value(),
-                response.headers().asHttpHeaders().entrySet().stream()
-                    .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        Map.Entry::getValue,
-                        (a, b) -> { List<String> m = new ArrayList<>(a); m.addAll(b); return m; })),
+                gatewayHelper.collectResponseHeaders(response),
                 body
             ))
     );
     // Skip timeout when resilience is bypassed (readTimeOutMs == 0).
     int readTimeoutMs = context.getResilience().getReadTimeOutMs();
     return readTimeoutMs > 0 ? httpMono.timeout(Duration.ofMillis(readTimeoutMs)) : httpMono;
-  }
-
-  private void applyConfiguredHeaders(OutboundSystemContext context, HttpHeaders headers) {
-    Optional.ofNullable(context.getHeaders())
-        .filter(list -> !list.isEmpty())
-        .ifPresent(list -> list.stream()
-            .map(config -> config.getHeaders(jsonHelper))
-            .filter(h -> h != null && !h.isEmpty())
-            .forEach(h -> h.forEach(headers::addAll))
-        );
-  }
-
-  private void applyAuthHeader(AuthCredential credential, HttpHeaders headers) {
-    if (credential.isEmpty()) {
-      return;
-    }
-    if (credential.location() == TokenInjectLocation.HEADER) {
-      headers.add(credential.keyName(), credential.value());
-    } else if (credential.location() == TokenInjectLocation.COOKIE) {
-      headers.add("Cookie", credential.keyName() + "=" + credential.value());
-    }
-  }
-
-  private GatewayResponse applyMapping(OutboundSystemContext context, GatewayResponse response) {
-    return Optional.ofNullable(context.getResponseMapper())
-        .filter(m -> !m.isPassThrough())
-        .map(m -> {
-          String converted = jsltResponseMapper.map(response.body(), m.getMappingScript());
-          if (converted == null) {
-            log.warn(AppLogMessage.message("#GATEWAY - JSLT mapping failed, falling back to original body for code={}", context.getSystem().getCode()));
-            return GatewayResponse.mappedWithFallback(
-                response.status(), response.headers(), response.body(),
-                response.status());
-          }
-          return GatewayResponse.mapped(
-              response.status(), response.headers(), response.body(),
-              m.getMappedStatus(response.status()), converted);
-        })
-        .orElse(response);
   }
 
   private Mono<Void> saveHistory(
@@ -351,92 +302,15 @@ public class GatewayServiceImpl implements GatewayService {
           .map(ContextDTO::getRequestId)
           .orElse(null);
       String requestPayload = request.bodyAsString(jsonHelper);
-      Map<String, Object> requestHeaders = resolveRequestHeaders(context);
-      OutboundHistory history = OutboundHistory.create(context.getSystem(), callerService,
-          idempotencyKey, requestId, requestPayload, requestHeaders, response, durationMs, retryCount);
-      if (history.hasIdempotencyKey()) {
-        return historyRepository.insertHistory(history).then();
-      }
-      return historyRepository.save(history).then();
+      Map<String, Object> requestHeaders = gatewayHelper.resolveRequestHeaders(context);
+      OutboundHistory history = OutboundHistory.create(context.getSystem(),
+          context.getHostConfig().getBaseUrl(), callerService,
+          idempotencyKey, requestId, GsonHelper.cleanJson(requestPayload, gson),
+          requestHeaders, response, durationMs, retryCount
+      );
+
+      return historyRepository.saveHistory(history).then();
     });
   }
 
-  @SuppressWarnings("unchecked")
-  private Map<String, Object> resolveRequestHeaders(OutboundSystemContext context) {
-    List<OutboundHeaderConfiguration> headerConfigs = context.getHeaders();
-    if (headerConfigs == null || headerConfigs.isEmpty()) {
-      return null; //NOSONAR
-    }
-    Map<String, List<String>> merged = headerConfigs.stream()
-        .map(config -> config.getHeaders(jsonHelper))
-        .filter(h -> h != null && !h.isEmpty())
-        .flatMap(h -> h.entrySet().stream())
-        .collect(Collectors.toMap(
-            Map.Entry::getKey,
-            Map.Entry::getValue,
-            (a, b) -> { List<String> m = new ArrayList<>(a); m.addAll(b); return m; }));
-    return merged.isEmpty() ? null : (Map<String, Object>) (Map<?, ?>) merged;
-  }
-
-  private OutboundResponseMapperConfiguration passthroughMapper() {
-    return OutboundResponseMapperConfiguration.builder()
-        .converterType(ConverterType.NONE)
-        .build();
-  }
-
-  private OutboundHostConfiguration defaultHostConfig(String baseUrl) {
-    return OutboundHostConfiguration.productionDefault(baseUrl);
-  }
-
-  /**
-   * Converts a resilience/infrastructure exception to a structured internal-reject response.
-   *
-   * <p>Status mapping:
-   * <ul>
-   *   <li>BulkheadFull → 503 (too many concurrent calls)
-   *   <li>CircuitBreaker open → 503 (upstream considered unhealthy)
-   *   <li>RateLimiter → 429 (caller exceeded allowed request rate)
-   *   <li>MaxRetries → 502 (upstream repeatedly failed)
-   *   <li>Timeout → 504 (upstream did not respond in time)
-   *   <li>Other → 503 (unexpected internal failure)
-   * </ul>
-   *
-   * <p><b>Known behavior (R8-H1)</b>: when retries are exhausted ({@link MaxRetriesExceededException}),
-   * the synthetic {@code responseStatus=502} is saved to outbound_histories — not the real upstream
-   * status (e.g. 500). This is intentional: history reflects the status returned to the caller.
-   * A row with {@code retry_count > 0} and {@code response_status=502} means retries were exhausted
-   * on a failing upstream, not that the upstream itself returned 502.
-   *
-   * <p>Always returns a value (never re-throws) so that {@code onErrorResume} in
-   * {@link #executeWithResilience} fires and history is saved for every call.
-   */
-  private GatewayResponse toInternalRejectResponse(OutboundSystemContext context, Throwable e) {
-    if (e instanceof BulkheadFullException) {
-      log.warn(AppLogMessage.message("#GATEWAY - bulkhead full for {}: {}", code(context), e.getMessage()).error(e));
-      return GatewayResponse.internalReject(503, "service unavailable - bulkhead full");
-    }
-    if (e instanceof CallNotPermittedException) {
-      log.warn(AppLogMessage.message("#GATEWAY - circuit breaker open for {}: {}", code(context), e.getMessage()).error(e));
-      return GatewayResponse.internalReject(503, "service unavailable - circuit open");
-    }
-    if (e instanceof RequestNotPermitted) {
-      log.warn(AppLogMessage.message("#GATEWAY - rate limit exceeded for {}: {}", code(context), e.getMessage()).error(e));
-      return GatewayResponse.internalReject(429, "too many requests - rate limited");
-    }
-    if (e instanceof MaxRetriesExceededException) {
-      log.warn(AppLogMessage.message("#GATEWAY - max retries exceeded for {}: {}", code(context), e.getMessage()).error(e));
-      return GatewayResponse.internalReject(502, "service unavailable - max retries exceeded");
-    }
-    if (e instanceof TimeoutException) {
-      log.warn(AppLogMessage.message("#GATEWAY - read timeout for {}: {}", code(context), e.getMessage()).error(e));
-      return GatewayResponse.internalReject(504, "gateway timeout");
-    }
-
-    log.error(AppLogMessage.message("#GATEWAY - unexpected error for {}: {}", code(context), e.getMessage()).error(e));
-    return GatewayResponse.internalReject(503, "internal gateway error");
-  }
-
-  private String code(OutboundSystemContext context) {
-    return context.getSystem().getCode();
-  }
 }

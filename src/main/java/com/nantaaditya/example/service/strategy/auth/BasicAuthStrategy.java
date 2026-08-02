@@ -32,10 +32,10 @@ public class BasicAuthStrategy implements AuthStrategy {
 
   @Override
   public Mono<AuthCredential> authenticate(
-      OutboundAuthConfiguration config, EncryptionHelper encryption, String requestBody) {
+      OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption, String requestBody) {
     return Mono.fromCallable(() -> {
-      String clientId = encryption.decryptToString(config.getClientId());
-      String clientSecret = encryption.decryptToString(config.getClientSecret());
+      String clientId = encryption.decryptToString(authConfiguration.getClientId());
+      String clientSecret = encryption.decryptToString(authConfiguration.getClientSecret());
       String encoded = Base64.getEncoder().encodeToString((clientId + ":" + clientSecret).getBytes(StandardCharsets.UTF_8));
       return new AuthCredential("Authorization", "Basic " + encoded, TokenInjectLocation.HEADER);
     }).subscribeOn(Schedulers.boundedElastic());

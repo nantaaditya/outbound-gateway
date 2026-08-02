@@ -1,6 +1,7 @@
 package com.nantaaditya.example.repository;
 
 import com.nantaaditya.example.entity.OutboundHistory;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Map;
 import org.springframework.data.r2dbc.repository.Modifying;
@@ -15,9 +16,11 @@ import reactor.core.publisher.Mono;
 @Repository
 public interface OutboundHistoryRepository extends ReactiveCrudRepository<OutboundHistory, Long> {
 
-  // Insert history for idempotent calls. V15 dropped the unique constraint on
+  // Insert history for all calls. V15 dropped the unique constraint on
   // (outbound_system_id, idempotency_key) to allow key reuse across TTL windows,
   // so ON CONFLICT is no longer valid — a plain INSERT is correct here.
+  // We use a manual @Query instead of save() to avoid Spring Data's SELECT-before-INSERT
+  // and to ensure consistency between idempotent and non-idempotent paths.
   @Modifying
   @Query("""
       INSERT INTO outbound_histories
@@ -31,7 +34,7 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
          :responseStatus, :responseHeaders, :responsePayload,
          :durationMs, :convertedStatus, :convertedResponse, :retryCount, NOW())
       """)
-  Mono<Integer> insertHistory(
+  Mono<Integer> saveHistory(
       @Param("outboundSystemId") long outboundSystemId,
       @Param("idempotencyKey") String idempotencyKey,
       @Param("callerService") String callerService,
@@ -46,10 +49,10 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
       @Param("durationMs") Integer durationMs,
       @Param("convertedStatus") Integer convertedStatus,
       @Param("convertedResponse") String convertedResponse,
-      @Param("retryCount") int retryCount); // primitive — NOT NULL in schema (DEFAULT 0)
+      @Param("retryCount") int retryCount);
 
-  default Mono<Integer> insertHistory(OutboundHistory h) {
-    return insertHistory(
+  default Mono<Integer> saveHistory(OutboundHistory h) {
+    return saveHistory(
         h.getOutboundSystemId(), h.getIdempotencyKey(), h.getCallerService(), h.getRequestId(),
         h.getRequestMethod(), h.getRequestUrl(), h.getRequestHeaders(), h.getRequestPayload(),
         h.getResponseStatus(), h.getResponseHeaders(), h.getResponsePayload(),
@@ -62,7 +65,7 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
   Mono<OutboundHistory> findFirstByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfterOrderByCreatedDateDesc(
       long outboundSystemId, String idempotencyKey, LocalDateTime cutoff);
 
-  // Used by GET /gateway/histories/{idempotencyKey} — no TTL window, returns the newest stored record.
+  // Used by GET /gateway/histories/{code} — no TTL window, returns the newest stored record.
   Mono<OutboundHistory> findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(
       long outboundSystemId, String idempotencyKey);
 
@@ -80,7 +83,7 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
       """)
   Flux<OutboundHistory> findPageByFilters(
       long systemId, int status,
-      @Nullable LocalDateTime startDate, @Nullable LocalDateTime endDate,
+      @Nullable LocalDate startDate, @Nullable LocalDate endDate,
       int size, long offset);
 
   @Query("""
@@ -92,5 +95,5 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
       """)
   Mono<Long> countByFilters(
       long systemId, int status,
-      @Nullable LocalDateTime startDate, @Nullable LocalDateTime endDate);
+      @Nullable LocalDate startDate, @Nullable LocalDate endDate);
 }

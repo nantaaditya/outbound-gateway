@@ -3,6 +3,7 @@ package com.nantaaditya.example.configuration;
 import com.nantaaditya.example.factory.AsyncExecutorHelperFactory;
 import com.nantaaditya.example.helper.AsyncMDCTaskDecorator;
 import com.nantaaditya.example.helper.TaskExecutorHelper;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.properties.AsyncTaskProperties;
 import com.nantaaditya.example.properties.embedded.AsyncConfiguration;
@@ -25,8 +26,6 @@ public class AsyncTaskConfiguration {
   private final AsyncTaskProperties asyncProperties;
   private final ReactiveWebServerApplicationContext applicationContext;
 
-  private static final String POSTFIX_BEAN_NAME = "AsyncTaskExecutor";
-
   @Bean
   public AsyncExecutorHelperFactory asyncExecutorHelperFactory() {
     Map<String, Executor> executors = new HashMap<>();
@@ -47,12 +46,12 @@ public class AsyncTaskConfiguration {
               AsyncConfiguration configuration = asyncProperties.getConfiguration(key);
               Executor taskExecutor = taskExecutorHelper.createExecutor(configuration, asyncMDCTaskDecorator);
               registerExecutorBean(key, taskExecutor);
-              executors.put(key + AsyncExecutorHelperFactory.POSTFIX_BEAN_NAME, taskExecutor);
-              throttlers.put(key + AsyncExecutorHelperFactory.POSTFIX_BEAN_NAME, new Semaphore(configuration.getThrottlerSize()));
+              executors.put(key + ConstantName.ASYNC_POSTFIX_BEAN_NAME, taskExecutor);
+              throttlers.put(key + ConstantName.ASYNC_POSTFIX_BEAN_NAME, new Semaphore(configuration.getThrottlerSize()));
             }
         );
 
-    log.debug(AppLogMessage.message("#AsyncExecutor - bean {} created", asyncProperties.getBeanNames(AsyncExecutorHelperFactory.POSTFIX_BEAN_NAME)));
+    log.debug(AppLogMessage.message("#AsyncExecutor - bean {} created", asyncProperties.getBeanNames(ConstantName.ASYNC_POSTFIX_BEAN_NAME)));
     factory.setExecutors(executors);
     factory.setThrottlers(throttlers);
     return factory;
@@ -60,7 +59,7 @@ public class AsyncTaskConfiguration {
 
   private void registerExecutorBean(String key, Executor taskExecutor) {
     applicationContext.registerBean(
-        key + AsyncExecutorHelperFactory.POSTFIX_BEAN_NAME,
+        key + ConstantName.ASYNC_POSTFIX_BEAN_NAME,
         Executor.class,
         () -> taskExecutor,
         definition -> definition.setLazyInit(true)

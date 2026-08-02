@@ -3,6 +3,7 @@ package com.nantaaditya.example.interceptor;
 import com.nantaaditya.example.helper.DateTimeHelper;
 import com.nantaaditya.example.helper.EventLogHelper;
 import com.nantaaditya.example.helper.ObservationHelper;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.ObservationConstant;
 import com.nantaaditya.example.model.dto.ContextDTO;
@@ -202,8 +203,8 @@ public class AppFilter implements WebFilter {
   private <C extends Observation.Context> void doObservationOnError(Throwable exception, C context,
       Observation observation) {
     log.error(AppLogMessage.message("#Observation - error {}", exception.getMessage()).error(exception));
-    context.addLowCardinalityKeyValue(KeyValue.of("error", exception.getClass().getName()));
-    observation.event(Event.of("error", exception.getClass().getName()));
+    context.addLowCardinalityKeyValue(KeyValue.of(ConstantName.ERROR_TAG_OBSERVABILITY, exception.getClass().getName()));
+    observation.event(Event.of(ConstantName.ERROR_TAG_OBSERVABILITY, exception.getClass().getName()));
     observation.error(exception);
   }
 }

@@ -11,6 +11,10 @@ public class GsonHelper {
   public static String cleanJson(String json, Gson gson) {
     String result = "";
 
+    if (json == null || json.isBlank()) {
+      return result;
+    }
+
     if (json.startsWith("[")) {
       JsonArray array = gson.fromJson(json, JsonArray.class);
       result = gson.toJson(array);

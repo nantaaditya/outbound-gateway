@@ -8,6 +8,7 @@ import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
+import com.nantaaditya.example.model.dto.OutboundSystemContext.OutboundSystemContextBuilder;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.ssl.SslContext;
@@ -65,11 +66,14 @@ public class GatewayWebClientBuilder {
   // One WebClient (= one Reactor Netty connection pool) per host (scheme+host+port).
   private final ConcurrentMap<String, WebClient> webClientCache = new ConcurrentHashMap<>();
 
-  public WebClient getOrCreateWebClient(OutboundHostConfiguration hostConfig) {
-    return webClientCache.computeIfAbsent(hostConfig.getBaseUrl(), url -> {
-      log.info(AppLogMessage.message("#WEBCLIENT - created for {}", url));
-      return buildWebClient(hostConfig);
-    });
+  public WebClient getOrCreateWebClient(OutboundHostConfiguration hostConfiguration) {
+    return webClientCache.computeIfAbsent(
+        hostConfiguration.getBaseUrl(),
+        url -> {
+          log.info(AppLogMessage.message("#WEBCLIENT - created for {}", url));
+          return buildWebClient(hostConfiguration);
+        }
+    );
   }
 
   public void evictWebClient(String baseUrl) {
@@ -96,18 +100,8 @@ public class GatewayWebClientBuilder {
     HttpClient httpClient = HttpClient.create(ConnectionProvider.newConnection())
         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, hostConfig.getConnectTimeOutMs());
 
-    if (hostConfig.isDisableSslVerification()) {
-      log.warn(AppLogMessage.message(
-          "#WEBCLIENT - SSL verification disabled for {} — do not use in production",
-          hostConfig.getBaseUrl()));
-      httpClient = httpClient.secure(spec -> {
-        try {
-          spec.sslContext(insecureSsl());
-        } catch (SSLException e) {
-          throw new IllegalArgumentException("SSL config failed", e);
-        }
-      });
-    }
+    httpClient = disableSsl(hostConfig, httpClient);
+    httpClient = configureProxy(hostConfig, httpClient);
 
     return webClientBuilder.clone()
         .baseUrl(hostConfig.getBaseUrl())
@@ -116,39 +110,51 @@ public class GatewayWebClientBuilder {
   }
 
   public OutboundSystemContext buildContext(
-      OutboundSystem system,
-      OutboundHostConfiguration hostConfig,
-      OutboundResilienceConfiguration resilience,
-      List<OutboundHeaderConfiguration> headers,
-      OutboundAuthConfiguration auth,
+      OutboundSystem outboundSystem,
+      OutboundHostConfiguration hostConfiguration,
+      OutboundResilienceConfiguration resilienceConfiguration,
+      List<OutboundHeaderConfiguration> headerConfiguration,
+      OutboundAuthConfiguration authConfiguration,
       OutboundResponseMapperConfiguration responseMapper) {
-    String code = system.getCode();
-    OutboundSystemContext.OutboundSystemContextBuilder builder = OutboundSystemContext.builder()
-        .system(system)
-        .hostConfig(hostConfig)
-        .resilience(resilience)
-        .headers(headers)
-        .auth(auth)
-        .responseMapper(responseMapper)
-        .webClient(getOrCreateWebClient(hostConfig));
+    String code = outboundSystem.getCode();
+    OutboundSystemContextBuilder builder = buildOutboundSystemContext(outboundSystem,
+        hostConfiguration, resilienceConfiguration, headerConfiguration, authConfiguration,
+        responseMapper
+    );
 
-    if (!resilience.isBypassed()) {
+    if (!resilienceConfiguration.isBypassed()) {
       // Each mechanism is registered only when its flag is enabled.
       // Operator application order in executeWithResilience must match:
-      //   RateLimiter → Bulkhead → CircuitBreaker → Retry
+      // RateLimiter → Bulkhead → CircuitBreaker → Retry
       // transformDeferred builds inside-out: Retry is the outermost wrapper and
       // re-submits through the full pipeline (including CB + Bulkhead) on each attempt.
       // Wrong order here = Retry bypasses CircuitBreaker, defeating its purpose.
-      if (resilience.isCircuitBreakerEnabled())
-        builder.circuitBreaker(resilienceRegistry.getOrCreateCircuitBreaker(code, resilience));
-      if (resilience.isBulkheadEnabled())
-        builder.bulkhead(resilienceRegistry.getOrCreateBulkhead(code, resilience));
-      if (resilience.isRateLimiterEnabled())
-        builder.rateLimiter(resilienceRegistry.getOrCreateRateLimiter(code, resilience));
-      if (resilience.isRetryEnabled())
-        builder.retry(resilienceRegistry.getOrCreateRetry(code, resilience));
+      if (resilienceConfiguration.isCircuitBreakerEnabled())
+        builder.circuitBreaker(resilienceRegistry.getOrCreateCircuitBreaker(code, resilienceConfiguration));
+      if (resilienceConfiguration.isBulkheadEnabled())
+        builder.bulkhead(resilienceRegistry.getOrCreateBulkhead(code, resilienceConfiguration));
+      if (resilienceConfiguration.isRateLimiterEnabled())
+        builder.rateLimiter(resilienceRegistry.getOrCreateRateLimiter(code, resilienceConfiguration));
+      if (resilienceConfiguration.isRetryEnabled())
+        builder.retry(resilienceRegistry.getOrCreateRetry(code, resilienceConfiguration));
     }
     return builder.build();
+  }
+
+  private OutboundSystemContextBuilder buildOutboundSystemContext(OutboundSystem outboundSystem,
+      OutboundHostConfiguration hostConfiguration,
+      OutboundResilienceConfiguration resilienceConfiguration,
+      List<OutboundHeaderConfiguration> headerConfiguration,
+      OutboundAuthConfiguration authConfiguration,
+      OutboundResponseMapperConfiguration responseMapper) {
+    return OutboundSystemContext.builder()
+        .system(outboundSystem)
+        .hostConfig(hostConfiguration)
+        .resilience(resilienceConfiguration)
+        .headers(headerConfiguration)
+        .auth(authConfiguration)
+        .responseMapper(responseMapper)
+        .webClient(getOrCreateWebClient(hostConfiguration));
   }
 
   private WebClient buildWebClient(OutboundHostConfiguration hostConfig) {
@@ -161,10 +167,23 @@ public class GatewayWebClientBuilder {
     HttpClient httpClient = HttpClient.create(connectionProvider)
         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, hostConfig.getConnectTimeOutMs())
         .doOnConnected(conn -> conn
-            .addHandlerLast(new LogbookClientHandler(logbook)));
+            .addHandlerLast(new LogbookClientHandler(logbook))
+        );
 
+    httpClient = disableSsl(hostConfig, httpClient);
+    httpClient = configureProxy(hostConfig, httpClient);
+
+    return webClientBuilder.clone()
+        .baseUrl(hostConfig.getBaseUrl())
+        .clientConnector(new ReactorClientHttpConnector(httpClient))
+        .build();
+  }
+
+  private HttpClient disableSsl(OutboundHostConfiguration hostConfig, HttpClient httpClient) {
     if (hostConfig.isDisableSslVerification()) {
-      log.warn(AppLogMessage.message("#WEBCLIENT - SSL verification disabled for {} — do not use in production", hostConfig.getBaseUrl()));
+      log.warn(AppLogMessage.message(
+          "#WEBCLIENT - SSL verification disabled for {} — do not use in production",
+          hostConfig.getBaseUrl()));
       httpClient = httpClient.secure(spec -> {
         try {
           spec.sslContext(insecureSsl());
@@ -173,25 +192,24 @@ public class GatewayWebClientBuilder {
         }
       });
     }
+    return httpClient;
+  }
 
+  private HttpClient configureProxy(OutboundHostConfiguration hostConfig, HttpClient httpClient) {
     if (hostConfig.isUseProxy() && hostConfig.getProxyHost() != null && hostConfig.getProxyPort() > 0) {
       String proxyHost = hostConfig.getProxyHost();
       int proxyPort = hostConfig.getProxyPort();
       httpClient = httpClient.proxy(proxy -> {
-        var spec = proxy.type(ProxyProvider.Proxy.HTTP)
+        ProxyProvider.Builder builder = proxy.type(ProxyProvider.Proxy.HTTP)
             .host(proxyHost)
             .port(proxyPort);
         if (hostConfig.getProxyUsername() != null && hostConfig.getProxyPassword() != null) {
-          spec.username(encryptionHelper.decryptToString(hostConfig.getProxyUsername()))
+          builder.username(encryptionHelper.decryptToString(hostConfig.getProxyUsername()))
               .password(p -> encryptionHelper.decryptToString(hostConfig.getProxyPassword()));
         }
       });
     }
-
-    return webClientBuilder.clone()
-        .baseUrl(hostConfig.getBaseUrl())
-        .clientConnector(new ReactorClientHttpConnector(httpClient))
-        .build();
+    return httpClient;
   }
 
   private SslContext insecureSsl() throws SSLException {

@@ -8,7 +8,7 @@ import com.nantaaditya.example.model.response.PageResponse;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.GatewayHistoryService;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.lang.Nullable;
@@ -19,8 +19,8 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class GatewayHistoryServiceImpl implements GatewayHistoryService {
 
-  private final OutboundHistoryRepository historyRepository;
-  private final OutboundSystemRepository systemRepository;
+  private final OutboundHistoryRepository outboundHistoryRepository;
+  private final OutboundSystemRepository outboundSystemRepository;
   private final JsonHelper jsonHelper;
 
   // BIGSERIAL IDs start at 1, so 0 is a safe sentinel meaning "query across all systems".
@@ -29,7 +29,7 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
   @Override
   public Mono<PageResponse<GatewayHistoryResponse>> findHistories(
       @Nullable String code,
-      @Nullable LocalDateTime startDate, @Nullable LocalDateTime endDate,
+      @Nullable LocalDate startDate, @Nullable LocalDate endDate,
       @Nullable Integer status,
       int page, int size) {
     int safeSize = Math.max(1, Math.min(size, 100));
@@ -39,12 +39,13 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
 
     return resolveSystemId(code)
         .flatMap(systemId -> Mono.zip(
-            historyRepository.countByFilters(systemId, safeStatus, startDate, endDate),
-            historyRepository.findPageByFilters(systemId, safeStatus, startDate, endDate, safeSize, offset).collectList()
+            outboundHistoryRepository.countByFilters(systemId, safeStatus, startDate, endDate),
+            outboundHistoryRepository.findPageByFilters(systemId, safeStatus, startDate, endDate, safeSize, offset).collectList()
         ))
         .map(tuple -> {
           long total = tuple.getT1();
-          List<GatewayHistoryResponse> content = tuple.getT2().stream()
+          List<GatewayHistoryResponse> content = tuple.getT2()
+              .stream()
               .map(h -> GatewayHistoryResponse.from(h, jsonHelper))
               .toList();
           int totalPages = safeSize > 0 ? (int) Math.ceil((double) total / safeSize) : 0;
@@ -54,10 +55,10 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
 
   @Override
   public Mono<GatewayHistoryResponse> findByIdempotencyKey(String code, String idempotencyKey) {
-    return systemRepository.findByCode(code)
+    return outboundSystemRepository.findByCode(code)
         .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)))
         .flatMap(system ->
-            historyRepository.findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(system.getId(), idempotencyKey)
+            outboundHistoryRepository.findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(system.getId(), idempotencyKey)
                 .map(h -> GatewayHistoryResponse.from(h, jsonHelper))
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("History not found for code=" + code)))
         );
@@ -67,7 +68,7 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
     if (code == null || code.isBlank()) {
       return Mono.just(ALL_SYSTEMS_ID);
     }
-    return systemRepository.findByCode(code)
+    return outboundSystemRepository.findByCode(code)
         .map(BaseEntity::getId)
         .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }

@@ -49,4 +49,11 @@ public class OutboundResponseMapperConfiguration extends BaseEntity<Long> {
         .active(request.active())
         .build();
   }
+
+  public static OutboundResponseMapperConfiguration empty(long systemId) {
+    return OutboundResponseMapperConfiguration.builder()
+        .outboundSystemId(systemId)
+        .converterType(ConverterType.NONE)
+        .build();
+  }
 }

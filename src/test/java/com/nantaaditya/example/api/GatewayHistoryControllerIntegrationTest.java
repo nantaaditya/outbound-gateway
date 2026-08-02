@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nantaaditya.example.base.BaseIntegrationTest;
 import com.nantaaditya.example.entity.OutboundHistory;
+import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
+import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +22,8 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
   @Autowired
   private OutboundSystemRepository systemRepository;
   @Autowired
+  private OutboundHostConfigurationRepository hostConfigRepository;
+  @Autowired
   private OutboundHistoryRepository historyRepository;
   @Autowired
   private ObjectMapper objectMapper;
@@ -28,11 +32,21 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
 
   @BeforeEach
   void seed() {
+    OutboundHostConfiguration hostConfig = hostConfigRepository.save(OutboundHostConfiguration.builder()
+        .baseUrl("https://api.xendit.co")
+        .connectTimeOutMs(5000)
+        .maxConnections(50)
+        .pendingAcquireMaxCount(100)
+        .pendingAcquireTimeoutMs(5000)
+        .disableSslVerification(false)
+        .useProxy(false)
+        .build()).block();
+
     OutboundSystem system = systemRepository.save(OutboundSystem.builder()
         .code("xendit-test")
         .name("Xendit Test")
         .httpMethod("POST")
-        .baseUrl("https://api.xendit.co")
+        .hostConfigurationId(hostConfig.getId())
         .apiPath("/v2/charges")
         .active(true)
         .idempotencyTtlHours(24)
@@ -48,6 +62,7 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
   void cleanup() {
     historyRepository.deleteAll().block();
     systemRepository.deleteAll().block();
+    hostConfigRepository.deleteAll().block();
   }
 
   // --- GET /api/gateway/histories ---
@@ -65,8 +80,8 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
 
     JsonNode root = objectMapper.readTree(body);
     assertThat(root.path("response").path("code").asText()).isEqualTo("000");
-    assertThat(root.path("data").path("totalElements").asLong()).isPositive();
-    assertThat(root.path("data").path("content").isArray()).isTrue();
+    assertThat(root.path("pagination").path("totalElements").asLong()).isPositive();
+    assertThat(root.path("data").isArray()).isTrue();
   }
 
   @Test
@@ -81,7 +96,7 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
         .getResponseBody();
 
     JsonNode root = objectMapper.readTree(body);
-    assertThat(root.path("data").path("totalElements").asLong()).isEqualTo(2L);
+    assertThat(root.path("pagination").path("totalElements").asLong()).isEqualTo(2L);
   }
 
   @Test
@@ -96,8 +111,8 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
         .getResponseBody();
 
     JsonNode root = objectMapper.readTree(body);
-    assertThat(root.path("data").path("totalElements").asLong()).isEqualTo(1L);
-    assertThat(root.path("data").path("content").get(0).path("responseStatus").asInt()).isEqualTo(500);
+    assertThat(root.path("pagination").path("totalElements").asLong()).isEqualTo(1L);
+    assertThat(root.path("data").get(0).path("responseStatus").asInt()).isEqualTo(500);
   }
 
   @Test
@@ -121,18 +136,18 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
         .getResponseBody();
 
     JsonNode root = objectMapper.readTree(body);
-    assertThat(root.path("data").path("size").asInt()).isEqualTo(1);
-    assertThat(root.path("data").path("content").size()).isEqualTo(1);
-    assertThat(root.path("data").path("totalPages").asInt()).isEqualTo(2);
+    assertThat(root.path("pagination").path("size").asInt()).isEqualTo(1);
+    assertThat(root.path("data").size()).isEqualTo(1);
+    assertThat(root.path("pagination").path("totalPages").asInt()).isEqualTo(2);
   }
 
   // --- GET /api/gateway/histories/{idempotencyKey} ---
 
   @Test
-  @DisplayName("GET /api/gateway/histories/{key} — returns single history by idempotency key")
+  @DisplayName("GET /api/gateway/history/{key} — returns single history by idempotency key")
   void findByIdempotencyKey_existingKey_returnsHistory() throws Exception {
     byte[] body = webTestClient.get()
-        .uri("/api/gateway/histories/idem-001?code=xendit-test")
+        .uri("/api/gateway/history/xendit-test?idempotencyKey=idem-001")
         .exchange()
         .expectStatus().isOk()
         .expectBody()
@@ -148,28 +163,28 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("GET /api/gateway/histories/{key} — unknown key returns HTTP 400")
+  @DisplayName("GET /api/gateway/history/{key} — unknown key returns HTTP 400")
   void findByIdempotencyKey_unknownKey_returns400() {
     webTestClient.get()
-        .uri("/api/gateway/histories/ghost-key?code=xendit-test")
+        .uri("/api/gateway/history/xendit-test?idempotencyKey=ghost-key")
         .exchange()
         .expectStatus().isBadRequest();
   }
 
   @Test
-  @DisplayName("GET /api/gateway/histories/{key} — unknown code returns HTTP 400")
+  @DisplayName("GET /api/gateway/history/{key} — unknown code returns HTTP 400")
   void findByIdempotencyKey_unknownCode_returns400() {
     webTestClient.get()
-        .uri("/api/gateway/histories/idem-001?code=no-system")
+        .uri("/api/gateway/history/no-system?idempotencyKey=idem-001")
         .exchange()
         .expectStatus().isBadRequest();
   }
 
   @Test
-  @DisplayName("GET /api/gateway/histories/{key} — blank code returns HTTP 400")
+  @DisplayName("GET /api/gateway/history/{key} — blank code returns HTTP 400")
   void findByIdempotencyKey_blankCode_returns400() {
     webTestClient.get()
-        .uri("/api/gateway/histories/idem-001?code=")
+        .uri("/api/gateway/history/?idempotencyKey=idem-001")
         .exchange()
         .expectStatus().isBadRequest();
   }
@@ -178,27 +193,27 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
   @DisplayName("GET /api/gateway/histories — startDate in the past includes all seeded records")
   void findHistories_filterByStartDateInPast_includesSeededRecords() throws Exception {
     byte[] body = webTestClient.get()
-        .uri("/api/gateway/histories?code=xendit-test&startDate=2020-01-01T00:00:00")
+        .uri("/api/gateway/histories?code=xendit-test&startDate=2020-01-01")
         .exchange()
         .expectStatus().isOk()
         .expectBody().returnResult().getResponseBody();
 
     JsonNode root = objectMapper.readTree(body);
-    assertThat(root.path("data").path("totalElements").asLong()).isEqualTo(2L);
+    assertThat(root.path("pagination").path("totalElements").asLong()).isEqualTo(2L);
   }
 
   @Test
   @DisplayName("GET /api/gateway/histories — startDate in the future returns empty result")
   void findHistories_filterByStartDateInFuture_returnsEmpty() throws Exception {
     byte[] body = webTestClient.get()
-        .uri("/api/gateway/histories?code=xendit-test&startDate=2099-01-01T00:00:00")
+        .uri("/api/gateway/histories?code=xendit-test&startDate=2099-01-01")
         .exchange()
         .expectStatus().isOk()
         .expectBody().returnResult().getResponseBody();
 
     JsonNode root = objectMapper.readTree(body);
-    assertThat(root.path("data").path("totalElements").asLong()).isZero();
-    assertThat(root.path("data").path("content").size()).isEqualTo(0);
+    assertThat(root.path("pagination").path("totalElements").asLong()).isZero();
+    assertThat(root.path("data").size()).isEqualTo(0);
   }
 
   @Test
@@ -211,8 +226,8 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
         .expectBody().returnResult().getResponseBody();
 
     JsonNode root = objectMapper.readTree(body);
-    assertThat(root.path("data").path("totalElements").asLong()).isEqualTo(2L);
-    assertThat(root.path("data").path("content").size()).isZero();
+    assertThat(root.path("pagination").path("totalElements").asLong()).isEqualTo(2L);
+    assertThat(root.path("data").size()).isZero();
   }
 
   @Test
@@ -225,16 +240,16 @@ class GatewayHistoryControllerIntegrationTest extends BaseIntegrationTest {
         .expectBody().returnResult().getResponseBody();
 
     JsonNode root = objectMapper.readTree(body);
-    assertThat(root.path("data").path("totalElements").asLong()).isPositive();
-    JsonNode first = root.path("data").path("content").get(0);
+    assertThat(root.path("pagination").path("totalElements").asLong()).isPositive();
+    JsonNode first = root.path("data").get(0);
     assertThat(first.path("responseStatus").asInt()).isEqualTo(200);
   }
 
   @Test
-  @DisplayName("GET /api/gateway/histories/{key} — response includes all expected fields")
+  @DisplayName("GET /api/gateway/history/{key} — response includes all expected fields")
   void findByIdempotencyKey_existingKey_responseContainsAllFields() throws Exception {
     byte[] body = webTestClient.get()
-        .uri("/api/gateway/histories/idem-002?code=xendit-test")
+        .uri("/api/gateway/history/xendit-test?idempotencyKey=idem-002")
         .exchange()
         .expectStatus().isOk()
         .expectBody().returnResult().getResponseBody();

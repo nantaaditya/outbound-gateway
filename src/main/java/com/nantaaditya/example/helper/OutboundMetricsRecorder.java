@@ -1,5 +1,8 @@
 package com.nantaaditya.example.helper;
 
+import static com.nantaaditya.example.model.constant.ObservationConstant.PUBLIC_API;
+
+import com.nantaaditya.example.model.constant.ConstantName;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.Observation;
@@ -39,15 +42,15 @@ public class OutboundMetricsRecorder {
   private final ConcurrentHashMap<String, Counter> idempotencyCounters = new ConcurrentHashMap<>();
 
   public Observation startCall(String code) {
-    return Observation.createNotStarted("api.public", observationRegistry)
-        .lowCardinalityKeyValue("feature", code)
+    return Observation.createNotStarted(PUBLIC_API.getName(), observationRegistry)
+        .lowCardinalityKeyValue(ConstantName.FEATURE_TAG_OBSERVABILITY, code)
         .start();
   }
 
   public void finalizeCall(Observation observation, int httpStatus, String callerService) {
     observation
-        .lowCardinalityKeyValue("responseCode", String.valueOf(httpStatus))
-        .lowCardinalityKeyValue("callerService", normalizeCallerService(callerService))
+        .lowCardinalityKeyValue(ConstantName.RESPONSE_CODE_TAG_OBSERVABILITY, String.valueOf(httpStatus))
+        .lowCardinalityKeyValue(ConstantName.CALLER_TAG_OBSERVABILITY, normalizeCallerService(callerService))
         .stop();
   }
 
@@ -61,8 +64,8 @@ public class OutboundMetricsRecorder {
 
   public void recordIdempotencyHit(String code) {
     idempotencyCounters.computeIfAbsent(code, c ->
-        Counter.builder("api.public.idempotency")
-            .tag("feature", c)
+        Counter.builder(PUBLIC_API.getName().concat(".idempotency"))
+            .tag(ConstantName.FEATURE_TAG_OBSERVABILITY, c)
             .register(meterRegistry))
         .increment();
   }

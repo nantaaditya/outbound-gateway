@@ -117,4 +117,10 @@ public class OutboundResilienceConfiguration extends BaseEntity<Long> {
 
     return b.build();
   }
+
+  public static OutboundResilienceConfiguration empty(long systemId) {
+    return OutboundResilienceConfiguration.builder()
+        .outboundSystemId(systemId)
+        .build();
+  }
 }

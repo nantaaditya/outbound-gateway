@@ -1,6 +1,7 @@
 package com.nantaaditya.example.configuration;
 
 import com.nantaaditya.example.helper.TracerHelper;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,7 +18,7 @@ public class R2dbcAuditorConfiguration implements ReactiveAuditorAware<String> {
   @Override
   public Mono<String> getCurrentAuditor() {
     String auditor = Optional.ofNullable(tracerHelper.getBaggage(HeaderConstant.CLIENT_ID))
-        .orElseGet(() -> "SYSTEM");
+        .orElseGet(() -> ConstantName.DEFAULT_SYSTEM_AUDITOR);
     return Mono.just(auditor);
   }
 }

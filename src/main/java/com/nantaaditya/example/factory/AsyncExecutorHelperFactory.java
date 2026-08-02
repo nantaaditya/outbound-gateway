@@ -1,5 +1,7 @@
 package com.nantaaditya.example.factory;
 
+import static com.nantaaditya.example.model.constant.ConstantName.ASYNC_POSTFIX_BEAN_NAME;
+
 import com.nantaaditya.example.helper.AsyncExecutorHelper;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import java.util.HashMap;
@@ -14,8 +16,6 @@ import org.springframework.beans.factory.FactoryBean;
 
 @Setter
 public class AsyncExecutorHelperFactory implements FactoryBean<AsyncExecutorHelper> {
-
-  public static final String POSTFIX_BEAN_NAME = "AsyncTaskExecutor";
 
   private Map<String, Executor> executors = new HashMap<>();
   private Map<String, Semaphore> throttlers = new ConcurrentHashMap<>();
@@ -39,13 +39,13 @@ public class AsyncExecutorHelperFactory implements FactoryBean<AsyncExecutorHelp
 
     @Override
     public Executor getExecutor(String executorName) {
-      return executors.get(executorName + POSTFIX_BEAN_NAME);
+      return executors.get(executorName + ASYNC_POSTFIX_BEAN_NAME);
     }
 
     @Override
     public void execute(String executorName, Runnable task) {
       Executor executor = getExecutor(executorName);
-      Semaphore throttler = throttlers.get(executorName + POSTFIX_BEAN_NAME);
+      Semaphore throttler = throttlers.get(executorName + ASYNC_POSTFIX_BEAN_NAME);
 
       if (executor != null) {
         executor.execute(() -> {

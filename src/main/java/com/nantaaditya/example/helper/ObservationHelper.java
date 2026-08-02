@@ -1,5 +1,6 @@
 package com.nantaaditya.example.helper;
 
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.FeatureConstant;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.logger.AppLogMessage;
@@ -38,10 +39,10 @@ public class ObservationHelper {
     }
 
     FeatureConstant.find(contextDTO.getMethod(), contextDTO.getPath())
-        .ifPresent(f -> observationContext.addLowCardinalityKeyValue(KeyValue.of("feature", f.name())));
+        .ifPresent(f -> observationContext.addLowCardinalityKeyValue(KeyValue.of(ConstantName.FEATURE_TAG_OBSERVABILITY, f.name())));
 
     if (contextDTO.getRequestId() != null) {
-      observationContext.addHighCardinalityKeyValue(KeyValue.of("requestId", contextDTO.getRequestId()));
+      observationContext.addHighCardinalityKeyValue(KeyValue.of(ConstantName.REQUEST_ID_TAG_OBSERVABILITY, contextDTO.getRequestId()));
     }
 
     return observationContext;

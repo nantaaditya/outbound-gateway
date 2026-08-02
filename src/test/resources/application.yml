@@ -85,3 +85,15 @@ apps:
         keep-alive-seconds: 60
         thread-name-prefix: default-task-
         enable-virtual-thread: true
+  cache.configurations:
+    jslt:
+      type: SIZE
+      size: 200
+    contexts:
+      type: TIME
+      time-out: 10
+      time-unit: MINUTES
+    additional-data:
+      type: TIME
+      time-out: 10
+      time-unit: MINUTES

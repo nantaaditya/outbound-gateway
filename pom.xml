@@ -24,11 +24,12 @@
     <awaitility.version>4.3.0</awaitility.version>
     <gson.version>2.14.0</gson.version>
     <disruptor.version>4.0.0</disruptor.version>
-    <jacoco.version>0.8.14</jacoco.version>
+    <jacoco.version>0.8.15</jacoco.version>
     <jslt.version>0.1.14</jslt.version>
     <logbook.version>3.12.3</logbook.version>
     <resilience4j.version>2.4.0</resilience4j.version>
     <sonar.version>5.6.0.6792</sonar.version>
+    <springdoc.version>2.8.17</springdoc.version>
     <tsid.version>5.2.6</tsid.version>
     <wiremock.version>3.13.1</wiremock.version>
     <sonar.coverage.exclusions>
@@ -143,7 +144,6 @@
       <artifactId>disruptor</artifactId>
       <version>${disruptor.version}</version>
     </dependency>
-
     <dependency>
       <groupId>io.github.resilience4j</groupId>
       <artifactId>resilience4j-spring-boot3</artifactId>
@@ -164,15 +164,18 @@
       <artifactId>jslt</artifactId>
       <version>${jslt.version}</version>
     </dependency>
-
     <dependency>
       <groupId>com.github.ben-manes.caffeine</groupId>
       <artifactId>caffeine</artifactId>
     </dependency>
-
     <dependency>
       <groupId>com.jayway.jsonpath</groupId>
       <artifactId>json-path</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+      <version>${springdoc.version}</version>
     </dependency>
 
     <dependency>

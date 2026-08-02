@@ -32,15 +32,15 @@ public class BearerStaticAuthStrategy implements AuthStrategy {
 
   @Override
   public Mono<AuthCredential> authenticate(
-      OutboundAuthConfiguration config, EncryptionHelper encryption, String requestBody) {
+      OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption, String requestBody) {
     return Mono.fromCallable(() -> {
-      String token = encryption.decryptToString(config.getClientSecret());
-      String prefix = config.getTokenPrefix();
-      String value = config.isPrefixNotBlank() ? prefix + " " + token : token;
+      String token = encryption.decryptToString(authConfiguration.getClientSecret());
+      String prefix = authConfiguration.getTokenPrefix();
+      String value = authConfiguration.isPrefixNotBlank() ? prefix + " " + token : token;
       return new AuthCredential(
-          config.getTokenKeyName(),
+          authConfiguration.getTokenKeyName(),
           value,
-          config.getTokenInjectLocation());
+          authConfiguration.getTokenInjectLocation());
     }).subscribeOn(Schedulers.boundedElastic());
   }
 }

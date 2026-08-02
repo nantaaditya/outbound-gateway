@@ -73,9 +73,14 @@ class GatewayExecuteValidationIntegrationTest extends BaseIntegrationTest {
   @Test
   @DisplayName("Inactive system — execute returns 400 even though the system row exists in the DB")
   void execute_withInactiveSystem_returns400() {
+    OutboundHostConfiguration hostConfig = hostConfigRepository.save(OutboundHostConfiguration.builder()
+        .baseUrl("http://localhost:9999").connectTimeOutMs(5000).maxConnections(50)
+        .pendingAcquireMaxCount(100).pendingAcquireTimeoutMs(5000)
+        .disableSslVerification(false).useProxy(false).build()).block();
+
     systemRepository.save(OutboundSystem.builder()
         .code("inactive-sys").name("inactive-sys").httpMethod("POST")
-        .baseUrl("http://localhost:9999").apiPath("/v1/inactive")
+        .hostConfigurationId(hostConfig.getId()).apiPath("/v1/inactive")
         .active(false).idempotencyTtlHours(24).build()).block();
 
     GatewayRequest req = new GatewayRequest(Map.of(), Map.of("amount", 100));
@@ -200,14 +205,14 @@ class GatewayExecuteValidationIntegrationTest extends BaseIntegrationTest {
   // --- helper ---
 
   private OutboundSystem seedSystem(String code, String baseUrl, String apiPath) {
-    OutboundSystem system = systemRepository.save(OutboundSystem.builder()
-        .code(code).name(code).httpMethod("POST").baseUrl(baseUrl).apiPath(apiPath)
-        .active(true).idempotencyTtlHours(24).build()).block();
-
-    hostConfigRepository.save(OutboundHostConfiguration.builder()
+    OutboundHostConfiguration hostConfig = hostConfigRepository.save(OutboundHostConfiguration.builder()
         .baseUrl(baseUrl).connectTimeOutMs(5000).maxConnections(50)
         .pendingAcquireMaxCount(100).pendingAcquireTimeoutMs(5000)
         .disableSslVerification(false).useProxy(false).build()).block();
+
+    OutboundSystem system = systemRepository.save(OutboundSystem.builder()
+        .code(code).name(code).httpMethod("POST").hostConfigurationId(hostConfig.getId()).apiPath(apiPath)
+        .active(true).idempotencyTtlHours(24).build()).block();
 
     resilienceRepository.save(OutboundResilienceConfiguration.builder()
         .outboundSystemId(system.getId())

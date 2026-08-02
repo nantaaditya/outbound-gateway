@@ -5,7 +5,6 @@ import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
-import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
@@ -181,41 +180,5 @@ public record OutboundSystemDetailResponse(
           cfg.getProxyPort()
       );
     }
-  }
-
-  public static OutboundSystemDetailResponse from(
-      OutboundSystem system,
-      OutboundResilienceConfiguration resilience,
-      Map<String, Object> headers,
-      OutboundAuthConfiguration auth,
-      OutboundResponseMapperConfiguration responseMapper
-  ) {
-    return from(system, resilience, headers, auth, responseMapper, null);
-  }
-
-  public static OutboundSystemDetailResponse from(
-      OutboundSystem system,
-      OutboundResilienceConfiguration resilience,
-      Map<String, Object> headers,
-      OutboundAuthConfiguration auth,
-      OutboundResponseMapperConfiguration responseMapper,
-      OutboundHostConfiguration hostConfig
-  ) {
-    return new OutboundSystemDetailResponse(
-        system.getId(),
-        system.getCode(),
-        system.getName(),
-        system.getDescription(),
-        system.getHttpMethod(),
-        system.getBaseUrl(),
-        system.getApiPath(),
-        system.isActive(),
-        system.getIdempotencyTtlHours(),
-        ResilienceDetail.from(resilience),
-        headers,
-        AuthDetail.from(auth),
-        ResponseMapperDetail.from(responseMapper),
-        HostConfigDetail.from(hostConfig)
-    );
   }
 }

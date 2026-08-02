@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.nantaaditya.example.base.BaseIntegrationTest;
 import com.nantaaditya.example.entity.OutboundHistory;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,7 +90,7 @@ class OutboundHistoryRepositoryFilterTest extends BaseIntegrationTest {
   @Test
   @DisplayName("findPageByFilters with future startDate returns empty")
   void findPageByFilters_futureStartDate_returnsEmpty() {
-    LocalDateTime future = LocalDateTime.now().plusHours(1);
+    LocalDate future = LocalDate.now().plusDays(1);
     StepVerifier.create(
         repository.findPageByFilters(0L, 0, future, null, 10, 0).collectList())
         .assertNext(list -> assertThat(list).isEmpty())
@@ -99,7 +100,7 @@ class OutboundHistoryRepositoryFilterTest extends BaseIntegrationTest {
   @Test
   @DisplayName("findPageByFilters with past endDate returns empty")
   void findPageByFilters_pastEndDate_returnsEmpty() {
-    LocalDateTime past = LocalDateTime.now().minusHours(1);
+    LocalDate past = LocalDate.now().minusDays(1);
     StepVerifier.create(
         repository.findPageByFilters(0L, 0, null, past, 10, 0).collectList())
         .assertNext(list -> assertThat(list).isEmpty())

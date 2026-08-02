@@ -92,9 +92,9 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
 
   @Override
   public Mono<AuthCredential> authenticate(
-      OutboundAuthConfiguration config, EncryptionHelper encryption, String requestBody) {
-    return resolveToken(config, encryption)
-        .map(token -> buildCredential(config, token));
+      OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption, String requestBody) {
+    return resolveToken(authConfiguration, encryption)
+        .map(token -> buildCredential(authConfiguration, token));
   }
 
   @Override
@@ -103,25 +103,25 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
     tokenFetchCache.remove(configId);
   }
 
-  private Mono<String> resolveToken(OutboundAuthConfiguration config, EncryptionHelper encryption) {
+  private Mono<String> resolveToken(OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption) {
     AtomicReference<TokenState> stateReference = tokenStates.computeIfAbsent(
-        config.getId(),
-        id -> new AtomicReference<>(new TokenState(config.getCurrentToken(), config.getTokenExpiryTime()))
+        authConfiguration.getId(),
+        id -> new AtomicReference<>(new TokenState(authConfiguration.getCurrentToken(), authConfiguration.getTokenExpiryTime()))
     );
     TokenState state = stateReference.get();
     if (state != null && state.isExists()) {
       return Mono.just(state.token());
     }
 
-    return tokenFetchCache.computeIfAbsent(config.getId(), id ->
-        fetchToken(config, encryption, stateReference)
+    return tokenFetchCache.computeIfAbsent(authConfiguration.getId(), id ->
+        fetchToken(authConfiguration, encryption, stateReference)
             .cache()
-            .doFinally(signal -> tokenFetchCache.remove(config.getId()))
+            .doFinally(signal -> tokenFetchCache.remove(authConfiguration.getId()))
     );
   }
 
   private Mono<String> fetchToken(
-      OutboundAuthConfiguration config, EncryptionHelper encryption, AtomicReference<TokenState> stateRef) {
+      OutboundAuthConfiguration config, EncryptionHelper encryption, AtomicReference<TokenState> tokenReference) {
     return Mono.defer(() -> {
       String clientId = encryption.decryptToString(config.getClientId());
       String clientSecret = encryption.decryptToString(config.getClientSecret());
@@ -131,45 +131,46 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
           .uri(config.getTokenUrl())
           .body(BodyInserters.fromFormData("grant_type", "client_credentials")
               .with("client_id", clientId)
-              .with("client_secret", clientSecret))
+              .with("client_secret", clientSecret)
+          )
           .retrieve()
           .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
-          .flatMap(response -> processTokenResponse(response, config, stateRef));
+          .flatMap(response -> processTokenResponse(response, config, tokenReference));
     }).subscribeOn(Schedulers.boundedElastic());
   }
 
   private Mono<String> processTokenResponse(
-      Map<String, Object> response, OutboundAuthConfiguration config, AtomicReference<TokenState> stateRef) {
-    String token = extractPath(response, config.getTokenResponsePath());
+      Map<String, Object> response, OutboundAuthConfiguration authConfiguration, AtomicReference<TokenState> tokenReference) {
+    String token = extractPath(response, authConfiguration.getTokenResponsePath());
     if (token == null || token.isBlank()) {
-      return Mono.error(new RuntimeException(
-          "OAuth token response missing field: " + config.getTokenResponsePath()));
+      return Mono.error(new RuntimeException("OAuth token response missing field: " + authConfiguration.getTokenResponsePath()));
     }
-    if (!config.isAutoRefresh()) {
+
+    if (!authConfiguration.isAutoRefresh()) {
       return Mono.just(token);
     }
-    LocalDateTime expiry = resolveExpiry(response, config);
-    stateRef.set(new TokenState(token, expiry));
-    return persistToken(config, token, expiry);
+    LocalDateTime expiryTime = resolveExpiry(response, authConfiguration);
+    tokenReference.set(new TokenState(token, expiryTime));
+    return persistToken(authConfiguration, token, expiryTime);
   }
 
-  // Only call when config.isAutoRefresh() is true — the "not configured" warn assumes that context.
-  private LocalDateTime resolveExpiry(Map<String, Object> response, OutboundAuthConfiguration config) {
-    String expiryPath = config.getTokenResponseExpiryPath();
+  // Only call when authConfiguration.isAutoRefresh() is true — the "not configured" warn assumes that context.
+  private LocalDateTime resolveExpiry(Map<String, Object> response, OutboundAuthConfiguration authConfiguration) {
+    String expiryPath = authConfiguration.getTokenResponseExpiryPath();
     if (expiryPath == null || expiryPath.isBlank()) {
       log.warn(AppLogMessage.message(
-          "OAuth expiry path not configured for config {} — token will be refetched on every call. " +
-          "Set token_response_expiry_path to enable token caching.", config.getId()));
+          "OAuth expiry path not configured for authConfiguration {} — token will be refetched on every call. " +
+          "Set token_response_expiry_path to enable token caching.", authConfiguration.getId()));
       return null;
     }
-    String expiryStr = extractPath(response, expiryPath);
-    if (expiryStr == null) {
+    String expiryString = extractPath(response, expiryPath);
+    if (expiryString == null) {
       return null;
     }
     try {
-      return LocalDateTime.now().plusSeconds(Long.parseLong(expiryStr));
+      return LocalDateTime.now().plusSeconds(Long.parseLong(expiryString));
     } catch (NumberFormatException ignored) {
-      log.warn(AppLogMessage.message("Cannot parse token expiry: {}", expiryStr));
+      log.warn(AppLogMessage.message("Cannot parse token expiry: {}", expiryString));
       return null;
     }
   }
@@ -188,7 +189,9 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
     if (path.startsWith("$.")) {
       try {
         Object value = JsonPath.read(response, path);
-        return Optional.ofNullable(value).map(Object::toString).orElse(null);
+        return Optional.ofNullable(value)
+            .map(Object::toString)
+            .orElse(null);
       } catch (PathNotFoundException e) {
         log.warn(AppLogMessage.message("JSONPath '{}' not found in token response", path));
         return null;
@@ -198,7 +201,9 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
       }
     }
     Object value = response.get(path);
-    return Optional.ofNullable(value).map(Object::toString).orElse(null);
+    return Optional.ofNullable(value)
+        .map(Object::toString)
+        .orElse(null);
   }
 
   private AuthCredential buildCredential(OutboundAuthConfiguration config, String token) {
@@ -207,6 +212,7 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
     return new AuthCredential(
         config.getTokenKeyName(),
         value,
-        config.getTokenInjectLocation());
+        config.getTokenInjectLocation()
+    );
   }
 }

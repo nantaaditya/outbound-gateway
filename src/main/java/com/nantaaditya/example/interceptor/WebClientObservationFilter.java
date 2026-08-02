@@ -2,6 +2,7 @@ package com.nantaaditya.example.interceptor;
 
 import com.nantaaditya.example.helper.TracerHelper;
 import com.nantaaditya.example.model.constant.ClientFeatureConstant;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation.Context;
@@ -35,14 +36,14 @@ public class WebClientObservationFilter implements ObservationFilter {
       ClientFeatureConstant feature = ClientFeatureConstant.get(method, path);
 
       if (feature != null) {
-        context.addLowCardinalityKeyValue(KeyValue.of("feature", feature.name()));
+        context.addLowCardinalityKeyValue(KeyValue.of(ConstantName.FEATURE_TAG_OBSERVABILITY, feature.name()));
       }
     }
 
     String requestId = tracerHelper.getBaggage(HeaderConstant.REQUEST_ID);
 
     if (requestId != null) {
-      context.addHighCardinalityKeyValue(KeyValue.of("requestId", requestId));
+      context.addHighCardinalityKeyValue(KeyValue.of(ConstantName.REQUEST_ID_TAG_OBSERVABILITY, requestId));
     }
 
     return context;

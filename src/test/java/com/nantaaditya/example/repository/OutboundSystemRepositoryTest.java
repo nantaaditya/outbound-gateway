@@ -3,6 +3,7 @@ package com.nantaaditya.example.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.nantaaditya.example.base.BaseIntegrationTest;
+import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,20 +16,32 @@ class OutboundSystemRepositoryTest extends BaseIntegrationTest {
   @Autowired
   private OutboundSystemRepository outboundSystemRepository;
 
+  @Autowired
+  private OutboundHostConfigurationRepository hostConfigRepository;
+
   @AfterEach
   void cleanup() {
     outboundSystemRepository.deleteAll().block();
+    hostConfigRepository.deleteAll().block();
   }
 
   @Test
   @DisplayName("save and findByCode returns the saved entity")
   void save_validEntity_foundByCode() {
+    OutboundHostConfiguration hostConfig = hostConfigRepository.save(
+        OutboundHostConfiguration.builder()
+            .baseUrl("https://api.xendit.co")
+            .connectTimeOutMs(5000)
+            .maxConnections(50)
+            .build()
+    ).block();
+
     OutboundSystem system = OutboundSystem.builder()
         .code("xendit")
         .name("Xendit Payment")
         .description("Xendit payment gateway")
         .httpMethod("POST")
-        .baseUrl("https://api.xendit.co")
+        .hostConfigurationId(hostConfig.getId())
         .active(true)
         .idempotencyTtlHours(24)
         .build();
@@ -40,7 +53,7 @@ class OutboundSystemRepositoryTest extends BaseIntegrationTest {
         .assertNext(found -> {
           assertThat(found.getCode()).isEqualTo("xendit");
           assertThat(found.getName()).isEqualTo("Xendit Payment");
-          assertThat(found.getBaseUrl()).isEqualTo("https://api.xendit.co");
+          assertThat(found.getHostConfigurationId()).isEqualTo(hostConfig.getId());
           assertThat(found.isActive()).isTrue();
           assertThat(found.getIdempotencyTtlHours()).isEqualTo(24);
           assertThat(found.getId()).isNotNull();
@@ -58,11 +71,19 @@ class OutboundSystemRepositoryTest extends BaseIntegrationTest {
   @Test
   @DisplayName("findByCodeAndActiveTrue returns empty when system is inactive")
   void findByCodeAndActiveTrue_inactiveSystem_returnsEmpty() {
+    OutboundHostConfiguration hostConfig = hostConfigRepository.save(
+        OutboundHostConfiguration.builder()
+            .baseUrl("https://example.com")
+            .connectTimeOutMs(5000)
+            .maxConnections(50)
+            .build()
+    ).block();
+
     OutboundSystem system = OutboundSystem.builder()
         .code("inactive-system")
         .name("Inactive")
         .httpMethod("GET")
-        .baseUrl("https://example.com")
+        .hostConfigurationId(hostConfig.getId())
         .active(false)
         .idempotencyTtlHours(24)
         .build();

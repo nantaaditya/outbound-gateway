@@ -21,6 +21,13 @@ public class OutboundHeaderConfiguration extends BaseEntity<Long> {
   private long outboundSystemId;
   private Map<String, Object> headers;
 
+  public static OutboundHeaderConfiguration from(long outboundSystemId, Map<String, Object> headers) {
+    return OutboundHeaderConfiguration.builder()
+        .outboundSystemId(outboundSystemId)
+        .headers(headers)
+        .build();
+  }
+
   public Map<String, List<String>> getHeaders(JsonHelper jsonHelper) {
     return jsonHelper.convert(headers, new TypeReference<Map<String, List<String>>>() {});
   }

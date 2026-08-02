@@ -29,13 +29,13 @@ public class ApiKeyAuthStrategy implements AuthStrategy {
 
   @Override
   public Mono<AuthCredential> authenticate(
-      OutboundAuthConfiguration config, EncryptionHelper encryption, String requestBody) {
+      OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption, String requestBody) {
     return Mono.fromCallable(() -> {
-      String apiKey = encryption.decryptToString(config.getApiKey());
+      String apiKey = encryption.decryptToString(authConfiguration.getApiKey());
       return new AuthCredential(
-          config.getTokenKeyName(),
+          authConfiguration.getTokenKeyName(),
           apiKey,
-          config.getTokenInjectLocation());
+          authConfiguration.getTokenInjectLocation());
     }).subscribeOn(Schedulers.boundedElastic());
   }
 }

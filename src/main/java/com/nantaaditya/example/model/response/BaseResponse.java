@@ -19,6 +19,7 @@ public class BaseResponse<T> {
   private ResponseMetadata response;
   private T data;
   private ErrorMetadata error;
+  private PageMetadata pagination;
 
   @Data
   @Builder
@@ -40,4 +41,24 @@ public class BaseResponse<T> {
     private Map<String, List<String>> violations;
   }
 
+  @Data
+  @Builder
+  @NoArgsConstructor
+  @AllArgsConstructor
+  @SuppressWarnings("java:S1068")
+  public static class PageMetadata {
+    private int page;
+    private int size;
+    private long totalElements;
+    private int totalPages;
+
+    public static PageMetadata from(PageResponse pagination) {
+      return PageMetadata.builder()
+          .page(pagination.page())
+          .size(pagination.size())
+          .totalElements(pagination.totalElements())
+          .totalPages(pagination.totalPages())
+          .build();
+    }
+  }
 }

@@ -7,12 +7,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
+import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.request.admin.CreateHostConfigRequest;
 import com.nantaaditya.example.model.request.admin.UpdateHostConfigRequest;
 import com.nantaaditya.example.model.response.OutboundHostConfigResponse;
+import com.nantaaditya.example.model.response.OutboundSystemResponse;
 import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
+import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.impl.GatewayWebClientBuilder;
 import com.nantaaditya.example.service.impl.OutboundHostServiceImpl;
 import java.util.Base64;
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -32,6 +36,8 @@ class OutboundHostServiceImplTest {
   @Mock
   private OutboundHostConfigurationRepository hostConfigRepository;
   @Mock
+  private OutboundSystemRepository systemRepository;
+  @Mock
   private GatewayWebClientBuilder webClientBuilder;
 
   private EncryptionHelper encryptionHelper;
@@ -40,7 +46,7 @@ class OutboundHostServiceImplTest {
   @BeforeEach
   void setUp() {
     encryptionHelper = new EncryptionHelper(Base64.getEncoder().encodeToString(new byte[32]));
-    service = new OutboundHostServiceImpl(hostConfigRepository, webClientBuilder, encryptionHelper);
+    service = new OutboundHostServiceImpl(hostConfigRepository, systemRepository, webClientBuilder, encryptionHelper);
   }
 
   @Test
@@ -73,10 +79,10 @@ class OutboundHostServiceImplTest {
   @Test
   @DisplayName("list returns all host configurations")
   void list_returnsAll() {
-    when(hostConfigRepository.findAll()).thenReturn(
+    when(hostConfigRepository.findAllBy(any(Pageable.class))).thenReturn(
         Flux.just(savedConfig(1L, "https://a.example.com"), savedConfig(2L, "https://b.example.com")));
 
-    StepVerifier.create(service.list())
+    StepVerifier.create(service.list(0, 10))
         .assertNext(list -> {
           assertThat(list).hasSize(2);
           assertThat(list).extracting(OutboundHostConfigResponse::baseUrl)
@@ -150,6 +156,37 @@ class OutboundHostServiceImplTest {
     when(hostConfigRepository.findById(99L)).thenReturn(Mono.empty());
 
     StepVerifier.create(service.reload(99L))
+        .expectErrorMatches(e -> e instanceof HostConfigNotFoundException)
+        .verify();
+  }
+
+  @Test
+  @DisplayName("listSystems returns systems referencing the given host configuration id")
+  void listSystems_existingId_returnsSystemsForHostConfig() {
+    OutboundHostConfiguration hostConfig = savedConfig(1L, "https://api.example.com");
+    when(hostConfigRepository.findById(1L)).thenReturn(Mono.just(hostConfig));
+    OutboundSystem system = OutboundSystem.builder()
+        .id(10L).code("sys-a").name("System A").httpMethod("POST")
+        .hostConfigurationId(1L).apiPath("/v1/a").active(true).idempotencyTtlHours(24)
+        .build();
+    when(systemRepository.findByHostConfigurationId(1L)).thenReturn(Flux.just(system));
+
+    StepVerifier.create(service.listSystems(1L))
+        .assertNext(list -> {
+          assertThat(list).hasSize(1);
+          assertThat(list).extracting(OutboundSystemResponse::code).containsExactly("sys-a");
+          assertThat(list).extracting(OutboundSystemResponse::baseUrl)
+              .containsExactly("https://api.example.com");
+        })
+        .verifyComplete();
+  }
+
+  @Test
+  @DisplayName("listSystems throws HostConfigNotFoundException when configuration does not exist")
+  void listSystems_missingId_throwsNotFound() {
+    when(hostConfigRepository.findById(99L)).thenReturn(Mono.empty());
+
+    StepVerifier.create(service.listSystems(99L))
         .expectErrorMatches(e -> e instanceof HostConfigNotFoundException)
         .verify();
   }

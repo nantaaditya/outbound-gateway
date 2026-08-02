@@ -8,6 +8,8 @@ import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
+import com.nantaaditya.example.model.constant.AuthType;
+import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.admin.CreateOutboundSystemRequest;
@@ -30,6 +32,7 @@ import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.GatewayService;
 import com.nantaaditya.example.service.OutboundService;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +40,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -64,9 +68,10 @@ public class OutboundServiceImpl implements OutboundService {
 
   @Override
   public Mono<OutboundSystemResponse> create(CreateOutboundSystemRequest request) {
-    return systemRepository.save(OutboundSystem.create(request))
-        .doOnSuccess(s -> log.info(AppLogMessage.message("#OutboundService - created outbound system code={}", s.getCode())))
-        .map(OutboundSystemResponse::from);
+    return requireHostConfig(request.hostConfigurationId())
+        .flatMap(hostConfig -> systemRepository.save(OutboundSystem.create(request))
+            .doOnSuccess(s -> log.info(AppLogMessage.message("#OutboundService - created outbound system code={}", s.getCode())))
+            .map(s -> OutboundSystemResponse.from(s, hostConfig)));
   }
 
   @Override
@@ -91,9 +96,10 @@ public class OutboundServiceImpl implements OutboundService {
   @Override
   public Mono<OutboundSystemResponse> update(String code, UpdateOutboundSystemRequest request) {
     return requireSystem(code)
-        .flatMap(system -> systemRepository.save(system.updated(request)))
-        .doOnSuccess(s -> log.info(AppLogMessage.message("#OutboundService - updated outbound system code={}", code)))
-        .map(OutboundSystemResponse::from);
+        .flatMap(system -> requireHostConfig(request.hostConfigurationId())
+            .flatMap(hostConfig -> systemRepository.save(system.updated(request))
+                .doOnSuccess(s -> log.info(AppLogMessage.message("#OutboundService - updated outbound system code={}", code)))
+                .map(s -> OutboundSystemResponse.from(s, hostConfig))));
   }
 
   @Override
@@ -120,9 +126,7 @@ public class OutboundServiceImpl implements OutboundService {
   public Mono<Boolean> upsertResilience(String code, UpsertResilienceRequest request) {
     return requireSystem(code)
         .flatMap(system -> resilienceRepository.findByOutboundSystemId(system.getId())
-            .defaultIfEmpty(OutboundResilienceConfiguration.builder()
-                .outboundSystemId(system.getId())
-                .build())
+            .defaultIfEmpty(OutboundResilienceConfiguration.empty(system.getId()))
             .flatMap(existing -> resilienceRepository.save(existing.updated(system.getId(), request))))
         .doOnSuccess(s -> {
           resilienceRegistryService.reload(code);
@@ -141,15 +145,12 @@ public class OutboundServiceImpl implements OutboundService {
             request.headers().forEach(headersAsObjectMap::put);
           }
           return headerRepository.deleteByOutboundSystemId(system.getId())
-              .then(headerRepository.save(OutboundHeaderConfiguration.builder()
-                  .outboundSystemId(system.getId())
-                  .headers(headersAsObjectMap)
-                  .build()))
+              .then(headerRepository.save(OutboundHeaderConfiguration.from(system.getId(), headersAsObjectMap)))
+              .as(transactionalOperator::transactional)
               .doOnSuccess(s -> {
                 gatewayService.evictContext(code);
                 log.info(AppLogMessage.message("#OutboundService - upserted headers code={}", code));
-              })
-              .as(transactionalOperator::transactional);
+              });
         })
         .thenReturn(Boolean.TRUE);
   }
@@ -161,18 +162,18 @@ public class OutboundServiceImpl implements OutboundService {
             Mono.fromCallable(() -> new byte[][]{
                     encryptIfNotNull(request.apiKey()),
                     encryptIfNotNull(request.clientId()),
-                    encryptIfNotNull(request.clientSecret())
+                    encryptClientSecret(request)
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(encrypted ->
                     authRepository.findByOutboundSystemId(system.getId())
-                        .defaultIfEmpty(OutboundAuthConfiguration.builder()
-                            .outboundSystemId(system.getId())
-                            .build())
+                        .defaultIfEmpty(OutboundAuthConfiguration.empty(system.getId()))
                         .flatMap(existing -> authRepository.save(
-                            existing.updated(system.getId(), encrypted[0], encrypted[1], encrypted[2], request)))
+                            existing.updated(system.getId(), encrypted[0], encrypted[1], encrypted[2], request))
+                        )
                         .doOnSuccess(s -> {
-                          authStrategyFactory.getStrategy(s.getAuthType()).evictTokenState(s.getId());
+                          authStrategyFactory.getStrategy(s.getAuthType())
+                              .evictTokenState(s.getId());
                           gatewayService.evictContext(code);
                           log.info(AppLogMessage.message("#OutboundService - upserted authentication config code={}", code));
                         })
@@ -185,9 +186,7 @@ public class OutboundServiceImpl implements OutboundService {
   public Mono<Boolean> upsertResponseMapper(String code, UpsertResponseMapperRequest request) {
     return requireSystem(code)
         .flatMap(system -> mapperRepository.findByOutboundSystemId(system.getId())
-            .defaultIfEmpty(OutboundResponseMapperConfiguration.builder()
-                .outboundSystemId(system.getId())
-                .build())
+            .defaultIfEmpty(OutboundResponseMapperConfiguration.empty(system.getId()))
             .flatMap(existing -> mapperRepository.save(existing.updated(system.getId(), request))))
         .doOnSuccess(s -> {
           gatewayService.evictContext(code);
@@ -211,12 +210,11 @@ public class OutboundServiceImpl implements OutboundService {
   public Mono<TestConnectionResponse> testConnection(String code) {
     return requireSystem(code)
         .flatMap(system ->
-            hostConfigRepository.findByBaseUrl(system.getBaseUrl())
-                .defaultIfEmpty(defaultHostConfig(system.getBaseUrl()))
+            requireHostConfig(system.getHostConfigurationId())
                 .flatMap(hostConfig -> {
-                  var client = contextBuilder.buildDisposableWebClient(hostConfig);
+                  WebClient client = contextBuilder.buildDisposableWebClient(hostConfig);
                   return client.method(system.getHttpMethodEnum())
-                      .uri(system.getFullPath())
+                      .uri(system.getFullPath(hostConfig.getBaseUrl()))
                       .exchangeToMono(response -> {
                         int status = response.statusCode().value();
                         return response.bodyToMono(String.class)
@@ -226,7 +224,7 @@ public class OutboundServiceImpl implements OutboundService {
                       .timeout(TEST_CONNECTION_TIMEOUT)
                       .doOnSuccess(r -> log.info(AppLogMessage.message("#OutboundService - testConnection code={} httpStatus={} success={}", code, r.httpStatus(), r.success())))
                       .onErrorResume(e -> {
-                        log.warn(AppLogMessage.message("#OutboundService - testConnection failed code={} error={}", code, e.getClass().getSimpleName()).error(e));
+                        log.warn(AppLogMessage.message("#OutboundService - testConnection failed code={} error={}", code, e.getMessage()).error(e));
                         return Mono.just(new TestConnectionResponse(false, 0, "Connection failed"));
                       });
                 })
@@ -238,13 +236,31 @@ public class OutboundServiceImpl implements OutboundService {
         .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }
 
-  private OutboundHostConfiguration defaultHostConfig(String baseUrl) {
-    return OutboundHostConfiguration.testDefault(baseUrl);
+  private Mono<OutboundHostConfiguration> requireHostConfig(Long id) {
+    return hostConfigRepository.findById(id)
+        .switchIfEmpty(Mono.error(new HostConfigNotFoundException(id)));
   }
 
   private byte[] encryptIfNotNull(String value) {
     if (value == null || value.isBlank()) {
       return null; //NOSONAR
+    }
+    return encryptionHelper.encryptString(value);
+  }
+
+  /**
+   * RSA's {@code clientSecret} carries a Base64-encoded PKCS8 DER private key, not plain text.
+   * {@code RsaAuthStrategy} decrypts and feeds the result directly into {@code PKCS8EncodedKeySpec}
+   * with no further decoding, so the raw DER bytes — not their UTF-8-string form — must be what
+   * gets encrypted here; otherwise the key is silently corrupted before signing ever happens.
+   */
+  private byte[] encryptClientSecret(UpsertAuthRequest request) {
+    String value = request.clientSecret();
+    if (value == null || value.isBlank()) {
+      return null; //NOSONAR
+    }
+    if (request.authType() == AuthType.RSA) {
+      return encryptionHelper.encrypt(Base64.getDecoder().decode(value));
     }
     return encryptionHelper.encryptString(value);
   }

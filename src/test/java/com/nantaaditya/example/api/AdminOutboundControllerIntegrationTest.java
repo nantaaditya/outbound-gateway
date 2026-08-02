@@ -85,8 +85,8 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
     resilienceRepository.deleteAll().block();
     authRepository.deleteAll().block();
     historyRepository.deleteAll().block();
-    hostConfigRepository.deleteAll().block();
     systemRepository.deleteAll().block();
+    hostConfigRepository.deleteAll().block();
     eventLogRepository.deleteAll().block();
   }
 
@@ -96,9 +96,10 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
   @DisplayName("POST /api/outbound — creates system and event_log")
   void create_validRequest_createsSystemAndEventLog() throws Exception {
     String requestId = TsidHelper.generateStringId();
+    OutboundHostConfiguration hostConfig = seedOrGetHostConfig("http://localhost:9999");
     CreateOutboundSystemRequest req = new CreateOutboundSystemRequest(
         "admin-create-test", "Admin Create Test", "desc",
-        "POST", "http://localhost:9999", "/v1/test",
+        "POST", hostConfig.getId(), "/v1/test",
         true, 24);
 
     byte[] body = webTestClient.post()
@@ -248,10 +249,11 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
   void update_existingCode_updatesSystemAndEventLog() throws Exception {
     seedSystem("admin-update-test");
     String requestId = TsidHelper.generateStringId();
+    OutboundHostConfiguration updatedHostConfig = seedOrGetHostConfig("http://updated-host.com");
 
     UpdateOutboundSystemRequest req = new UpdateOutboundSystemRequest(
         "Updated Name", "updated desc", "GET",
-        "http://updated-host.com", "/v2/updated", true, 48);
+        updatedHostConfig.getId(), "/v2/updated", true, 48);
 
     byte[] body = webTestClient.put()
         .uri("/api/outbound/admin-update-test")
@@ -722,11 +724,12 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   private OutboundSystem seedSystem(String code, String baseUrl, String apiPath, String method) {
+    OutboundHostConfiguration hostConfig = seedOrGetHostConfig(baseUrl);
     return systemRepository.save(OutboundSystem.builder()
         .code(code)
         .name(code + "-name")
         .httpMethod(method)
-        .baseUrl(baseUrl)
+        .hostConfigurationId(hostConfig.getId())
         .apiPath(apiPath)
         .active(true)
         .idempotencyTtlHours(24)
@@ -734,7 +737,16 @@ class AdminOutboundControllerIntegrationTest extends BaseIntegrationTest {
   }
 
   private void seedHostConfig(String baseUrl) {
-    hostConfigRepository.save(OutboundHostConfiguration.builder()
+    seedOrGetHostConfig(baseUrl);
+  }
+
+  /** Reuses an existing host config for {@code baseUrl} (host_configuration_id is a mandatory FK), or creates one. */
+  private OutboundHostConfiguration seedOrGetHostConfig(String baseUrl) {
+    OutboundHostConfiguration existing = hostConfigRepository.findByBaseUrl(baseUrl).block();
+    if (existing != null) {
+      return existing;
+    }
+    return hostConfigRepository.save(OutboundHostConfiguration.builder()
         .baseUrl(baseUrl)
         .connectTimeOutMs(3000)
         .maxConnections(50)

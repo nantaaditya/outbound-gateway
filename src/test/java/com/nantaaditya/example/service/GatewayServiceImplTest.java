@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.gson.Gson;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
@@ -17,6 +18,7 @@ import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
+import com.nantaaditya.example.helper.GatewayHelper;
 import com.nantaaditya.example.helper.JsltResponseMapper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.OutboundMetricsRecorder;
@@ -39,11 +41,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -82,8 +84,19 @@ class GatewayServiceImplTest {
   @Mock
   AuthStrategy authStrategy;
 
-  @InjectMocks
   GatewayServiceImpl gatewayService;
+
+  @BeforeEach
+  void setUp() {
+    // Not @InjectMocks: GatewayServiceImpl needs a real Gson and a real GatewayHelper
+    // (GatewayHelper itself just delegates to jsonHelper/jsltResponseMapper, both already
+    // mocked above), rather than Mockito silently injecting null for unmocked constructor args.
+    gatewayService = new GatewayServiceImpl(
+        systemRepository, hostConfigRepository, resilienceRepository, headerRepository,
+        authRepository, mapperRepository, historyRepository, contextBuilder,
+        authStrategyFactory, encryptionHelper, jsonHelper, metricsRecorder,
+        new Gson(), new GatewayHelper(jsonHelper, jsltResponseMapper));
+  }
 
   @Test
   @DisplayName("evictContext with null hostConfiguration does not throw NPE — cache is still cleared")
@@ -128,7 +141,7 @@ class GatewayServiceImplTest {
   }
 
   @Test
-  @DisplayName("saveHistory routes to historyRepository.save (not insertHistory) when idempotency key is absent — retryCount=0 on first attempt")
+  @DisplayName("saveHistory uses historyRepository.saveHistory for all calls — retryCount=0 on first attempt")
   void execute_noIdempotencyKey_historyIsSavedViaRepository() {
     WebClient.RequestBodyUriSpec uriSpec = mock(WebClient.RequestBodyUriSpec.class);
     WebClient.RequestBodySpec bodySpec = mock(WebClient.RequestBodySpec.class);
@@ -141,10 +154,11 @@ class GatewayServiceImplTest {
 
     OutboundSystem system = OutboundSystem.builder()
         .id(1L).code("no-key-gw").httpMethod("POST")
-        .baseUrl("http://host").apiPath("/path").build();
+        .hostConfigurationId(1L).apiPath("/path").build();
 
     contextCache().put("no-key-gw", OutboundSystemContext.builder()
         .system(system)
+        .hostConfig(OutboundHostConfiguration.builder().id(1L).baseUrl("http://host").build())
         .resilience(OutboundResilienceConfiguration.bypass())
         .auth(OutboundAuthConfiguration.builder().authType(AuthType.NONE).build())
         .responseMapper(OutboundResponseMapperConfiguration.builder()
@@ -153,16 +167,17 @@ class GatewayServiceImplTest {
         .webClient(mockWebClient)
         .build());
 
+    when(jsonHelper.toJsonString(any())).thenReturn("{}");
     when(authStrategyFactory.getStrategy(AuthType.NONE)).thenReturn(authStrategy);
     when(authStrategy.authenticate(any(), any(), any())).thenReturn(
         Mono.just(AuthCredential.empty()));
-    when(historyRepository.save(any())).thenReturn(
-        Mono.just(OutboundHistory.builder().id(1L).build()));
+    when(historyRepository.saveHistory(any(OutboundHistory.class))).thenReturn(
+        Mono.just(1));
 
     gatewayService.execute("no-key-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
 
     ArgumentCaptor<OutboundHistory> captor = ArgumentCaptor.forClass(OutboundHistory.class);
-    verify(historyRepository).save(captor.capture());
+    verify(historyRepository).saveHistory(captor.capture());
     assertThat(captor.getValue().getRetryCount()).isZero();
   }
 

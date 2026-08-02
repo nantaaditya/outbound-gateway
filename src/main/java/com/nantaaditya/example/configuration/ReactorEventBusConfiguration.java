@@ -2,6 +2,7 @@ package com.nantaaditya.example.configuration;
 
 import com.nantaaditya.example.helper.ReactorEventBusHelper;
 import com.nantaaditya.example.helper.RetryHelper;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.properties.ReactorEventProperties;
 import com.nantaaditya.example.properties.RetryProperties;
 import jakarta.annotation.PostConstruct;
@@ -17,8 +18,6 @@ public class ReactorEventBusConfiguration {
   private final ReactorEventProperties reactorEventProperties;
   private final RetryProperties retryProperties;
 
-  private static final int DEFAULT_BUFFER_SIZE = 50;
-
   @PostConstruct
   public void createSinks() {
     if (null != retryProperties.configurations()) {
@@ -26,12 +25,12 @@ public class ReactorEventBusConfiguration {
           .forEach((key, value) -> {
             reactorEventBusHelper.createSinks(
                 key + RetryHelper.BEFORE_SUFFIX_EVENT,
-                Sinks.many().multicast().onBackpressureBuffer(DEFAULT_BUFFER_SIZE)
+                Sinks.many().multicast().onBackpressureBuffer(ConstantName.DEFAULT_BUFFER_SIZE)
             );
 
             reactorEventBusHelper.createSinks(
                 key + RetryHelper.AFTER_SUFFIX_EVENT,
-                Sinks.many().multicast().onBackpressureBuffer(DEFAULT_BUFFER_SIZE)
+                Sinks.many().multicast().onBackpressureBuffer(ConstantName.DEFAULT_BUFFER_SIZE)
             );
           });
     }

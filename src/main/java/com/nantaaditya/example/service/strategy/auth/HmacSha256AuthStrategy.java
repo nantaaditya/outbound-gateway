@@ -37,15 +37,15 @@ public class HmacSha256AuthStrategy implements AuthStrategy {
 
   @Override
   public Mono<AuthCredential> authenticate(
-      OutboundAuthConfiguration config, EncryptionHelper encryption, String requestBody) {
+      OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption, String requestBody) {
     return Mono.fromCallable(() -> {
-      String secret = encryption.decryptToString(config.getClientSecret());
+      String secret = encryption.decryptToString(authConfiguration.getClientSecret());
       String body = Optional.ofNullable(requestBody).orElse("");
       String signature = computeHmac(secret, body);
       return new AuthCredential(
-          config.getTokenKeyName(),
+          authConfiguration.getTokenKeyName(),
           signature,
-          config.getTokenInjectLocation());
+          authConfiguration.getTokenInjectLocation());
     }).subscribeOn(Schedulers.boundedElastic());
   }
 
