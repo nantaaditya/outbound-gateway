@@ -241,22 +241,23 @@ public class GatewayServiceImpl implements GatewayService {
 
   private Mono<GatewayResponse> buildExecution(OutboundSystemContext context,
       GatewayRequest request, AtomicInteger attempts) {
-    return authenticateRequest(context, request)
+    // Signed once here and reused verbatim for the outbound call below — HMAC/RSA must sign
+    // exactly the bytes that go on the wire, not a separately re-serialized copy of the body.
+    String cleanedBody = GsonHelper.cleanJson(request.bodyAsString(jsonHelper), gson);
+    return authenticateRequest(context, cleanedBody)
         .doOnSubscribe(__ -> attempts.incrementAndGet())
-        .flatMap(credential -> executeHttp(context, request, credential))
+        .flatMap(credential -> executeHttp(context, request, cleanedBody, credential))
         .map(response -> gatewayHelper.applyMapping(context, response));
   }
 
-  private Mono<AuthCredential> authenticateRequest(OutboundSystemContext context,
-      GatewayRequest request) {
-    String jsonString = request.bodyAsString(jsonHelper);
+  private Mono<AuthCredential> authenticateRequest(OutboundSystemContext context, String cleanedBody) {
     return authStrategyFactory
         .getStrategy(context.getAuth().getAuthType())
-        .authenticate(context.getAuth(), encryptionHelper, GsonHelper.cleanJson(jsonString, gson));
+        .authenticate(context.getAuth(), encryptionHelper, cleanedBody);
   }
 
   private Mono<GatewayResponse> executeHttp(OutboundSystemContext context, GatewayRequest request,
-      AuthCredential credential) {
+      String cleanedBody, AuthCredential credential) {
     OutboundSystem system = context.getSystem();
     HttpMethod httpMethod = system.getHttpMethodEnum();
 
@@ -277,8 +278,10 @@ public class GatewayServiceImpl implements GatewayService {
           gatewayHelper.applyAuthHeader(credential, headers);
         });
 
+    // Send the same cleanedBody string that was signed above — not request.body() re-serialized
+    // independently by WebFlux's encoder, which would silently break HMAC/RSA verification.
     Mono<GatewayResponse> httpMono = (request.hasBody()
-        ? requestSpec.bodyValue(request.body())
+        ? requestSpec.bodyValue(cleanedBody)
         : requestSpec
     ).exchangeToMono(response ->
         response.bodyToMono(String.class)
@@ -305,7 +308,7 @@ public class GatewayServiceImpl implements GatewayService {
       Map<String, Object> requestHeaders = gatewayHelper.resolveRequestHeaders(context);
       OutboundHistory history = OutboundHistory.create(context.getSystem(),
           context.getHostConfig().getBaseUrl(), callerService,
-          idempotencyKey, requestId, GsonHelper.cleanJson(requestPayload, gson),
+          idempotencyKey, requestId, requestPayload,
           requestHeaders, response, durationMs, retryCount
       );
 
