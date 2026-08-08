@@ -2,8 +2,8 @@ package com.nantaaditya.example.model.constant;
 
 public interface ConstantName {
 
-  String CALLER_SERVICE_HEADER = "X-Caller-Service";
-  String IDEMPOTENT_HEADER = "X-Idempotency-Key";
+  String CALLER_SERVICE_HEADER = "x-caller-service";
+  String IDEMPOTENT_HEADER = "x-idempotency-key";
 
   String REQUEST_ID_MDC = "reqId";
 

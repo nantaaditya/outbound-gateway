@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.github.tomakehurst.wiremock.verification.LoggedRequest;
 import com.nantaaditya.example.base.BaseIntegrationTest;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
@@ -26,10 +27,15 @@ import com.nantaaditya.example.repository.OutboundHistoryRepository;
 import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.Signature;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.Map;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -223,7 +229,7 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("Auth HMAC — computes HMAC-SHA256 signature of body and injects into X-Signature header")
+  @DisplayName("Auth HMAC — X-Signature verifies against the exact body WireMock received")
   void execute_withHmacAuth_injectsSignatureHeader() throws Exception {
     wireMock.stubFor(post(urlEqualTo("/v1/authentication-hmac"))
         .willReturn(aResponse().withStatus(200)
@@ -232,24 +238,37 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
 
     String baseUrl = "http://localhost:" + wireMock.port();
     OutboundSystem system = seedSystem("authentication-hmac", baseUrl, "/v1/authentication-hmac");
+    String hmacSecret = "hmac-secret-key";
     authRepository.save(OutboundAuthConfiguration.builder()
         .outboundSystemId(system.getId())
         .authType(AuthType.HMAC)
-        .clientSecret(encryptionHelper.encryptString("hmac-secret-key"))
+        .clientSecret(encryptionHelper.encryptString(hmacSecret))
         .tokenKeyName("X-Signature")
         .tokenInjectLocation(TokenInjectLocation.HEADER)
         .build()).block();
 
-    JsonNode root = executeGateway("authentication-hmac");
+    // A body containing an actual newline/tab forces Jackson to JSON-escape it as a literal
+    // "\n"/"\t" sequence in the transmitted text — precisely what GsonHelper.cleanJson's
+    // character-stripping would silently remove if the signed string ever diverged from the
+    // wire body again. A flat {"amount":100} body doesn't exercise that path at all.
+    JsonNode root = executeGatewayWithBody("authentication-hmac", Map.of("note", "line1\nline2\ttabbed"));
 
     assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
     wireMock.verify(postRequestedFor(urlEqualTo("/v1/authentication-hmac"))
         .withHeader("X-Signature", matching(".+")));
     awaitHistorySaved(1);
+
+    // Recompute HMAC-SHA256 over the exact bytes WireMock received, using the same secret,
+    // and assert it matches the signature header that was actually sent. This is the check
+    // that would have caught the earlier bug where the signed string diverged from the wire body.
+    LoggedRequest received = findLoggedRequest("/v1/authentication-hmac");
+    String actualSignature = received.getHeader("X-Signature");
+    String expectedSignature = computeHmacSha256(hmacSecret, received.getBodyAsString());
+    assertThat(actualSignature).isEqualTo(expectedSignature);
   }
 
   @Test
-  @DisplayName("Auth RSA — computes RSA-SHA256 signature of body and injects into X-RSA-Signature header")
+  @DisplayName("Auth RSA — X-RSA-Signature cryptographically verifies against the exact body WireMock received")
   void execute_withRsaAuth_injectsSignatureHeader() throws Exception {
     wireMock.stubFor(post(urlEqualTo("/v1/authentication-rsa"))
         .willReturn(aResponse().withStatus(200)
@@ -268,12 +287,21 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
         .tokenInjectLocation(TokenInjectLocation.HEADER)
         .build()).block();
 
-    JsonNode root = executeGateway("authentication-rsa");
+    // See the HMAC test above for why this body (not a flat {"amount":100}) is what actually
+    // exercises the divergence between the signed string and the transmitted body.
+    JsonNode root = executeGatewayWithBody("authentication-rsa", Map.of("note", "line1\nline2\ttabbed"));
 
     assertThat(root.path("data").path("status").asInt()).isEqualTo(200);
     wireMock.verify(postRequestedFor(urlEqualTo("/v1/authentication-rsa"))
         .withHeader("X-RSA-Signature", matching(".+")));
     awaitHistorySaved(1);
+
+    // Verify the signature against the exact bytes WireMock received, using the matching public
+    // key — a true cryptographic check, not just "a header exists". This is the check that would
+    // have caught the earlier bug where the signed string diverged from the wire body.
+    LoggedRequest received = findLoggedRequest("/v1/authentication-rsa");
+    String actualSignature = received.getHeader("X-RSA-Signature");
+    assertThat(verifyRsaSignature(received.getBody(), actualSignature)).isTrue();
   }
 
   // --- helpers ---
@@ -297,7 +325,11 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
   }
 
   private JsonNode executeGateway(String code) throws Exception {
-    GatewayRequest req = new GatewayRequest(Map.of(), Map.of("amount", 100));
+    return executeGatewayWithBody(code, Map.of("amount", 100));
+  }
+
+  private JsonNode executeGatewayWithBody(String code, Object requestBody) throws Exception {
+    GatewayRequest req = new GatewayRequest(Map.of(), requestBody);
     byte[] body = webTestClient.post()
         .uri("/api/gateway/execute/" + code)
         .contentType(MediaType.APPLICATION_JSON)
@@ -306,6 +338,25 @@ class GatewayExecuteAuthIntegrationTest extends BaseIntegrationTest {
         .expectStatus().isOk()
         .expectBody().returnResult().getResponseBody();
     return objectMapper.readTree(body);
+  }
+
+  private LoggedRequest findLoggedRequest(String path) {
+    return wireMock.findAll(postRequestedFor(urlEqualTo(path))).stream()
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("No request recorded for " + path));
+  }
+
+  private String computeHmacSha256(String secret, String data) throws Exception {
+    Mac mac = Mac.getInstance("HmacSHA256");
+    mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+    return Base64.getEncoder().encodeToString(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
+  }
+
+  private boolean verifyRsaSignature(byte[] signedData, String base64Signature) throws Exception {
+    Signature verifier = Signature.getInstance("SHA256withRSA");
+    verifier.initVerify(rsaKeyPair.getPublic());
+    verifier.update(signedData);
+    return verifier.verify(Base64.getDecoder().decode(base64Signature));
   }
 
   private void awaitHistorySaved(long expected) {

@@ -1,2 +1,0 @@
-create index if not exists idx_deadletterprocess_type_name_processed on dead_letter_process(process_type, process_name, processed);
-create index if not exists idx_deadletterprocess_createddate on dead_letter_process(created_date) where processed is true;

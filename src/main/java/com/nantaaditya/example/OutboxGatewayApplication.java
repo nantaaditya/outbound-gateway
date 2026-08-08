@@ -24,7 +24,6 @@ import reactor.core.publisher.Hooks;
     RetryProperties.class,
     SchedulerProperties.class
 })
-//TODO: swagger configuration
 public class OutboxGatewayApplication {
 
   public static void main(String[] args) {

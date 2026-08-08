@@ -18,6 +18,7 @@ import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.helper.DateTimeHelper;
 import com.nantaaditya.example.helper.TsidHelper;
 import com.nantaaditya.example.model.constant.AuthType;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.request.admin.CreateOutboundSystemRequest;
@@ -236,7 +237,7 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         .header(HeaderConstant.CLIENT_ID.getHeader(), "test-client")
         .header(HeaderConstant.REQUEST_TIME.getHeader(),
             DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
-        .header("X-Idempotency-Key", "idem-perm2")
+        .header(ConstantName.IDEMPOTENT_HEADER, "idem-perm2")
         .bodyValue(gwReq)
         .exchange()
         .expectStatus().isOk()
@@ -262,7 +263,7 @@ class AdminGatewayFlowPermutationTest extends BaseIntegrationTest {
         .header(HeaderConstant.CLIENT_ID.getHeader(), "test-client")
         .header(HeaderConstant.REQUEST_TIME.getHeader(),
             DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
-        .header("X-Idempotency-Key", "idem-perm2")
+        .header(ConstantName.IDEMPOTENT_HEADER, "idem-perm2")
         .bodyValue(gwReq)
         .exchange()
         .expectStatus().isOk()

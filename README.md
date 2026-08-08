@@ -563,24 +563,25 @@ Signs the request body with HMAC-SHA256 using `clientSecret` as the signing key.
 | Field | Required | Description |
 |---|---|---|
 | `authType` | Yes | `"HMAC"` |
-| `clientId` | Yes | Key ID included in the signature header (for key rotation support) |
 | `clientSecret` | Yes | HMAC signing key — gateway encrypts on write |
 | `tokenKeyName` | Yes | Header name to inject the signature (e.g. `"X-Signature"`) |
 
-The signature format is `<clientId>:<HMAC-SHA256-hex-of-body>`.
+The signature is `Base64(HMAC-SHA256(clientSecret, requestBody))` — no key ID prefix. `clientId` is not used by this strategy and is not required for `HMAC`.
 
 ---
 
 ### RSA
 
-Signs a payload digest with an RSA private key. The signature is Base64-encoded and injected as a header.
+Signs the request body with an RSA private key using SHA256withRSA. The signature is Base64-encoded and injected as a header.
 
 | Field | Required | Description |
 |---|---|---|
 | `authType` | Yes | `"RSA"` |
-| `clientId` | Yes | RSA private key in PKCS#8 PEM format — gateway encrypts on write |
-| `clientSecret` | Yes | Key passphrase — gateway encrypts on write |
+| `clientId` | Yes | Required by validation, but not used for signing |
+| `clientSecret` | Yes | Base64-encoded PKCS#8 DER-format RSA private key — gateway encrypts on write |
 | `tokenKeyName` | Yes | Header name to inject the RSA signature |
+
+`clientSecret` must be the private key's raw PKCS#8 DER bytes, Base64-encoded (e.g. `openssl pkcs8 -topk8 -nocrypt -in key.pem -outform DER | base64`) — not a PEM string. The gateway decodes the Base64 once on write, encrypts the raw DER bytes, and loads them directly via `PKCS8EncodedKeySpec` on first use.
 
 ---
 
@@ -824,8 +825,8 @@ Paginated outbound call history with optional filters.
 | Param | Type | Default | Index covered | Description |
 |---|---|---|---|---|
 | `code` | String | — | ✅ `idx_histories_system_date` / `idx_histories_response_status` | Filter by outbound system code. Omit for full scan |
-| `startDate` | ISO-8601 datetime | — | ✅ when `code` also set (`idx_histories_system_date`) | Lower bound on `created_date` |
-| `endDate` | ISO-8601 datetime | — | ✅ when `code` also set (`idx_histories_system_date`) | Upper bound on `created_date` |
+| `startDate` | ISO-8601 date (`yyyy-MM-dd`) | — | ✅ when `code` also set (`idx_histories_system_date`) | Lower bound on `created_date` |
+| `endDate` | ISO-8601 date (`yyyy-MM-dd`) | — | ✅ when `code` also set (`idx_histories_system_date`) | Upper bound on `created_date` |
 | `status` | Integer | — | ✅ when `code` also set (`idx_histories_response_status`) | Filter by `response_status` |
 | `page` | Integer | `0` | — | Zero-based page number |
 | `size` | Integer | `20` | — | Page size |
@@ -836,28 +837,28 @@ Paginated outbound call history with optional filters.
 ```json
 {
   "response": { "code": "000", "description": "success" },
-  "data": {
-    "content": [
-      {
-        "id": 1,
-        "outboundSystemId": 3,
-        "idempotencyKey": "order-123",
-        "callerService": "payment-service",
-        "requestId": "req-abc-123",
-        "requestMethod": "POST",
-        "requestUrl": "https://api.xendit.co/v2/charges",
-        "requestHeaders": { "Authorization": ["Bearer token"] },
-        "requestPayload": { "amount": 100000 },
-        "responseStatus": 200,
-        "responseHeaders": { "Content-Type": ["application/json"] },
-        "responsePayload": { "id": "charge-abc" },
-        "durationMs": 342,
-        "convertedStatus": 200,
-        "convertedResponse": { "id": "charge-abc" },
-        "retryCount": 0,
-        "createdDate": "2026-05-19T07:55:00"
-      }
-    ],
+  "data": [
+    {
+      "id": 1,
+      "outboundSystemId": 3,
+      "idempotencyKey": "order-123",
+      "callerService": "payment-service",
+      "requestId": "req-abc-123",
+      "requestMethod": "POST",
+      "requestUrl": "https://api.xendit.co/v2/charges",
+      "requestHeaders": { "Authorization": ["Bearer token"] },
+      "requestPayload": { "amount": 100000 },
+      "responseStatus": 200,
+      "responseHeaders": { "Content-Type": ["application/json"] },
+      "responsePayload": { "id": "charge-abc" },
+      "durationMs": 342,
+      "convertedStatus": 200,
+      "convertedResponse": { "id": "charge-abc" },
+      "retryCount": 0,
+      "createdDate": "2026-05-19T07:55:00"
+    }
+  ],
+  "pagination": {
     "page": 0,
     "size": 20,
     "totalElements": 1,
@@ -866,11 +867,13 @@ Paginated outbound call history with optional filters.
 }
 ```
 
+> `data` is a bare array of history records; pagination metadata is a sibling top-level field, not nested inside `data`.
+
 ---
 
-#### `GET /api/gateway/histories/{idempotencyKey}?code={code}`
+#### `GET /api/gateway/history/{code}?idempotencyKey={idempotencyKey}`
 
-Look up a single history record by idempotency key. `code` is **required and must not be blank** — idempotency keys are scoped per outbound system. A blank or missing `code` returns HTTP 400 immediately (validated at the controller layer via `@NotBlank`).
+Look up a single history record by idempotency key. `code` is a **path variable** and `idempotencyKey` is a **required query parameter** (`@NotBlank`) — idempotency keys are scoped per outbound system. An unknown `code`, a blank/missing `code`, or an `idempotencyKey` with no matching record all return HTTP 400.
 
 > Index: `idx_histories_idempotency (outbound_system_id, idempotency_key, created_date)` — fully covered. The same index covers the TTL check during `execute`.
 
@@ -900,11 +903,19 @@ Look up a single history record by idempotency key. `code` is **required and mus
 }
 ```
 
-**Response (not found — HTTP 400):**
+**Response (unknown or blank `code` — HTTP 400):**
 ```json
 {
   "response": { "code": "400", "description": "bad request" },
   "error": { "violations": { "code": ["NotFound"] } }
+}
+```
+
+**Response (no history for that `idempotencyKey` — HTTP 400):**
+```json
+{
+  "response": { "code": "400", "description": "bad request" },
+  "error": { "violations": { "message": ["Bad request"] } }
 }
 ```
 
@@ -1314,7 +1325,6 @@ Create or replace the auth configuration. Send raw plaintext values — the gate
 ```json
 {
   "authType": "HMAC",
-  "clientId": "key-id-v1",
   "clientSecret": "my-hmac-signing-key",
   "tokenKeyName": "X-Signature"
 }
@@ -1324,11 +1334,12 @@ Create or replace the auth configuration. Send raw plaintext values — the gate
 ```json
 {
   "authType": "RSA",
-  "clientId": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
-  "clientSecret": "key-passphrase",
+  "clientId": "key-id-v1",
+  "clientSecret": "MIIEvQIBADANBgkqhkiG9w0BAQ...",
   "tokenKeyName": "X-RSA-Signature"
 }
 ```
+`clientSecret` is the Base64 encoding of the private key's raw PKCS#8 DER bytes (not PEM). `clientId` is required by validation but unused for signing.
 
 **OAUTH:**
 ```json

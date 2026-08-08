@@ -1,3 +1,0 @@
--- V16 intentionally skipped.
--- The branch that reserved this version was abandoned before merging.
--- Flyway tolerates gaps; V17 follows V15 in deployment order.

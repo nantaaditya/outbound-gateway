@@ -1,6 +1,9 @@
 package com.nantaaditya.example.model.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.nantaaditya.example.helper.DateTimeHelper;
+import com.nantaaditya.example.model.constant.ResponseCode;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
@@ -60,5 +63,20 @@ public class BaseResponse<T> {
           .totalPages(pagination.totalPages())
           .build();
     }
+  }
+
+  public static <T> BaseResponse<T> failed(ResponseCode responseCode, Map<String, List<String>> errors) {
+    return BaseResponse.<T>builder()
+        .response(ResponseMetadata.builder()
+            .code(responseCode.getCode())
+            .description(responseCode.getMessage())
+            .time(DateTimeHelper.getDateInFormat(ZonedDateTime.now(), DateTimeHelper.ISO_8601_GMT7_FORMAT))
+            .build()
+        )
+        .error(ErrorMetadata.builder()
+            .violations(errors)
+            .build()
+        )
+        .build();
   }
 }

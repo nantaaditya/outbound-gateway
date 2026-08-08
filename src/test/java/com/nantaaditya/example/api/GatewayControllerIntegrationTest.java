@@ -15,6 +15,7 @@ import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.model.constant.AuthType;
+import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
@@ -86,7 +87,7 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
     byte[] body = webTestClient.post()
         .uri("/api/gateway/execute/gw-charge")
         .contentType(MediaType.APPLICATION_JSON)
-        .header("X-Caller-Service", "payment-svc")
+        .header(ConstantName.CALLER_SERVICE_HEADER, "payment-svc")
         .bodyValue(req)
         .exchange()
         .expectStatus().isOk()
@@ -118,7 +119,7 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
     webTestClient.post()
         .uri("/api/gateway/execute/gw-idem")
         .contentType(MediaType.APPLICATION_JSON)
-        .header("X-Idempotency-Key", "key-xyz")
+        .header(ConstantName.IDEMPOTENT_HEADER, "key-xyz")
         .bodyValue(req)
         .exchange()
         .expectStatus().isOk();
@@ -133,7 +134,7 @@ class GatewayControllerIntegrationTest extends BaseIntegrationTest {
     byte[] body = webTestClient.post()
         .uri("/api/gateway/execute/gw-idem")
         .contentType(MediaType.APPLICATION_JSON)
-        .header("X-Idempotency-Key", "key-xyz")
+        .header(ConstantName.IDEMPOTENT_HEADER, "key-xyz")
         .bodyValue(req)
         .exchange()
         .expectStatus().isOk()

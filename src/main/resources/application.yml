@@ -7,7 +7,7 @@ spring:
   webflux:
     base-path: ${CONTEXT_PATH:/app}
   r2dbc:
-    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/boilerplate}
+    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/outbox-gateway}
     username: ${DB_USERNAME:user}
     password: ${DB_PASSWORD:password}
     pool:
@@ -19,10 +19,10 @@ spring:
       validation-query: SELECT 1
       validation-depth: remote
   flyway:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/boilerplate}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/outbox-gateway}
     user: ${DB_USERNAME:user}
     password: ${DB_PASSWORD:password}
-    enabled: ${FLYWAY_ENABLED:false}
+    enabled: ${FLYWAY_ENABLED:true}
     validate-on-migrate: ${FLYWAY_VALIDATION_ENABLED:false}
     locations: classpath:db/migration
 
@@ -63,7 +63,7 @@ logging:
 
 gateway:
   encryption:
-    key: ${GATEWAY_ENCRYPTION_KEY}
+    key: ${GATEWAY_ENCRYPTION_KEY:scWGlyQHYTRRfbA8OsdPI+oNm3PbPUR8O/ZjNA/kthI=}
 
 apps:
   version: ${APP_VERSION:1.0.0}
