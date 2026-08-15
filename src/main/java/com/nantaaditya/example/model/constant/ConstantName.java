@@ -18,6 +18,7 @@ public interface ConstantName {
   String JSLT_CACHE = "jslt";
 
   String FEATURE_TAG_OBSERVABILITY = "feature";
+  String HOST_TAG_OBSERVABILITY = "host";
   String REQUEST_ID_TAG_OBSERVABILITY = "requestId";
   String RESPONSE_CODE_TAG_OBSERVABILITY = "responseCode";
   String CALLER_TAG_OBSERVABILITY = "callerService";

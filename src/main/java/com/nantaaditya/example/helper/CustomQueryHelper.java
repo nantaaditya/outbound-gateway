@@ -1,6 +1,7 @@
 package com.nantaaditya.example.helper;
 
 import com.nantaaditya.example.entity.DeadLetterProcess;
+import com.nantaaditya.example.model.dto.DlqDepthRow;
 import com.nantaaditya.example.model.response.OutboundMetricsResponse.StatusBreakdown;
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -25,6 +26,13 @@ public class CustomQueryHelper {
       order by created_date asc
       limit :limit
       for update skip locked""";
+
+  private static final String COUNT_UNPROCESSED_DEAD_LETTER_PROCESS = """
+      SELECT process_type, process_name, COUNT(*) AS depth, MIN(created_date) AS oldest_created_date
+      FROM dead_letter_process
+      WHERE processed IS FALSE
+      GROUP BY process_type, process_name
+      """;
 
   private static final String CALCULATE_PERCENTILE_QUERY = """
       SELECT
@@ -53,6 +61,17 @@ public class CustomQueryHelper {
         .map((row, metadata) -> DeadLetterProcess.from(row))
         .all()
         .as(transactionalOperator::transactional);
+  }
+
+  public Flux<DlqDepthRow> countUnprocessedDeadLetterProcesses() {
+    return databaseClient.sql(COUNT_UNPROCESSED_DEAD_LETTER_PROCESS)
+        .map((row, metadata) -> new DlqDepthRow(
+            row.get("process_type", String.class),
+            row.get("process_name", String.class),
+            StringHelper.toLong(row.get("depth")),
+            row.get("oldest_created_date", LocalDateTime.class)
+        ))
+        .all();
   }
 
   public Mono<Map<String, Object>> calculatePercentile(long systemId, LocalDateTime cutOff) {

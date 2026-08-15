@@ -165,6 +165,11 @@ public class GatewayWebClientBuilder {
         .build();
 
     HttpClient httpClient = HttpClient.create(connectionProvider)
+        // metrics(true, uriFn) keeps the DEFAULT recorder — a non-null recorder is what
+        // enables the per-pool connection gauges (PooledConnectionProvider.acquire) AND the
+        // documented reactor_netty_http_client_* families. The uri tag is bounded to the
+        // first path segment so upstream paths cannot multiply series cardinality.
+        .metrics(true, GatewayWebClientBuilder::uriTagValue)
         .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, hostConfig.getConnectTimeOutMs())
         .doOnConnected(conn -> conn
             .addHandlerLast(new LogbookClientHandler(logbook))
@@ -177,6 +182,14 @@ public class GatewayWebClientBuilder {
         .baseUrl(hostConfig.getBaseUrl())
         .clientConnector(new ReactorClientHttpConnector(httpClient))
         .build();
+  }
+
+  private static String uriTagValue(String uri) {
+    if (uri == null || uri.isBlank() || !uri.startsWith("/")) {
+      return "UNKNOWN";
+    }
+    int secondSlash = uri.indexOf('/', 1);
+    return secondSlash > 0 ? uri.substring(0, secondSlash) : uri;
   }
 
   private HttpClient disableSsl(OutboundHostConfiguration hostConfig, HttpClient httpClient) {

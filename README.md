@@ -1737,13 +1737,19 @@ Recorded by `OutboundMetricsRecorder` via Micrometer `Observation` on every gate
 
 | Metric name | Type | Tags | Description |
 |---|---|---|---|
-| `api.public` | Observation (Timer + LongTaskTimer) | `feature`, `responseCode`, `callerService` | Every outbound call — duration and count |
+| `api.public` | Observation (Timer + histogram) | `feature`, `host`, `responseCode`, `callerService` | Every outbound call — duration, count, and histogram buckets for p95/p99 |
 | `api.public.idempotency` | Counter | `feature` | Incremented when a call is served from idempotency cache |
 
 Tag values:
 - `feature` — outbound system code (e.g. `xendit-charge`)
+- `host` — the system's `base_url` (joins with per-host connection-pool metrics)
 - `responseCode` — actual upstream HTTP status, or `503`/`429`/`502`/`504` for internal rejects
 - `callerService` — from `X-Caller-Service` header; `"unknown"` when absent
+
+Additional exposed surfaces — DLQ depth gauges (`outbox_dlq_depth`, `outbox_dlq_oldest_ts_seconds`),
+per-host Reactor Netty connection-pool metrics, and the `env` label on every metric — are the
+**contract** with the central observability stack. See **[docs/METRICS.md](docs/METRICS.md)** for
+the full family reference, cardinality rules, and suggested alerting uses.
 
 ### Resilience4j Prometheus Metrics
 

@@ -21,6 +21,13 @@ spring:
 management:
   server:
     port: 0
+  metrics:
+    tags:
+      env: ${METRICS_ENV:test}
+    distribution:
+      # Mirrors main application.yml — contract tests assert histogram buckets exist
+      percentiles-histogram:
+        api.public: true
   endpoint:
     shutdown.access: none
     health.show-details: always

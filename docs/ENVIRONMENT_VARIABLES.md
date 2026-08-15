@@ -49,6 +49,9 @@ All configuration is externalized through environment variables with sensible de
 | `ACTUATOR_SHUTDOWN` | No | `none` | Shutdown endpoint access (`none` or `read-only`) |
 | `HEALTH_DETAIL` | No | `always` | Health endpoint detail level (`always`, `when-authorized`, `never`) |
 | `ACTUATOR_EXPOSED` | No | `*` | Exposed actuator endpoints (comma-separated) |
+| `METRICS_ENV` | No | `local` | `env` label applied to every metric — used by the central observability stack to distinguish environments. See [METRICS.md](./METRICS.md) |
+| `GATEWAY_METRICS_DLQ_POLL_INTERVAL_MS` | No | `30000` | DLQ-depth gauge poll interval in milliseconds |
+| `GATEWAY_METRICS_DLQ_INITIAL_DELAY_MS` | No | `5000` | Initial delay before the first DLQ-depth gauge poll, in milliseconds |
 
 ---
 

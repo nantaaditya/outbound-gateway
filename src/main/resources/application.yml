@@ -34,6 +34,15 @@ springdoc:
 management:
   server:
     port: ${ACTUATOR_PORT:1000}
+  metrics:
+    tags:
+      # Environment label on every metric so a shared Prometheus can distinguish environments
+      env: ${METRICS_ENV:local}
+    distribution:
+      # Scoped to api.public only: histogram buckets are needed for p95/p99 alerting,
+      # but enabling globally would multiply cardinality for every meter.
+      percentiles-histogram:
+        api.public: true
   endpoint:
     shutdown.access: ${ACTUATOR_SHUTDOWN:none}
     health.show-details: ${HEALTH_DETAIL:always}

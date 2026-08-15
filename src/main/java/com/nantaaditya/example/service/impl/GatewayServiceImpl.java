@@ -15,6 +15,7 @@ import com.nantaaditya.example.helper.OutboundMetricsRecorder;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.ContextDTO;
+import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
@@ -192,7 +193,7 @@ public class GatewayServiceImpl implements GatewayService {
       OutboundSystemContext context, String callerService, String idempotencyKey,
       GatewayRequest request) {
     long startTime = System.currentTimeMillis();
-    Observation observation = metricsRecorder.startCall(gatewayHelper.code(context));
+    Observation observation = metricsRecorder.startCall(gatewayHelper.code(context), hostName(context));
     // One counter per invocation — RetryOperator re-subscribes to buildExecution on each
     // retry attempt, so doOnSubscribe fires once per attempt. retryCount = attempts - 1.
     AtomicInteger attempts = new AtomicInteger(0);
@@ -216,6 +217,12 @@ public class GatewayServiceImpl implements GatewayService {
               })
               .thenReturn(response);
         });
+  }
+
+  private String hostName(OutboundSystemContext context) {
+    return Optional.ofNullable(context.getHostConfig())
+        .map(OutboundHostConfiguration::getBaseUrl)
+        .orElse("unknown");
   }
 
   private Mono<GatewayResponse> decorateResilience(OutboundSystemContext context,

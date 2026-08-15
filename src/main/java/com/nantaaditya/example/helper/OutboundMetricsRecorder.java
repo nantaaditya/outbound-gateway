@@ -25,10 +25,11 @@ import org.springframework.stereotype.Component;
  * idempotency cache hit.
  *
  * <h3>Low-cardinality tags only</h3>
- * <p>All tags added here ({@code feature}, {@code responseCode}, {@code callerService}) have
- * bounded cardinality. High-cardinality values (request IDs, idempotency keys, body content)
- * must never be added as tags — each unique value creates a new time-series in Prometheus,
- * leading to cardinality explosion and OOM in the metrics backend.
+ * <p>All tags added here ({@code feature}, {@code host}, {@code responseCode}, {@code callerService})
+ * have bounded cardinality — {@code host} equals the configured {@code base_url}, which has a
+ * {@code UNIQUE} constraint per host. High-cardinality values (request IDs, idempotency keys,
+ * body content) must never be added as tags — each unique value creates a new time-series in
+ * Prometheus, leading to cardinality explosion and OOM in the metrics backend.
  */
 @Component
 @RequiredArgsConstructor
@@ -41,9 +42,11 @@ public class OutboundMetricsRecorder {
 
   private final ConcurrentHashMap<String, Counter> idempotencyCounters = new ConcurrentHashMap<>();
 
-  public Observation startCall(String code) {
+  public Observation startCall(String code, String host) {
     return Observation.createNotStarted(PUBLIC_API.getName(), observationRegistry)
         .lowCardinalityKeyValue(ConstantName.FEATURE_TAG_OBSERVABILITY, code)
+        .lowCardinalityKeyValue(ConstantName.HOST_TAG_OBSERVABILITY,
+            host == null || host.isBlank() ? "unknown" : host)
         .start();
   }
 
