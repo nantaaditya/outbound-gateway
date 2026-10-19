@@ -8,7 +8,14 @@ import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.service.impl.GatewayWebClientBuilder;
 import com.nantaaditya.example.service.impl.ResilienceRegistryService;
+import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
+import reactor.netty.resources.ConnectionProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,6 +23,77 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.zalando.logbook.Logbook;
 
 class GatewayWebClientBuilderTest {
+
+  /** Hands out a spied pool and a configurable dispose grace period so disposal can be observed. */
+  private static class ObservableBuilder extends GatewayWebClientBuilder {
+    final ConnectionProvider provider = spy(ConnectionProvider.builder("test-pool").maxConnections(1).build());
+    private final Duration grace;
+
+    ObservableBuilder(Duration grace) {
+      super(WebClient.builder(),
+          new ResilienceRegistryService(new SimpleMeterRegistry()),
+          Logbook.builder().build(),
+          new EncryptionHelper("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
+      this.grace = grace;
+    }
+
+    @Override
+    protected ConnectionProvider newConnectionProvider(OutboundHostConfiguration hostConfig) {
+      return provider;
+    }
+
+    @Override
+    protected Duration disposeGracePeriod() {
+      return grace;
+    }
+  }
+
+  @Test
+  @DisplayName("evictWebClient disposes the connection pool of the evicted client (no leaked pool per reload)")
+  void evictWebClient_disposesThePool() {
+    ObservableBuilder observable = new ObservableBuilder(Duration.ZERO);
+    observable.getOrCreateWebClient(hostConfig(false, false));
+
+    observable.evictWebClient("https://api.xendit.co");
+
+    verify(observable.provider, timeout(3000)).disposeLater();
+  }
+
+  @Test
+  @DisplayName("disposal waits for the grace period so requests already using the pool can finish")
+  void evictWebClient_disposalIsDelayedByGracePeriod() {
+    ObservableBuilder observable = new ObservableBuilder(Duration.ofMillis(600));
+    observable.getOrCreateWebClient(hostConfig(false, false));
+
+    observable.evictWebClient("https://api.xendit.co");
+
+    verify(observable.provider, after(200).never()).disposeLater();
+    verify(observable.provider, timeout(5000)).disposeLater();
+  }
+
+  @Test
+  @DisplayName("evictWebClient for an unknown url disposes nothing")
+  void evictWebClient_unknownUrl_disposesNothing() {
+    ObservableBuilder observable = new ObservableBuilder(Duration.ZERO);
+    observable.getOrCreateWebClient(hostConfig(false, false));
+
+    observable.evictWebClient("https://never-created.example.com");
+
+    verify(observable.provider, after(300).never()).disposeLater();
+  }
+
+  @Test
+  @DisplayName("evicting the same url twice disposes the pool only once")
+  void evictWebClient_twice_disposesOnce() {
+    ObservableBuilder observable = new ObservableBuilder(Duration.ZERO);
+    observable.getOrCreateWebClient(hostConfig(false, false));
+
+    observable.evictWebClient("https://api.xendit.co");
+    observable.evictWebClient("https://api.xendit.co");
+
+    verify(observable.provider, timeout(3000).times(1)).disposeLater();
+    verify(observable.provider, after(300).times(1)).disposeLater();
+  }
 
   private GatewayWebClientBuilder builder;
 

@@ -10,6 +10,7 @@ import com.nantaaditya.example.model.response.OutboundHostConfigResponse;
 import com.nantaaditya.example.model.response.OutboundSystemResponse;
 import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
+import com.nantaaditya.example.service.GatewayService;
 import com.nantaaditya.example.service.OutboundHostService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +29,7 @@ public class OutboundHostServiceImpl implements OutboundHostService {
 
   private final OutboundHostConfigurationRepository hostConfigRepository;
   private final OutboundSystemRepository systemRepository;
-  private final GatewayWebClientBuilder webClientBuilder;
+  private final GatewayService gatewayService;
   private final EncryptionHelper encryptionHelper;
 
   @Override
@@ -63,7 +64,8 @@ public class OutboundHostServiceImpl implements OutboundHostService {
                 .flatMap(credentials -> saveOutboundHostConfiguration(existing.updated(request, credentials[0], credentials[1])))
         )
         .doOnSuccess(c -> {
-          webClientBuilder.evictWebClient(c.getBaseUrl());
+          // evicts the host's pool AND every cached system context that still holds it
+          gatewayService.evictHost(c.getBaseUrl());
           log.info(AppLogMessage.message("#OutboundHostService - updated host config id={} baseUrl={}", id, c.getBaseUrl()));
         })
         .map(OutboundHostConfigResponse::from);
@@ -73,7 +75,7 @@ public class OutboundHostServiceImpl implements OutboundHostService {
   public Mono<Boolean> reload(long id) {
     return requireHostConfig(id)
         .flatMap(cfg -> Mono.fromRunnable(() -> {
-          webClientBuilder.evictWebClient(cfg.getBaseUrl());
+          gatewayService.evictHost(cfg.getBaseUrl());
           log.info(AppLogMessage.message("#OutboundHostService - reloaded host config id={} baseUrl={}", id, cfg.getBaseUrl()));
         }).subscribeOn(Schedulers.boundedElastic()))
         .thenReturn(Boolean.TRUE);

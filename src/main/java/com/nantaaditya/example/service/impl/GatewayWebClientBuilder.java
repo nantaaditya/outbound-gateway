@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.zalando.logbook.Logbook;
 import org.zalando.logbook.netty.LogbookClientHandler;
+import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
 import reactor.netty.transport.ProxyProvider;
@@ -42,8 +43,9 @@ import reactor.netty.transport.ProxyProvider;
  * <p>The pool is created on the first call to {@link #getOrCreateWebClient} and cached in
  * memory. It is <em>not</em> rebuilt automatically when the DB row changes. Call
  * {@link #evictWebClient(String)} (triggered by {@code POST /api/outbound/{code}/reload})
- * to force re-creation on the next request. Eviction drops all in-flight connections to
- * that host — all systems sharing the same {@code baseUrl} are affected.
+ * to force re-creation on the next request. The evicted pool is disposed after a grace period,
+ * so requests that already hold a connection finish normally while requests still queued for one
+ * fail. All systems sharing the same {@code baseUrl} are affected.
  *
  * <h3>Resilience wiring</h3>
  * <p>{@link #buildContext} registers Resilience4j instances only when their enable flag is
@@ -63,8 +65,16 @@ public class GatewayWebClientBuilder {
   private final Logbook logbook;
   private final EncryptionHelper encryptionHelper;
 
+  // How long an evicted pool stays alive before it is disposed, so requests that already hold a
+  // connection from it can finish. Requests still queued for a connection at disposal time fail.
+  private static final Duration DEFAULT_DISPOSE_GRACE_PERIOD = Duration.ofSeconds(30);
+
+  // The WebClient and the pool behind it are kept together: the pool can only be disposed if we still
+  // hold it when the entry is evicted.
+  private record PooledClient(WebClient webClient, ConnectionProvider provider) {}
+
   // One WebClient (= one Reactor Netty connection pool) per host (scheme+host+port).
-  private final ConcurrentMap<String, WebClient> webClientCache = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, PooledClient> webClientCache = new ConcurrentHashMap<>();
 
   public WebClient getOrCreateWebClient(OutboundHostConfiguration hostConfiguration) {
     return webClientCache.computeIfAbsent(
@@ -73,12 +83,41 @@ public class GatewayWebClientBuilder {
           log.info(AppLogMessage.message("#WEBCLIENT - created for {}", url));
           return buildWebClient(hostConfiguration);
         }
-    );
+    ).webClient();
   }
 
+  /**
+   * Removes the cached client for {@code baseUrl} and disposes its connection pool after
+   * {@link #disposeGracePeriod()}. Never blocks. Callers must also drop every cached context that still
+   * references the evicted {@link WebClient} (see {@code GatewayService#evictHost}), otherwise those
+   * contexts keep using a pool that is about to be disposed.
+   */
   public void evictWebClient(String baseUrl) {
-    webClientCache.remove(baseUrl);
+    PooledClient removed = webClientCache.remove(baseUrl);
     log.info(AppLogMessage.message("#WEBCLIENT - evicted for {}", baseUrl));
+    if (removed == null) {
+      return;
+    }
+    // defer: disposeLater() must run after the delay, not when the Mono is assembled
+    Mono.defer(removed.provider()::disposeLater)
+        .delaySubscription(disposeGracePeriod())
+        .subscribe(
+            unused -> { },
+            error -> log.warn(AppLogMessage.message("#WEBCLIENT - failed to dispose pool of {}: {}",
+                baseUrl, error.getMessage()).error(error)),
+            () -> log.info(AppLogMessage.message("#WEBCLIENT - disposed pool of {}", baseUrl)));
+  }
+
+  protected Duration disposeGracePeriod() {
+    return DEFAULT_DISPOSE_GRACE_PERIOD;
+  }
+
+  protected ConnectionProvider newConnectionProvider(OutboundHostConfiguration hostConfig) {
+    return ConnectionProvider.builder(hostConfig.getBaseUrl())
+        .maxConnections(hostConfig.getMaxConnections())
+        .pendingAcquireMaxCount(hostConfig.getPendingAcquireMaxCount())
+        .pendingAcquireTimeout(Duration.ofMillis(hostConfig.getPendingAcquireTimeoutMs()))
+        .build();
   }
 
   /**
@@ -157,12 +196,8 @@ public class GatewayWebClientBuilder {
         .webClient(getOrCreateWebClient(hostConfiguration));
   }
 
-  private WebClient buildWebClient(OutboundHostConfiguration hostConfig) {
-    ConnectionProvider connectionProvider = ConnectionProvider.builder(hostConfig.getBaseUrl())
-        .maxConnections(hostConfig.getMaxConnections())
-        .pendingAcquireMaxCount(hostConfig.getPendingAcquireMaxCount())
-        .pendingAcquireTimeout(Duration.ofMillis(hostConfig.getPendingAcquireTimeoutMs()))
-        .build();
+  private PooledClient buildWebClient(OutboundHostConfiguration hostConfig) {
+    ConnectionProvider connectionProvider = newConnectionProvider(hostConfig);
 
     HttpClient httpClient = HttpClient.create(connectionProvider)
         // metrics(true, uriFn) keeps the DEFAULT recorder — a non-null recorder is what
@@ -178,10 +213,11 @@ public class GatewayWebClientBuilder {
     httpClient = disableSsl(hostConfig, httpClient);
     httpClient = configureProxy(hostConfig, httpClient);
 
-    return webClientBuilder.clone()
+    WebClient webClient = webClientBuilder.clone()
         .baseUrl(hostConfig.getBaseUrl())
         .clientConnector(new ReactorClientHttpConnector(httpClient))
         .build();
+    return new PooledClient(webClient, connectionProvider);
   }
 
   private static String uriTagValue(String uri) {

@@ -1446,7 +1446,7 @@ Create or replace the response mapper.
 
 Evict the in-memory context cache and the Reactor Netty connection pool for this system's host. The next request reloads all config from DB and rebuilds the pool.
 
-> Evicting the pool drops **all in-flight connections to that host** — every system sharing the same `baseUrl` is affected.
+> The pool is shared, so **every system on the same `baseUrl` is affected**: their cached contexts are dropped too and reloaded from the DB on their next request. The old pool is disposed after a 30 s grace period: requests that already hold a connection finish normally, requests still queued for a connection at that moment fail with an internal-reject response.
 
 **Response:**
 ```json
@@ -1687,7 +1687,7 @@ Update host configuration. Automatically evicts the existing WebClient pool for 
 
 #### `POST /api/outbound/host/{id}/reload`
 
-Evict the WebClient connection pool for this host's `baseUrl` without changing any configuration. The pool is rebuilt with the current settings on the next request. Use when you need to force connection recycling (e.g., after a certificate rotation or network change).
+Evict the WebClient connection pool for this host's `baseUrl` without changing any configuration, together with the cached context of every system on this host. The pool is rebuilt with the current settings on the next request; the old pool is disposed after a 30 s grace period. Use when you need to force connection recycling (e.g., after a certificate rotation or network change).
 
 **Response:**
 ```json
@@ -1898,9 +1898,9 @@ The context cache has no TTL — entries live until evicted by `POST /api/outbou
 
 **Relationship:** `outbound_host_configurations.base_url` has a `UNIQUE` constraint. There is exactly **one host config row per base URL**, and any number of outbound systems may share it (N systems → 1 host config). There is no config ambiguity — all systems on the same host always read from the same record.
 
-**Pool lifecycle:** the Reactor Netty connection pool for a given `baseUrl` is built once (on the first request that targets that host) and cached in memory. Subsequent requests to any system on that host reuse the same pool. The pool is **not rebuilt automatically** when the host config row changes in the database — you must call `POST /api/outbound/{code}/reload` to evict the cached pool and force a rebuild on the next request.
+**Pool lifecycle:** the Reactor Netty connection pool for a given `baseUrl` is built once (on the first request that targets that host) and cached in memory. Subsequent requests to any system on that host reuse the same pool. The pool is **not rebuilt automatically** when the host config row changes directly in the database — call `POST /api/outbound/{code}/reload` or `POST /api/outbound/host/{id}/reload` to evict it and force a rebuild on the next request. Updating the host through `PUT /api/outbound/host/{id}` does this for you.
 
-> `reload` evicts the pool by `baseUrl`. All systems sharing that host are affected — in-flight connections on those systems will be dropped.
+> Evicting a pool recycles it for **all systems sharing that host**: their cached contexts are dropped as well (a context holds a reference to the pool) and the old pool is disposed after a 30 s grace period. Connections already in use finish normally; requests still waiting for a connection when the pool is disposed fail. Editing any single system (headers, authentication, resilience, response mapper) also evicts its context, and therefore recycles the shared host pool.
 
 ### Pool Sizing Invariants
 

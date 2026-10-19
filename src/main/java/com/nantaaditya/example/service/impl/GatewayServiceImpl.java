@@ -42,10 +42,12 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.http.HttpMethod;
@@ -105,6 +107,10 @@ public class GatewayServiceImpl implements GatewayService {
 
   private final ConcurrentMap<String, OutboundSystemContext> contextCache = new ConcurrentHashMap<>();
 
+  // Bumped by every eviction. A load only populates contextCache if no eviction happened since it started,
+  // so a slow load can never resurrect a context that an admin change has just invalidated.
+  private final AtomicLong evictionEpoch = new AtomicLong();
+
   // Thundering-herd protection: computeIfAbsent + Mono.cache() ensures only ONE DB load
   // fires per code even when many requests arrive concurrently before the first load completes.
   // doFinally removes the entry so the next miss after eviction triggers a fresh load.
@@ -133,11 +139,24 @@ public class GatewayServiceImpl implements GatewayService {
   }
 
   public void evictContext(String code) {
+    evictionEpoch.incrementAndGet();
     OutboundSystemContext evicted = contextCache.remove(code);
-    if (evicted != null && evicted.getHostConfig() != null) {
-      contextBuilder.evictWebClient(evicted.getHostConfig().getBaseUrl());
-    }
     contextLoadCache.remove(code);
+    if (evicted != null && evicted.getHostConfig() != null) {
+      evictHost(evicted.getHostConfig().getBaseUrl());
+    }
+  }
+
+  @Override
+  public void evictHost(String baseUrl) {
+    evictionEpoch.incrementAndGet();
+    // Contexts keep a reference to the pooled WebClient; once the pool is recycled (and later disposed)
+    // every context of the host must be rebuilt, not only the one that triggered the eviction.
+    contextCache.values().removeIf(ctx ->
+        ctx.getHostConfig() != null && Objects.equals(baseUrl, ctx.getHostConfig().getBaseUrl()));
+    // in-flight loads may have read the old host row; do not let new callers join them
+    contextLoadCache.clear();
+    contextBuilder.evictWebClient(baseUrl);
   }
 
   private boolean hasIdempotencyKey(String key) {
@@ -172,6 +191,12 @@ public class GatewayServiceImpl implements GatewayService {
   }
 
   private Mono<OutboundSystemContext> loadFromDb(String code) {
+    // Captured when the load starts: any eviction after this point means what we read may already be
+    // outdated, so the result is returned to the waiting callers but must not be written to the cache.
+    return Mono.defer(() -> loadFromDb(code, evictionEpoch.get()));
+  }
+
+  private Mono<OutboundSystemContext> loadFromDb(String code, long epochAtStart) {
     return systemRepository.findByCodeAndActiveTrue(code)
         .flatMap(system -> {
           long systemId = system.getId();
@@ -199,7 +224,11 @@ public class GatewayServiceImpl implements GatewayService {
                   )
               );
         })
-        .doOnNext(context -> contextCache.put(code, context))
+        .doOnNext(context -> {
+          if (evictionEpoch.get() == epochAtStart) {
+            contextCache.put(code, context);
+          }
+        })
         .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }
 

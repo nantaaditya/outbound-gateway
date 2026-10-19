@@ -16,7 +16,6 @@ import com.nantaaditya.example.model.response.OutboundHostConfigResponse;
 import com.nantaaditya.example.model.response.OutboundSystemResponse;
 import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
-import com.nantaaditya.example.service.impl.GatewayWebClientBuilder;
 import com.nantaaditya.example.service.impl.OutboundHostServiceImpl;
 import java.util.Base64;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +37,7 @@ class OutboundHostServiceImplTest {
   @Mock
   private OutboundSystemRepository systemRepository;
   @Mock
-  private GatewayWebClientBuilder webClientBuilder;
+  private GatewayService gatewayService;
 
   private EncryptionHelper encryptionHelper;
   private OutboundHostServiceImpl service;
@@ -46,7 +45,7 @@ class OutboundHostServiceImplTest {
   @BeforeEach
   void setUp() {
     encryptionHelper = new EncryptionHelper(Base64.getEncoder().encodeToString(new byte[32]));
-    service = new OutboundHostServiceImpl(hostConfigRepository, systemRepository, webClientBuilder, encryptionHelper);
+    service = new OutboundHostServiceImpl(hostConfigRepository, systemRepository, gatewayService, encryptionHelper);
   }
 
   @Test
@@ -122,7 +121,7 @@ class OutboundHostServiceImplTest {
         .assertNext(resp -> assertThat(resp.id()).isEqualTo(1L))
         .verifyComplete();
 
-    verify(webClientBuilder).evictWebClient("https://api.example.com");
+    verify(gatewayService).evictHost("https://api.example.com");
   }
 
   @Test
@@ -147,7 +146,7 @@ class OutboundHostServiceImplTest {
         .expectNext(Boolean.TRUE)
         .verifyComplete();
 
-    verify(webClientBuilder).evictWebClient("https://api.example.com");
+    verify(gatewayService).evictHost("https://api.example.com");
   }
 
   @Test

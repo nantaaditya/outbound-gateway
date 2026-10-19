@@ -3,7 +3,9 @@ package com.nantaaditya.example.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -44,7 +46,9 @@ import com.nantaaditya.example.service.impl.GatewayServiceImpl;
 import com.nantaaditya.example.service.impl.GatewayWebClientBuilder;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,7 +59,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 @ExtendWith(MockitoExtension.class)
 class GatewayServiceImplTest {
@@ -189,6 +195,77 @@ class GatewayServiceImplTest {
     ArgumentCaptor<OutboundHistory> captor = ArgumentCaptor.forClass(OutboundHistory.class);
     verify(historyRepository).saveHistory(captor.capture());
     assertThat(captor.getValue().getRetryCount()).isZero();
+  }
+
+  @Test
+  @DisplayName("evictContext also evicts other systems' contexts on the same host, because the pool they hold is recycled")
+  void evictContext_alsoEvictsSiblingContextsOnTheSameHost() {
+    contextCache().put("a", contextOn("a", "https://shared.example.com"));
+    contextCache().put("b", contextOn("b", "https://shared.example.com"));
+    contextCache().put("c", contextOn("c", "https://other.example.com"));
+
+    gatewayService.evictContext("a");
+
+    assertThat(contextCache()).containsOnlyKeys("c");
+    verify(contextBuilder, times(1)).evictWebClient("https://shared.example.com");
+    verify(contextBuilder, never()).evictWebClient("https://other.example.com");
+  }
+
+  @Test
+  @DisplayName("evictHost drops every cached context of that host and evicts its pool once")
+  void evictHost_dropsAllContextsOfTheHostAndEvictsPool() {
+    contextCache().put("a", contextOn("a", "https://shared.example.com"));
+    contextCache().put("b", contextOn("b", "https://shared.example.com"));
+    contextCache().put("c", contextOn("c", "https://other.example.com"));
+
+    gatewayService.evictHost("https://shared.example.com");
+
+    assertThat(contextCache()).containsOnlyKeys("c");
+    verify(contextBuilder, times(1)).evictWebClient("https://shared.example.com");
+  }
+
+  @Test
+  @DisplayName("evictHost for a host without cached contexts still evicts the pool")
+  void evictHost_noCachedContexts_stillEvictsPool() {
+    gatewayService.evictHost("https://cold.example.com");
+
+    verify(contextBuilder).evictWebClient("https://cold.example.com");
+  }
+
+  @Test
+  @DisplayName("a context loaded while an eviction happens is not written to the cache (no stale resurrection)")
+  void evictContext_duringInFlightLoad_doesNotCacheStaleContext() throws Exception {
+    OutboundHostConfiguration host = OutboundHostConfiguration.builder().id(1L).baseUrl("http://host").build();
+    OutboundSystem system = OutboundSystem.builder()
+        .id(1L).code("race").httpMethod("POST").hostConfigurationId(1L).apiPath("/p").build();
+    Sinks.One<OutboundSystem> dbRead = Sinks.one();
+    when(systemRepository.findByCodeAndActiveTrue("race")).thenReturn(dbRead.asMono());
+    lenient().when(resilienceRepository.findByOutboundSystemId(anyLong()))
+        .thenReturn(Mono.just(OutboundResilienceConfiguration.bypass()));
+    lenient().when(headerRepository.findByOutboundSystemId(anyLong())).thenReturn(Flux.empty());
+    lenient().when(authRepository.findByOutboundSystemId(anyLong())).thenReturn(Mono.empty());
+    lenient().when(mapperRepository.findByOutboundSystemIdAndActiveTrue(anyLong())).thenReturn(Mono.empty());
+    lenient().when(hostConfigRepository.findById(anyLong())).thenReturn(Mono.just(host));
+    lenient().when(contextBuilder.buildContext(any(), any(), any(), any(), any(), any()))
+        .thenReturn(contextOn("race", "http://host"));
+
+    // the load is now waiting on the DB read
+    CompletableFuture<GatewayResponse> call = gatewayService
+        .execute("race", "svc", null, new GatewayRequest(Map.of(), null))
+        .onErrorResume(e -> Mono.empty())
+        .toFuture();
+    gatewayService.evictContext("race");   // admin change lands while the load is in flight
+    dbRead.tryEmitValue(system);
+    call.get(5, TimeUnit.SECONDS);
+
+    assertThat(contextCache()).doesNotContainKey("race");
+  }
+
+  private static OutboundSystemContext contextOn(String code, String baseUrl) {
+    return OutboundSystemContext.builder()
+        .system(OutboundSystem.builder().code(code).build())
+        .hostConfig(OutboundHostConfiguration.builder().baseUrl(baseUrl).build())
+        .build();
   }
 
   @SuppressWarnings("unchecked")
