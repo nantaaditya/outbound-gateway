@@ -1921,7 +1921,7 @@ OAuth tokens are written back to `outbound_auth_configurations.current_token` af
 
 ### Flyway Migrations
 
-Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V11) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
+Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V12) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
 
 | Version | Description |
 |---|---|
@@ -1936,6 +1936,16 @@ Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply mi
 | V9 | Create `outbound_histories` table |
 | V10 | Create `v_outbound_system_detail` JOIN view |
 | V11 | Create `outbound_parameters` table (host-level injectable key/values, encrypted value) |
+| V12 | `UNIQUE (outbound_system_id)` on the resilience, header, auth and response-mapper tables (one config row per system) |
+
+**V12 and existing duplicates.** Before this constraint, two simultaneous first-time upserts for the same system could each insert a row. V12 never deletes data: if any of the four tables already has more than one row for an `outbound_system_id`, the migration aborts (nothing is changed) and its error names the tables. Keep one row per `outbound_system_id` (usually the highest `id`), delete the others, and re-run. Find them with:
+
+```sql
+SELECT outbound_system_id, COUNT(*) FROM outbound_header_configurations
+GROUP BY outbound_system_id HAVING COUNT(*) > 1;   -- repeat for the other three tables
+```
+
+The admin upserts (`resilience`, `headers`, `authentication`, `response-mapper`) re-read and retry up to 3 times when they lose such a race or an optimistic-lock (`@Version`) conflict, so concurrent calls converge on the last write instead of failing or duplicating.
 
 ### Outbound Parameters
 

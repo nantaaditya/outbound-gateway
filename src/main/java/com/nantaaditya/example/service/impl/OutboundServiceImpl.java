@@ -31,6 +31,7 @@ import com.nantaaditya.example.repository.OutboundSystemDetailQuery;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.GatewayService;
 import com.nantaaditya.example.service.OutboundService;
+import io.r2dbc.spi.R2dbcException;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.HashMap;
@@ -41,8 +42,11 @@ import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import reactor.util.retry.Retry;
 
 @Log4j2
 @Service
@@ -64,6 +68,17 @@ public class OutboundServiceImpl implements OutboundService {
   private final TransactionalOperator transactionalOperator;
 
   private static final Duration TEST_CONNECTION_TIMEOUT = Duration.ofSeconds(5);
+  private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
+
+  // The upserts are find-then-save and replace the whole row from the request (last write wins), and V12
+  // makes outbound_system_id unique per config table. Two kinds of race are therefore safe to repeat with
+  // a fresh read: (1) two first-time upserts both insert and the loser hits the unique index, (2) two
+  // upserts update the same row and the loser fails the @Version check. Every retry round lets at least
+  // one contender through, so 3 retries cover 4 simultaneous callers; anything beyond that, or any other
+  // error, reaches the caller unchanged.
+  private static final Retry RETRY_ON_CONFLICT = Retry.max(3)
+      .filter(OutboundServiceImpl::isRetryableConflict)
+      .onRetryExhaustedThrow((spec, signal) -> signal.failure());
   private static final int DEFAULT_PAGE_SIZE = 20;
 
   @Override
@@ -125,9 +140,10 @@ public class OutboundServiceImpl implements OutboundService {
   @Override
   public Mono<Boolean> upsertResilience(String code, UpsertResilienceRequest request) {
     return requireSystem(code)
-        .flatMap(system -> resilienceRepository.findByOutboundSystemId(system.getId())
-            .defaultIfEmpty(OutboundResilienceConfiguration.empty(system.getId()))
-            .flatMap(existing -> resilienceRepository.save(existing.updated(system.getId(), request))))
+        .flatMap(system -> Mono.defer(() -> resilienceRepository.findByOutboundSystemId(system.getId())
+                .defaultIfEmpty(OutboundResilienceConfiguration.empty(system.getId()))
+                .flatMap(existing -> resilienceRepository.save(existing.updated(system.getId(), request))))
+            .retryWhen(RETRY_ON_CONFLICT))
         .doOnSuccess(s -> {
           resilienceRegistryService.reload(code);
           gatewayService.evictContext(code);
@@ -144,9 +160,11 @@ public class OutboundServiceImpl implements OutboundService {
           if (request.headers() != null) {
             request.headers().forEach(headersAsObjectMap::put);
           }
-          return headerRepository.deleteByOutboundSystemId(system.getId())
-              .then(headerRepository.save(OutboundHeaderConfiguration.from(system.getId(), headersAsObjectMap)))
+          return Mono.defer(() -> headerRepository.deleteByOutboundSystemId(system.getId())
+                  .then(headerRepository.save(OutboundHeaderConfiguration.from(system.getId(), headersAsObjectMap))))
               .as(transactionalOperator::transactional)
+              // a concurrent first-time upsert may win the insert; the whole transaction is repeated once
+              .retryWhen(RETRY_ON_CONFLICT)
               .doOnSuccess(s -> {
                 gatewayService.evictContext(code);
                 log.info(AppLogMessage.message("#OutboundService - upserted headers code={}", code));
@@ -166,11 +184,12 @@ public class OutboundServiceImpl implements OutboundService {
                 })
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(encrypted ->
-                    authRepository.findByOutboundSystemId(system.getId())
-                        .defaultIfEmpty(OutboundAuthConfiguration.empty(system.getId()))
-                        .flatMap(existing -> authRepository.save(
-                            existing.updated(system.getId(), encrypted[0], encrypted[1], encrypted[2], request))
-                        )
+                    Mono.defer(() -> authRepository.findByOutboundSystemId(system.getId())
+                            .defaultIfEmpty(OutboundAuthConfiguration.empty(system.getId()))
+                            .flatMap(existing -> authRepository.save(
+                                existing.updated(system.getId(), encrypted[0], encrypted[1], encrypted[2], request))
+                            ))
+                        .retryWhen(RETRY_ON_CONFLICT)
                         .doOnSuccess(s -> {
                           authStrategyFactory.getStrategy(s.getAuthType())
                               .evictTokenState(s.getId());
@@ -185,9 +204,10 @@ public class OutboundServiceImpl implements OutboundService {
   @Override
   public Mono<Boolean> upsertResponseMapper(String code, UpsertResponseMapperRequest request) {
     return requireSystem(code)
-        .flatMap(system -> mapperRepository.findByOutboundSystemId(system.getId())
-            .defaultIfEmpty(OutboundResponseMapperConfiguration.empty(system.getId()))
-            .flatMap(existing -> mapperRepository.save(existing.updated(system.getId(), request))))
+        .flatMap(system -> Mono.defer(() -> mapperRepository.findByOutboundSystemId(system.getId())
+                .defaultIfEmpty(OutboundResponseMapperConfiguration.empty(system.getId()))
+                .flatMap(existing -> mapperRepository.save(existing.updated(system.getId(), request))))
+            .retryWhen(RETRY_ON_CONFLICT))
         .doOnSuccess(s -> {
           gatewayService.evictContext(code);
           log.info(AppLogMessage.message("#OutboundService - upserted response mapper code={}", code));
@@ -229,6 +249,18 @@ public class OutboundServiceImpl implements OutboundService {
                       });
                 })
         );
+  }
+
+  private static boolean isRetryableConflict(Throwable error) {
+    for (Throwable cause = error; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
+      if (cause instanceof DuplicateKeyException || cause instanceof OptimisticLockingFailureException) {
+        return true;
+      }
+      if (cause instanceof R2dbcException r2dbc && UNIQUE_VIOLATION_SQL_STATE.equals(r2dbc.getSqlState())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private Mono<OutboundSystem> requireSystem(String code) {
