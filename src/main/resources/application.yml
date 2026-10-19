@@ -119,6 +119,10 @@ apps:
     jslt:
       type: ${JSLT_CACHE_TYPE:SIZE}
       size: ${JSLT_CACHE_SIZE:200}
+    parameters:
+      type: ${PARAMETERS_CACHE_TYPE:TIME}
+      time-out: ${PARAMETERS_CACHE_TIME_OUT:60}
+      time-unit: ${PARAMETERS_CACHE_TIME_UNIT:SECONDS}
     contexts:
       type: ${CONTEXTS_CACHE_TYPE:TIME}
       time-out: ${CONTEXTS_CACHE_TIME_OUT:10}

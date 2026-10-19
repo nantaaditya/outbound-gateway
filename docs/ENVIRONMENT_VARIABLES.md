@@ -135,6 +135,9 @@ All configuration is externalized through environment variables with sensible de
 | `ADDITIONAL_DATA_CACHE_TYPE` | No | `TIME` | Eviction policy |
 | `ADDITIONAL_DATA_CACHE_TIME_OUT` | No | `10` | TTL duration |
 | `ADDITIONAL_DATA_CACHE_TIME_UNIT` | No | `MINUTES` | TTL time unit |
+| `PARAMETERS_CACHE_TYPE` | No | `TIME` | Eviction policy for outbound parameters |
+| `PARAMETERS_CACHE_TIME_OUT` | No | `60` | TTL duration (`0` disables the cache) |
+| `PARAMETERS_CACHE_TIME_UNIT` | No | `SECONDS` | TTL time unit |
 
 ---
 

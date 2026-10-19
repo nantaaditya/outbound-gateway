@@ -16,6 +16,7 @@ public interface ConstantName {
   String CONTEXTS_CACHE = "contexts";
   String ADDITIONAL_DATA_CACHE = "additional-data";
   String JSLT_CACHE = "jslt";
+  String PARAMETERS_CACHE = "parameters";
 
   String FEATURE_TAG_OBSERVABILITY = "feature";
   String HOST_TAG_OBSERVABILITY = "host";

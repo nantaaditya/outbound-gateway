@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHistory;
@@ -22,10 +24,13 @@ import com.nantaaditya.example.helper.GatewayHelper;
 import com.nantaaditya.example.helper.JsltResponseMapper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.OutboundMetricsRecorder;
+import com.nantaaditya.example.helper.ParameterInjector;
+import com.nantaaditya.example.helper.ParameterResolver;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
+import com.nantaaditya.example.model.dto.ResolvedParameters;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
@@ -83,6 +88,8 @@ class GatewayServiceImplTest {
   OutboundMetricsRecorder metricsRecorder;
   @Mock
   AuthStrategy authStrategy;
+  @Mock
+  ParameterResolver parameterResolver;
 
   GatewayServiceImpl gatewayService;
 
@@ -95,7 +102,10 @@ class GatewayServiceImplTest {
         systemRepository, hostConfigRepository, resilienceRepository, headerRepository,
         authRepository, mapperRepository, historyRepository, contextBuilder,
         authStrategyFactory, encryptionHelper, jsonHelper, metricsRecorder,
-        new Gson(), new GatewayHelper(jsonHelper, jsltResponseMapper));
+        new Gson(), new GatewayHelper(jsonHelper, jsltResponseMapper),
+        parameterResolver, new ParameterInjector(new ObjectMapper()));
+    lenient().when(parameterResolver.resolve(any(), any()))
+        .thenReturn(Mono.just(ResolvedParameters.empty()));
   }
 
   @Test

@@ -9,7 +9,9 @@ import com.nantaaditya.example.helper.TracerHelper;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.ResponseCode;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
+import com.nantaaditya.example.model.exception.InvalidParameterException;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
+import com.nantaaditya.example.model.exception.ParameterNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.response.BaseResponse;
 import jakarta.validation.ConstraintViolation;
@@ -147,6 +149,28 @@ public class ApiExceptionHandler {
     return toBaseErrorResponse(ex, error -> {
       Map<String, List<String>> errors = Map.of("id", List.of("NotFound"));
       BaseResponse<Object> response = responseHelper.failed(ResponseCode.BAD_REQUEST, errors);
+      return Tuples.of(errors, response);
+    });
+  }
+
+  @ResponseBody
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  @ExceptionHandler(ParameterNotFoundException.class)
+  public BaseResponse<Object> parameterNotFoundException(ParameterNotFoundException ex) {
+    return toBaseErrorResponse(ex, error -> {
+      Map<String, List<String>> errors = Map.of("injectKeys", List.of("NotFound"));
+      BaseResponse<Object> response = responseHelper.failed(ResponseCode.BAD_REQUEST, errors);
+      return Tuples.of(errors, response);
+    });
+  }
+
+  @ResponseBody
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  @ExceptionHandler(InvalidParameterException.class)
+  public BaseResponse<Object> invalidParameterException(InvalidParameterException ex) {
+    return toBaseErrorResponse(ex, error -> {
+      Map<String, List<String>> errors = Map.of(ex.getField(), List.of(NOT_VALID_ERROR));
+      BaseResponse<Object> response = responseHelper.failed(ResponseCode.INVALID_PARAMS, errors);
       return Tuples.of(errors, response);
     });
   }

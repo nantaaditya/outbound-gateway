@@ -96,6 +96,10 @@ apps:
     jslt:
       type: SIZE
       size: 200
+    parameters:
+      type: TIME
+      time-out: 60
+      time-unit: SECONDS
     contexts:
       type: TIME
       time-out: 10

@@ -12,11 +12,14 @@ import com.nantaaditya.example.helper.GatewayHelper;
 import com.nantaaditya.example.helper.GsonHelper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.OutboundMetricsRecorder;
+import com.nantaaditya.example.helper.ParameterInjector;
+import com.nantaaditya.example.helper.ParameterResolver;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
+import com.nantaaditya.example.model.dto.ResolvedParameters;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
@@ -37,6 +40,7 @@ import io.github.resilience4j.reactor.retry.RetryOperator;
 import io.micrometer.observation.Observation;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -96,6 +100,8 @@ public class GatewayServiceImpl implements GatewayService {
   private final OutboundMetricsRecorder metricsRecorder;
   private final Gson gson;
   private final GatewayHelper gatewayHelper;
+  private final ParameterResolver parameterResolver;
+  private final ParameterInjector parameterInjector;
 
   private final ConcurrentMap<String, OutboundSystemContext> contextCache = new ConcurrentHashMap<>();
 
@@ -112,10 +118,18 @@ public class GatewayServiceImpl implements GatewayService {
           if (hasIdempotencyKey(idempotencyKey)) {
             return checkIdempotency(context, idempotencyKey)
                 .doOnNext(r -> metricsRecorder.recordIdempotencyHit(code))
-                .switchIfEmpty(Mono.defer(() -> executeWithResilience(context, callerService, idempotencyKey, request)));
+                .switchIfEmpty(Mono.defer(() -> executeResolved(context, callerService, idempotencyKey, request)));
           }
-          return executeWithResilience(context, callerService, idempotencyKey, request);
+          return executeResolved(context, callerService, idempotencyKey, request);
         });
+  }
+
+  // Parameters are resolved before the resilience pipeline: an unknown/invalid injectKey is a
+  // client error (400) and must not be swallowed into an internal-reject response.
+  private Mono<GatewayResponse> executeResolved(OutboundSystemContext context, String callerService,
+      String idempotencyKey, GatewayRequest request) {
+    return parameterResolver.resolve(context, request)
+        .flatMap(parameters -> executeWithResilience(context, callerService, idempotencyKey, request, parameters));
   }
 
   public void evictContext(String code) {
@@ -191,13 +205,13 @@ public class GatewayServiceImpl implements GatewayService {
 
   private Mono<GatewayResponse> executeWithResilience(
       OutboundSystemContext context, String callerService, String idempotencyKey,
-      GatewayRequest request) {
+      GatewayRequest request, ResolvedParameters parameters) {
     long startTime = System.currentTimeMillis();
     Observation observation = metricsRecorder.startCall(gatewayHelper.code(context), hostName(context));
     // One counter per invocation — RetryOperator re-subscribes to buildExecution on each
     // retry attempt, so doOnSubscribe fires once per attempt. retryCount = attempts - 1.
     AtomicInteger attempts = new AtomicInteger(0);
-    Mono<GatewayResponse> execution = buildExecution(context, request, attempts);
+    Mono<GatewayResponse> execution = buildExecution(context, request, parameters, attempts);
     execution = decorateResilience(context, execution);
 
     // onErrorResume converts ALL resilience/infra exceptions → GatewayResponse.internalReject(),
@@ -247,13 +261,16 @@ public class GatewayServiceImpl implements GatewayService {
   }
 
   private Mono<GatewayResponse> buildExecution(OutboundSystemContext context,
-      GatewayRequest request, AtomicInteger attempts) {
+      GatewayRequest request, ResolvedParameters parameters, AtomicInteger attempts) {
     // Signed once here and reused verbatim for the outbound call below — HMAC/RSA must sign
     // exactly the bytes that go on the wire, not a separately re-serialized copy of the body.
-    String cleanedBody = GsonHelper.cleanJson(request.bodyAsString(jsonHelper), gson);
+    // BODY parameters are injected before signing so the signature covers them; the original
+    // request (without injected values) is what saveHistory persists.
+    Object outboundBody = parameterInjector.injectBody(request.body(), parameters.bodyItems());
+    String cleanedBody = GsonHelper.cleanJson(jsonHelper.toJsonString(outboundBody), gson);
     return authenticateRequest(context, cleanedBody)
         .doOnSubscribe(__ -> attempts.incrementAndGet())
-        .flatMap(credential -> executeHttp(context, request, cleanedBody, credential))
+        .flatMap(credential -> executeHttp(context, request, parameters, cleanedBody, credential))
         .map(response -> gatewayHelper.applyMapping(context, response));
   }
 
@@ -264,7 +281,7 @@ public class GatewayServiceImpl implements GatewayService {
   }
 
   private Mono<GatewayResponse> executeHttp(OutboundSystemContext context, GatewayRequest request,
-      String cleanedBody, AuthCredential credential) {
+      ResolvedParameters parameters, String cleanedBody, AuthCredential credential) {
     OutboundSystem system = context.getSystem();
     HttpMethod httpMethod = system.getHttpMethodEnum();
 
@@ -275,13 +292,22 @@ public class GatewayServiceImpl implements GatewayService {
           if (request.hasQueryParams()) {
             request.queryParams().forEach(uriBuilder::queryParam);
           }
+          // Injected values go through URI template variables so they are encoded as ONE value:
+          // a literal "{x}" is not expanded and "&" / "+" cannot smuggle extra query params.
+          Map<String, Object> uriVariables = new HashMap<>();
+          parameters.queryParams().forEach((name, value) -> {
+            String variable = "injected" + uriVariables.size();
+            uriVariables.put(variable, value);
+            uriBuilder.queryParam(name, "{" + variable + "}");
+          });
           if (!credential.isEmpty() && credential.location() == TokenInjectLocation.QUERY_PARAM) {
             uriBuilder.queryParam(credential.keyName(), credential.value());
           }
-          return uriBuilder.build();
+          return uriBuilder.build(uriVariables);
         })
         .headers(headers -> {
           gatewayHelper.applyConfiguredHeaders(context, headers);
+          parameters.headers().forEach(headers::set);
           gatewayHelper.applyAuthHeader(credential, headers);
         });
 

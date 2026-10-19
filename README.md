@@ -360,6 +360,17 @@ entity "outbound_host_configurations" as host {
   proxy_password : bytea <<encrypted>>
 }
 
+entity "outbound_parameters" as param {
+  * id : bigint <<PK>>
+  * host_configuration_id : bigint <<FK>>
+  --
+  * param_key : varchar <<unique with host>>
+  param_value : bytea <<encrypted>>
+  inject_location : varchar
+  target_name : varchar
+  is_active : boolean
+}
+
 entity "outbound_auth_configurations" as auth {
   * id : bigint <<PK>>
   * outbound_system_id : bigint <<FK>>
@@ -462,6 +473,7 @@ sys ||--o| res    : "outbound_system_id"
 sys ||--o| hdr    : "outbound_system_id"
 sys ||--o| mapper : "outbound_system_id"
 host||--o{  sys   : "host_configuration_id"
+host||--o{  param : "host_configuration_id"
 sys ||--o{  hist  : "outbound_system_id"
 
 @enduml
@@ -473,8 +485,9 @@ sys ||--o{  hist  : "outbound_system_id"
 
 - Each `outbound_systems` row has **at most one** row in each sub-config table. A missing row means: no auth (pass-through), no resilience (bypass), no static headers, no response mapper.
 - `outbound_host_configurations` is keyed by `base_url` — multiple outbound systems sharing the same host share one connection pool config.
+- `outbound_parameters` holds host-level key/values that clients reference by key (`injectKeys`) to have a value injected into the outbound call. See [docs/OUTBOUND_PARAMETERS.md](docs/OUTBOUND_PARAMETERS.md).
 - `outbound_histories` accumulates one row per gateway call (fire-and-forget, not transactional with the call itself).
-- `bytea` columns (`api_key`, `client_id`, `client_secret`, `proxy_username`, `proxy_password`, `headers`, `mapping_status`) are AES-256-GCM encrypted or serialized via custom R2DBC converters.
+- `bytea` columns (`api_key`, `client_id`, `client_secret`, `proxy_username`, `proxy_password`, `param_value`, `headers`, `mapping_status`) are AES-256-GCM encrypted or serialized via custom R2DBC converters.
 
 ---
 
@@ -485,6 +498,7 @@ sys ||--o{  hist  : "outbound_system_id"
 | **Auth strategies** | None, API Key, Basic, Bearer Static, HMAC-SHA256, RSA, OAuth2 Client Credentials |
 | **Resilience** | Circuit Breaker, Bulkhead, Rate Limiter, Retry — per system, independently opt-in |
 | **Response mapping** | JSLT transform with status remap — pass-through when not configured |
+| **Parameter injection** | Store key/values per host; client sends `injectKeys` and the gateway injects the values into header / query param / JSON body — see [docs/OUTBOUND_PARAMETERS.md](docs/OUTBOUND_PARAMETERS.md) |
 | **Encryption** | AES-256-GCM for all sensitive fields (`api_key`, `client_id`, `client_secret`, proxy creds) |
 | **Idempotency** | Per outbound system, TTL configurable, backed by DB history with upsert semantics |
 | **Audit history** | Every call saved to `outbound_histories` including internal rejects |
@@ -773,11 +787,14 @@ Execute an outbound HTTP call through the configured outbound system.
 ```json
 {
   "queryParams": { "currency": "IDR" },
-  "body": { "amount": 100000, "externalId": "order-123" }
+  "body": { "amount": 100000, "externalId": "order-123" },
+  "injectKeys": ["partner-id"]
 }
 ```
 
-Both fields are optional.
+All fields are optional.
+
+`injectKeys` references [outbound parameters](docs/OUTBOUND_PARAMETERS.md) configured on the system's host. For each key the gateway injects the stored value into the header, query param, or JSON body path configured for that key. Unknown, inactive, or other-host keys, (max 50 distinct keys per call), and invalid injections, are rejected with HTTP 400 and **no outbound call is made** (`violations.injectKeys`: `NotFound` / `NotValid`).
 
 **Response (HTTP 200 — always):**
 ```json
@@ -1719,6 +1736,42 @@ List every outbound system attached to this host configuration — the child sid
 
 ---
 
+#### `POST /api/outbound/host/{id}/parameters`
+
+Create or update (by `key`) the outbound parameters of a host. Values are encrypted (AES-256-GCM) and **never returned** by any API. Changes apply to the very next gateway call (no cache).
+
+**Request body:**
+```json
+{
+  "parameters": [
+    { "key": "partner-id", "value": "P-123", "location": "HEADER", "targetName": "X-Partner-Id" },
+    { "key": "merchant", "value": "M-9", "location": "BODY", "targetName": "meta.merchantId", "active": true }
+  ]
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `key` | Yes | Key the client sends in `injectKeys` (max 100 chars, unique per host; duplicate keys in one request → 400) |
+| `value` | Yes | Value to inject (max 4096 chars) |
+| `location` | Yes | `HEADER`, `QUERY_PARAM`, or `BODY` |
+| `targetName` | Yes | `HEADER`: header name · `QUERY_PARAM`: query param name · `BODY`: dot path into a JSON object body, e.g. `meta.merchantId` |
+| `active` | No | Defaults to `true`. Inactive keys are rejected at gateway call time |
+
+`Authorization`, `Proxy-Authorization`, `Cookie`, `Host`, `Content-Length`, `Content-Type`, `Transfer-Encoding`, and `Connection` cannot be targeted. Unknown host id → 400.
+
+**Response:** `data` is the list of saved parameters — `key`, `location`, `targetName`, `active` (no value).
+
+#### `GET /api/outbound/host/{id}/parameters`
+
+List the parameters of a host (without values).
+
+#### `DELETE /api/outbound/host/{id}/parameters/{key}`
+
+Delete one parameter. Unknown key → 400 (`violations.injectKeys: ["NotFound"]`).
+
+---
+
 ## 10. Metrics
 
 ### Actuator Endpoints
@@ -1798,6 +1851,8 @@ All error responses share the same envelope:
 | `HandlerMethodValidationException` | 400 | parameter name | `["NotValid"]` |
 | `ConstraintViolationException` | 400 | field path | validation message |
 | `OutboundSystemNotFoundException` | 400 | `code` | `["NotFound"]` |
+| `ParameterNotFoundException` | 400 | `injectKeys` | `["NotFound"]` |
+| `InvalidParameterException` | 400 | `injectKeys` / `targetName` / `parameters` | `["NotValid"]` |
 | `IllegalArgumentException` | 400 | `message` | `["Bad request"]` |
 | `BadSqlGrammarException` | 500 | `exception` | `["database error"]` |
 | Any other `Throwable` | 500 | `exception` | `["Internal server error"]` |
@@ -1849,35 +1904,29 @@ OAuth tokens are written back to `outbound_auth_configurations.current_token` af
 
 ### Flyway Migrations
 
-Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V25) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
+Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V11) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
 
 | Version | Description |
 |---|---|
 | V1 | Create `event_logs` table |
 | V2 | Create `dead_letter_process` table |
-| V3 | Add indexes on `dead_letter_process` |
+| V3 | Create `outbound_host_configurations` table |
 | V4 | Create `outbound_systems` table |
 | V5 | Create `outbound_resilience_configurations` table |
 | V6 | Create `outbound_header_configurations` table (`headers` as `jsonb`) |
 | V7 | Create `outbound_auth_configurations` table |
 | V8 | Create `outbound_response_mapper_configuration` table (`mapping_status` as `jsonb`) |
 | V9 | Create `outbound_histories` table |
-| V10 | Add `idempotency_ttl_hours` to `outbound_systems` |
-| V11 | Expand `outbound_resilience_configurations` — add CB/BH/RL/Retry tuning columns |
-| V12 | Add `api_path` to `outbound_systems` |
-| V13 | Create `outbound_host_configurations` table |
-| V14 | Migrate host/proxy/SSL config from `outbound_systems` → `outbound_host_configurations`; drop migrated columns |
-| V15 | Drop `uq_idempotency` unique constraint; rebuild idempotency index with `created_date` |
-| V16 | *(intentionally skipped — reserved branch abandoned before merge)* |
-| V17 | Add connection-pool columns to `outbound_host_configurations`; drop unused columns from `outbound_resilience_configurations` |
-| V18 | Add four boolean enable flags to `outbound_resilience_configurations` (default `false`) |
-| V19 | Rename enable flag columns — remove `is_` prefix to match R2DBC field names |
-| V20 | Add `v_outbound_system_detail` JOIN view — eliminates N+1 for `list()` and `getDetail()` |
-| V21 | Add `retry_count` column to `outbound_histories` (default `0`) |
-| V22 | Migrate `request_headers` / `response_headers` in `outbound_histories` from `text` to `jsonb` |
-| V23 | Add `host_configuration_id` FK to `outbound_systems`, backfilling `outbound_host_configurations` rows for any `base_url` that didn't already have one |
-| V24 | Rebuild `v_outbound_system_detail` to `INNER JOIN` on `host_configuration_id` (was a `LEFT JOIN` string-matched on `base_url`) — must run before V25 since the view still referenced `outbound_systems.base_url` |
-| V25 | Drop `base_url` from `outbound_systems` — `outbound_host_configurations` is now the sole source of truth |
+| V10 | Create `v_outbound_system_detail` JOIN view |
+| V11 | Create `outbound_parameters` table (host-level injectable key/values, encrypted value) |
+
+### Outbound Parameters
+
+- Scope is the **host**: every system on the host can use the host's keys. Lookups go through a per-key Caffeine cache (default TTL 60 s, `PARAMETERS_CACHE_*`, `0` disables it); values stay encrypted in the cache. Admin changes are visible immediately on the instance that handled them and within the TTL on other instances.
+- `BODY` parameters are injected **before** the body is signed, so HMAC/RSA signatures cover them. The history row stores the original request payload (without injected values).
+- Auth always wins: a parameter whose target equals the system's auth `tokenKeyName` is rejected, and protected headers cannot be targeted.
+- Outbound request logs (Logbook) redact header names and JSON body keys listed in `SENSITIVE_FIELDS` (the match is on the key name, so for a `BODY` path use the last segment). Add the names you use for secret parameters to `SENSITIVE_FIELDS`. **Query-string values are not redacted** — avoid `QUERY_PARAM` for secrets.
+- A value containing a backslash is altered by `GsonHelper.cleanJson` (existing behaviour that strips `\\` from outbound bodies).
 
 ### SSL Verification Disabled
 

@@ -1,6 +1,9 @@
 package com.nantaaditya.example.api;
 
 import com.nantaaditya.example.helper.ResponseHelper;
+import com.nantaaditya.example.model.request.admin.UpsertParametersRequest;
+import com.nantaaditya.example.model.response.OutboundParameterResponse;
+import com.nantaaditya.example.service.OutboundParameterService;
 import com.nantaaditya.example.model.request.admin.CreateHostConfigRequest;
 import com.nantaaditya.example.model.request.admin.UpdateHostConfigRequest;
 import com.nantaaditya.example.model.response.BaseResponse;
@@ -14,6 +17,7 @@ import jakarta.validation.constraints.Min;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,6 +35,7 @@ import reactor.core.publisher.Mono;
 public class OutboundHostController {
 
   private final OutboundHostService outboundHostService;
+  private final OutboundParameterService outboundParameterService;
   private final ResponseHelper responseHelper;
 
   @PostMapping(
@@ -96,6 +101,43 @@ public class OutboundHostController {
   @Operation(summary = "list outbound system", description = "list outbound system")
   public Mono<BaseResponse<List<OutboundSystemResponse>>> listSystems(@PathVariable @Min(value = 1, message = "NotValid") long id) {
     return outboundHostService.listSystems(id)
+        .map(responseHelper::success);
+  }
+
+  @PostMapping(
+      value = "/{id}/parameters",
+      consumes = MediaType.APPLICATION_JSON_VALUE,
+      produces = MediaType.APPLICATION_JSON_VALUE
+  )
+  @Operation(summary = "upsert outbound host parameters",
+      description = "store key-value parameters that clients reference with injectKeys; values are encrypted and never returned")
+  public Mono<BaseResponse<List<OutboundParameterResponse>>> upsertParameters(
+      @PathVariable @Min(value = 1, message = "NotValid") long id,
+      @RequestBody @Valid UpsertParametersRequest request) {
+    return outboundParameterService.upsert(id, request)
+        .map(responseHelper::success);
+  }
+
+  @GetMapping(
+      value = "/{id}/parameters",
+      produces = MediaType.APPLICATION_JSON_VALUE
+  )
+  @Operation(summary = "list outbound host parameters", description = "list parameters without their values")
+  public Mono<BaseResponse<List<OutboundParameterResponse>>> listParameters(
+      @PathVariable @Min(value = 1, message = "NotValid") long id) {
+    return outboundParameterService.list(id)
+        .map(responseHelper::success);
+  }
+
+  @DeleteMapping(
+      value = "/{id}/parameters/{key}",
+      produces = MediaType.APPLICATION_JSON_VALUE
+  )
+  @Operation(summary = "delete outbound host parameter", description = "delete outbound host parameter by key")
+  public Mono<BaseResponse<Boolean>> deleteParameter(
+      @PathVariable @Min(value = 1, message = "NotValid") long id,
+      @PathVariable String key) {
+    return outboundParameterService.delete(id, key)
         .map(responseHelper::success);
   }
 }
