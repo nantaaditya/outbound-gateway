@@ -11,6 +11,7 @@ public enum FeatureConstant {
 
   REMOVE_OBSOLETE_EVENT_LOG(HttpMethod.DELETE, "/internal-api/event_log"),
   REMOVE_OBSOLETE_DEAD_LETTER_PROCESS(HttpMethod.DELETE, "/internal-api/dead_letter_process"),
+  REMOVE_OBSOLETE_OUTBOUND_HISTORY(HttpMethod.DELETE, "/internal-api/outbound_history"),
   OUTBOUND_HISTORIES(HttpMethod.GET, "/api/gateway/histories"),
   CHECK_IDEMPOTENT_REQUEST(HttpMethod.GET, "/api/gateway/histories/*"),
   OUTBOUND_CALL(HttpMethod.POST, "/api/gateway/execute/*"),

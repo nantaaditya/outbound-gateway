@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -50,6 +51,10 @@ public interface OutboundHistoryRepository extends ReactiveCrudRepository<Outbou
       @Param("convertedStatus") Integer convertedStatus,
       @Param("convertedResponse") String convertedResponse,
       @Param("retryCount") int retryCount);
+
+  // Retention purge used by DELETE /internal-api/outbound_history.
+  @Transactional
+  Mono<Void> deleteByCreatedDateBefore(LocalDateTime date);
 
   default Mono<Integer> saveHistory(OutboundHistory h) {
     return saveHistory(

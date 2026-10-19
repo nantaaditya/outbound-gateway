@@ -1738,7 +1738,7 @@ List every outbound system attached to this host configuration — the child sid
 
 #### `POST /api/outbound/host/{id}/parameters`
 
-Create or update (by `key`) the outbound parameters of a host. Values are encrypted (AES-256-GCM) and **never returned** by any API. Changes apply to the very next gateway call (no cache).
+Create or update (by `key`) the outbound parameters of a host. Values are encrypted (AES-256-GCM) and **never returned** by any API. Changes apply immediately on the instance that handled the request; other instances can serve the previous value for up to the parameters cache TTL (default 60s, `PARAMETERS_CACHE_TIME_OUT`; `0` disables the cache).
 
 **Request body:**
 ```json
@@ -1769,6 +1769,23 @@ List the parameters of a host (without values).
 #### `DELETE /api/outbound/host/{id}/parameters/{key}`
 
 Delete one parameter. Unknown key → 400 (`violations.injectKeys: ["NotFound"]`).
+
+---
+
+### Internal API
+
+Housekeeping endpoints under `/internal-api`. Like the admin API they have **no authentication** today; do not expose them outside the cluster.
+
+| Method | Path | Description |
+|---|---|---|
+| `DELETE` | `/internal-api/event_log?days=N` | Delete event logs older than `N` days |
+| `DELETE` | `/internal-api/outbound_history?days=N` | Delete outbound histories (`outbound_histories`) older than `N` days |
+| `DELETE` | `/internal-api/dead_letter_process?days=N` | Delete dead letter processes older than `N` days |
+| `PUT` | `/internal-api/dead_letter_process/_retry` | Retry a dead letter process group |
+
+The `DELETE` endpoints return `data: true` immediately and run the deletion as a background task, so failures are only logged. `days` for `outbound_history` must be `>= 1` (`days=0` or negative → 400, nothing is deleted); the other two endpoints do not validate `days`.
+
+Deleting an outbound history also removes its idempotency record: a request that reuses that `Idempotency-Key` afterwards is executed again instead of returning the stored response. Choose `days` larger than the longest `idempotency_ttl_hours` of your systems.
 
 ---
 
