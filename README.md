@@ -1738,7 +1738,7 @@ List every outbound system attached to this host configuration — the child sid
 
 #### `POST /api/outbound/host/{id}/parameters`
 
-Create or update (by `key`) the outbound parameters of a host. Values are encrypted (AES-256-GCM) and **never returned** by any API. Changes apply immediately on the instance that handled the request; other instances can serve the previous value for up to the parameters cache TTL (default 60s, `PARAMETERS_CACHE_TIME_OUT`; `0` disables the cache).
+Create or update (by `key`) the outbound parameters of a host. Values are encrypted (AES-256-GCM) and **never returned** by any API. Changes apply immediately on the instance that handled the request; other instances can serve the previous value for up to the parameters cache TTL (default 60s, `PARAMETERS_CACHE_TIME_OUT`; `0` disables the cache). All items of one request are saved in a single transaction: if any item fails, none is applied.
 
 **Request body:**
 ```json

@@ -20,6 +20,7 @@ import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -27,8 +28,9 @@ import reactor.core.scheduler.Schedulers;
 /**
  * Admin operations on {@code outbound_parameters}. Values are encrypted on write and never read back.
  *
- * <p>Every write evicts the key from {@link OutboundParameterCache} (after the DB write) so this
- * instance serves the change immediately; other instances converge within the cache TTL.
+ * <p>{@link #upsert} runs in a single transaction. Every write evicts the key from
+ * {@link OutboundParameterCache} after the DB write has committed so this instance serves the change
+ * immediately; other instances converge within the cache TTL.
  */
 @Log4j2
 @Service
@@ -39,6 +41,7 @@ public class OutboundParameterServiceImpl implements OutboundParameterService {
   private final OutboundHostConfigurationRepository hostConfigRepository;
   private final EncryptionHelper encryptionHelper;
   private final OutboundParameterCache parameterCache;
+  private final TransactionalOperator transactionalOperator;
 
   @Override
   public Mono<List<OutboundParameterResponse>> upsert(long hostId, UpsertParametersRequest request) {
@@ -48,8 +51,14 @@ public class OutboundParameterServiceImpl implements OutboundParameterService {
         .concatMap(item -> upsertItem(hostId, item))
         .map(OutboundParameterResponse::from)
         .collectList()
-        .doOnSuccess(r -> log.info(AppLogMessage.message(
-            "#OutboundParameterService - upserted {} parameter(s) hostId={}", r.size(), hostId)));
+        // all items commit or none do; the cache is only touched once the commit succeeded, so an
+        // aborted request cannot invalidate (or let a concurrent load re-cache) half-written state
+        .as(transactionalOperator::transactional)
+        .doOnSuccess(r -> {
+          request.parameters().forEach(item -> parameterCache.evict(hostId, item.key()));
+          log.info(AppLogMessage.message(
+              "#OutboundParameterService - upserted {} parameter(s) hostId={}", r.size(), hostId));
+        });
   }
 
   @Override
@@ -80,8 +89,7 @@ public class OutboundParameterServiceImpl implements OutboundParameterService {
             .map(existing -> existing.updated(encrypted, item.location(), item.targetName(), item.isActive()))
             .defaultIfEmpty(OutboundParameter.create(hostId, item.key(), encrypted,
                 item.location(), item.targetName(), item.isActive()))
-            .flatMap(parameterRepository::save)
-            .doOnNext(saved -> parameterCache.evict(hostId, saved.getParamKey())));
+            .flatMap(parameterRepository::save));
   }
 
   private void validate(UpsertParametersRequest request) {

@@ -32,6 +32,7 @@ import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundParameterRepository;
 import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
+import com.nantaaditya.example.service.OutboundParameterService;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
@@ -79,6 +80,7 @@ class OutboundParameterIntegrationTest extends BaseIntegrationTest {
   @Autowired private OutboundHistoryRepository historyRepository;
   @Autowired private EncryptionHelper encryptionHelper;
   @Autowired private ObjectMapper objectMapper;
+  @Autowired private OutboundParameterService parameterService;
 
   @BeforeEach
   void newCode() {
@@ -374,6 +376,31 @@ class OutboundParameterIntegrationTest extends BaseIntegrationTest {
 
     wireMock.verify(1, postRequestedFor(urlPathEqualTo(PATH)).withHeader("X-Partner-Id", equalTo("old")));
     wireMock.verify(1, postRequestedFor(urlPathEqualTo(PATH)).withHeader("X-Partner-Id", equalTo("new")));
+  }
+
+  @Test
+  @DisplayName("a DB failure on a later item rolls back the earlier items of the same upsert")
+  void upsert_laterItemFailsInDb_rollsBackEarlierItems() {
+    OutboundSystem system = seedSystem();
+    long hostId = system.getHostConfigurationId();
+    seedParameter(system, "A", "old", ParameterInjectLocation.HEADER, "X-Partner-Id", true);
+
+    // Called on the service directly: the controller's @Size(max = 255) would reject the long
+    // target name first, while the DB column (varchar 255) is what has to reject it here.
+    String tooLongForColumn = "a".repeat(300);
+    UpsertParametersRequest request = new UpsertParametersRequest(List.of(
+        new Item("A", "new", ParameterInjectLocation.HEADER, "X-Partner-Id", true),
+        new Item("B", "b", ParameterInjectLocation.HEADER, "X-B", true),
+        new Item("C", "c", ParameterInjectLocation.HEADER, tooLongForColumn, true)));
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+        () -> parameterService.upsert(hostId, request).block())
+        .isNotNull();
+
+    List<OutboundParameter> stored = parameterRepository.findByHostConfigurationId(hostId)
+        .collectList().block();
+    assertThat(stored).extracting(OutboundParameter::getParamKey).containsExactly("A");
+    assertThat(encryptionHelper.decryptToString(stored.get(0).getParamValue())).isEqualTo("old");
   }
 
   // --- helpers ---
