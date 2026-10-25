@@ -1985,7 +1985,7 @@ The admin upserts (`resilience`, `headers`, `authentication`, `response-mapper`)
 
 ### Request Body Size Limit
 
-`AppFilter` enforces a maximum request body size (default 1 MB, HTTP 413 on exceed). Override via `app.filter.max-body-bytes` in `application.yml`.
+`AppFilter` enforces a maximum request body size (default 1 MB, HTTP 413 on exceed). Override via `apps.filter.max-body-bytes` (env `MAX_PAYLOAD_SIZE`) in `application.yml`.
 
 ### Security Hardening
 

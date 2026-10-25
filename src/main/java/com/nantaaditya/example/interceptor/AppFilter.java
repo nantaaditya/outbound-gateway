@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -45,9 +46,10 @@ import reactor.core.publisher.Mono;
  * always reads from the same in-memory snapshot.
  *
  * <h3>Body size guard</h3>
- * <p>If the buffered body exceeds {@code app.filter.max-body-bytes} (default 1 MB / 1 048 576
- * bytes) the buffer is released immediately and HTTP 413 Payload Too Large is returned before
- * any application code sees the request.
+ * <p>If the body exceeds {@code apps.filter.max-body-bytes} (env {@code MAX_PAYLOAD_SIZE}, default
+ * 1 MB / 1 048 576 bytes) reading stops at the limit and HTTP 413 Payload Too Large is returned before
+ * any application code sees the request. The rejected request is still logged (event log with an empty
+ * payload) and its observation is closed.
  *
  * <h3>Header reflection whitelist</h3>
  * <p>Only the three headers in {@link #REFLECT_HEADERS} ({@code X-Request-Id},
@@ -85,7 +87,7 @@ public class AppFilter implements WebFilter {
   @Value("${spring.webflux.base-path}")
   private String contextPath;
 
-  @Value("${app.filter.max-body-bytes:1048576}")
+  @Value("${apps.filter.max-body-bytes:1048576}")
   private int maxBodyBytes;
 
   private final EventLogHelper eventLogHelper;
@@ -123,32 +125,36 @@ public class AppFilter implements WebFilter {
           .contextWrite(ctx -> ctx.put("context", contextDTO));
     }
 
-    return DataBufferUtils.join(request.getBody())
+    // join(body, max) stops reading and fails as soon as the limit is crossed, so an oversized body is never
+    // buffered in full before being rejected.
+    return DataBufferUtils.join(request.getBody(), maxBodyBytes)
         .cast(DataBuffer.class)
+        .onErrorMap(DataBufferLimitException.class,
+            error -> new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Request body exceeds limit"))
         .switchIfEmpty(Mono.fromCallable(() ->
             exchange.getResponse().bufferFactory().allocateBuffer(0)
         ))
         .flatMap(dataBuffer -> {
-          if (dataBuffer.readableByteCount() > maxBodyBytes) {
-            DataBufferUtils.release(dataBuffer);
-            return Mono.error(new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Request body exceeds limit"));
-          }
           byte[] bodyBytes = new byte[dataBuffer.readableByteCount()];
           setCachedAttribute(exchange, dataBuffer, bodyBytes);
           Flux<DataBuffer> cachedBody = getDataBufferFlux(exchange, bodyBytes);
           ServerHttpRequest mutatedRequest = cachedServerHttpRequest(request, cachedBody);
           ServerWebExchange mutatedExchange = exchange.mutate().request(mutatedRequest).build();
 
-          return chain.filter(mutatedExchange)
-              .doOnError(error -> doObservationOnError(error, observationContext, observation))
-              .doFinally(signal -> {
-                eventLogHelper.save(mutatedExchange, contextDTO);
-                try {
-                  observation.stop();
-                } catch (Exception e) {
-                  log.warn(AppLogMessage.message("#Observation - failed to stop observation: {}", e.getMessage()).error(e));
-                }
-              });
+          return chain.filter(mutatedExchange);
+        })
+        // Covers the whole pipeline, body rejection included: a request refused with 413 must still close its
+        // observation and leave an event log. The exchange and its mutated copy share the same attributes.
+        .doOnError(error -> doObservationOnError(error, observationContext, observation))
+        .doFinally(signal -> {
+          // rejected before the body was cached: store an empty payload, never the oversized body
+          exchange.getAttributes().putIfAbsent("cachedRequestBody", new byte[0]);
+          eventLogHelper.save(exchange, contextDTO);
+          try {
+            observation.stop();
+          } catch (Exception e) {
+            log.warn(AppLogMessage.message("#Observation - failed to stop observation: {}", e.getMessage()).error(e));
+          }
         })
         .contextWrite(ctx -> ctx.put("context", contextDTO));
   }
