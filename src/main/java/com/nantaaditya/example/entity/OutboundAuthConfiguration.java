@@ -6,6 +6,8 @@ import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.request.admin.UpsertAuthRequest;
 import java.beans.Transient;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -38,6 +40,8 @@ public class OutboundAuthConfiguration extends BaseEntity<Long> {
   private String tokenResponseExpiryPath;
   private String currentToken;
   private LocalDateTime tokenExpiryTime;
+  /** Non-secret, per-type settings (for example {@code timestampHeader} of HMAC_TIMESTAMP); secrets stay encrypted above. */
+  private Map<String, Object> authSettings;
 
   public boolean isTokenExpired() {
     return tokenExpiryTime == null || LocalDateTime.now().isAfter(tokenExpiryTime);
@@ -63,6 +67,7 @@ public class OutboundAuthConfiguration extends BaseEntity<Long> {
         .tokenKeyName(request.tokenKeyName())
         .tokenResponsePath(request.tokenResponsePath())
         .tokenResponseExpiryPath(request.tokenResponseExpiryPath())
+        .authSettings(request.authSettings() == null ? null : new LinkedHashMap<>(request.authSettings()))
         .currentToken(this.currentToken)
         .tokenExpiryTime(this.tokenExpiryTime)
         .build();

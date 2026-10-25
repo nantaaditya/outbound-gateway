@@ -7,5 +7,7 @@ public enum AuthType {
   BEARER_STATIC,
   OAUTH,
   HMAC,
-  RSA
+  RSA,
+  /** Signs {@code timestamp + "." + body} with HMAC-SHA256 and sends the ISO-8601 timestamp and the signature. */
+  HMAC_TIMESTAMP
 }
