@@ -107,14 +107,12 @@ class OutboundHistoryRetentionIntegrationTest extends BaseIntegrationTest {
   }
 
   @Test
-  @DisplayName("missing days parameter is rejected and nothing is deleted")
+  @DisplayName("missing days parameter is rejected with 400 and nothing is deleted")
   void remove_missingDays_rejectedAndNothingDeleted() {
-    // Not asserted as 400: ApiExceptionHandler has no ServerWebInputException mapping, so a missing
-    // required parameter currently surfaces as 500 on every endpoint (tracked in architecture-remediation.md).
     webTestClient.delete()
         .uri(ENDPOINT)
         .exchange()
-        .expectStatus().value(status -> assertThat(status).isGreaterThanOrEqualTo(400));
+        .expectStatus().isBadRequest();
 
     assertThat(remainingKeys()).hasSize(4);
   }
