@@ -42,8 +42,9 @@ public class OutboundHostServiceImpl implements OutboundHostService {
 
   @Override
   public Mono<List<OutboundHostConfigResponse>> list(int page, int size) {
-    PageRequest pageRequest = PageRequest.of(page, size);
-    pageRequest.withSort(Sort.by(Direction.ASC, "createdDate"));
+    // PageRequest is immutable: the sort has to be passed to of(...). id breaks ties between rows created in the
+    // same instant, so consecutive pages never repeat or skip a host.
+    PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Direction.ASC, "createdDate", "id"));
 
     return hostConfigRepository.findAllBy(pageRequest)
         .map(OutboundHostConfigResponse::from)

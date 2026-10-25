@@ -22,6 +22,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
@@ -88,6 +89,21 @@ class OutboundHostServiceImplTest {
               .containsExactlyInAnyOrder("https://a.example.com", "https://b.example.com");
         })
         .verifyComplete();
+  }
+
+  @Test
+  @DisplayName("list pages in a stable order: oldest first, id as the tie-breaker (otherwise pages can repeat or skip rows)")
+  void list_requestsStableSortedPage() {
+    when(hostConfigRepository.findAllBy(any(Pageable.class))).thenReturn(Flux.empty());
+
+    service.list(2, 5).block();
+
+    ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+    verify(hostConfigRepository).findAllBy(pageable.capture());
+    assertThat(pageable.getValue().getPageNumber()).isEqualTo(2);
+    assertThat(pageable.getValue().getPageSize()).isEqualTo(5);
+    assertThat(pageable.getValue().getSort().stream().map(o -> o.getProperty() + ":" + o.getDirection()))
+        .containsExactly("createdDate:ASC", "id:ASC");
   }
 
   @Test
