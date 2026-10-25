@@ -12,12 +12,18 @@ import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.dto.ResolvedParameters;
+import com.nantaaditya.example.model.dto.SigningInput;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
+import com.nantaaditya.example.service.AuthStrategy;
+import com.nantaaditya.example.service.RequestSigner;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -55,21 +61,48 @@ public class OutboundRequestExecutor {
       // request (without injected values) is what the history persists.
       Object outboundBody = parameterInjector.injectBody(request.body(), parameters.bodyItems());
       String cleanedBody = GsonHelper.cleanJson(jsonHelper.toJsonString(outboundBody), gson);
-      return authenticateRequest(context, cleanedBody)
+      HttpHeaders headers = prepareHeaders(context, parameters);
+      SigningInput signingInput = signingInput(context, request, parameters, headers, cleanedBody);
+      return authenticateRequest(context, signingInput)
           .doOnSubscribe(__ -> onAttempt.run())
-          .flatMap(credential -> executeHttp(context, request, parameters, cleanedBody, credential))
+          .flatMap(credentials -> executeHttp(context, request, parameters, cleanedBody, headers, credentials))
           .map(response -> gatewayHelper.applyMapping(context, response));
     });
   }
 
-  private Mono<AuthCredential> authenticateRequest(OutboundSystemContext context, String cleanedBody) {
-    return authStrategyFactory
-        .getStrategy(context.getAuth().getAuthType())
-        .authenticate(context.getAuth(), encryptionHelper, cleanedBody);
+  // Configured headers first, then injected ones (which replace a configured header of the same name). Built
+  // before authentication so a signer sees them; the credentials are added to the request afterwards.
+  private HttpHeaders prepareHeaders(OutboundSystemContext context, ResolvedParameters parameters) {
+    HttpHeaders headers = new HttpHeaders();
+    gatewayHelper.applyConfiguredHeaders(context, headers);
+    parameters.headers().forEach(headers::set);
+    return headers;
+  }
+
+  private SigningInput signingInput(OutboundSystemContext context, GatewayRequest request,
+      ResolvedParameters parameters, HttpHeaders headers, String cleanedBody) {
+    Map<String, List<String>> query = new HashMap<>();
+    if (request.hasQueryParams()) {
+      request.queryParams().forEach((name, value) -> query.computeIfAbsent(name, n -> new ArrayList<>()).add(value));
+    }
+    parameters.queryParams().forEach((name, value) -> query.computeIfAbsent(name, n -> new ArrayList<>()).add(value));
+    OutboundSystem system = context.getSystem();
+    return new SigningInput(system.getHttpMethodEnum().name(), system.getApiPath(), query, headers, cleanedBody);
+  }
+
+  // A plain AuthStrategy yields exactly one credential computed from the body alone; a RequestSigner sees the
+  // whole prepared request and may yield several.
+  private Mono<List<AuthCredential>> authenticateRequest(OutboundSystemContext context, SigningInput input) {
+    AuthStrategy strategy = authStrategyFactory.getStrategy(context.getAuth().getAuthType());
+    if (strategy instanceof RequestSigner signer) {
+      return signer.sign(input, context.getAuth(), encryptionHelper);
+    }
+    return strategy.authenticate(context.getAuth(), encryptionHelper, input.body()).map(List::of);
   }
 
   private Mono<GatewayResponse> executeHttp(OutboundSystemContext context, GatewayRequest request,
-      ResolvedParameters parameters, String cleanedBody, AuthCredential credential) {
+      ResolvedParameters parameters, String cleanedBody, HttpHeaders preparedHeaders,
+      List<AuthCredential> credentials) {
     OutboundSystem system = context.getSystem();
     HttpMethod httpMethod = system.getHttpMethodEnum();
 
@@ -88,15 +121,14 @@ public class OutboundRequestExecutor {
             uriVariables.put(variable, value);
             uriBuilder.queryParam(name, "{" + variable + "}");
           });
-          if (!credential.isEmpty() && credential.location() == TokenInjectLocation.QUERY_PARAM) {
-            uriBuilder.queryParam(credential.keyName(), credential.value());
-          }
+          credentials.stream()
+              .filter(credential -> !credential.isEmpty() && credential.location() == TokenInjectLocation.QUERY_PARAM)
+              .forEach(credential -> uriBuilder.queryParam(credential.keyName(), credential.value()));
           return uriBuilder.build(uriVariables);
         })
         .headers(headers -> {
-          gatewayHelper.applyConfiguredHeaders(context, headers);
-          parameters.headers().forEach(headers::set);
-          gatewayHelper.applyAuthHeader(credential, headers);
+          headers.addAll(preparedHeaders);
+          credentials.forEach(credential -> gatewayHelper.applyAuthHeader(credential, headers));
         });
 
     // Send the same cleanedBody string that was signed above — not request.body() re-serialized
