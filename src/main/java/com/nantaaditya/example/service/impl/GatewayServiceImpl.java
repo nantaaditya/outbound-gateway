@@ -1,35 +1,30 @@
 package com.nantaaditya.example.service.impl;
 
-import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
+import com.nantaaditya.example.gateway.HistoryRecorder;
 import com.nantaaditya.example.gateway.OutboundRequestExecutor;
 import com.nantaaditya.example.gateway.ResilienceDecorator;
 import com.nantaaditya.example.gateway.SystemContextLoader;
 import com.nantaaditya.example.helper.GatewayHelper;
-import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.OutboundMetricsRecorder;
 import com.nantaaditya.example.helper.ParameterResolver;
 import com.nantaaditya.example.idempotency.IdempotencyGuard;
-import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.dto.ResolvedParameters;
-import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
-import com.nantaaditya.example.repository.OutboundHistoryRepository;
 import com.nantaaditya.example.service.GatewayService;
 import io.micrometer.observation.Observation;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 /**
- * Central orchestrator for all outbound gateway calls.
+ * Central orchestrator for all outbound gateway calls. It only wires the steps together; each step lives in
+ * its own class.
  *
  * <h3>Execution pipeline (per call)</h3>
  * <ol>
@@ -40,33 +35,25 @@ import reactor.core.publisher.Mono;
  *       and runs the call only for the one that owns the key.</li>
  *   <li>{@link ParameterResolver} — resolves the {@code injectKeys}; a bad key is a client error (400).</li>
  *   <li>{@link OutboundRequestExecutor} wrapped by {@link ResilienceDecorator} — injects parameters,
- *       authenticates/signs, sends the HTTP call and applies the response mapping.</li>
- *   <li>{@link #saveHistory} — saves the execution history for auditing and idempotency support.
- *       It is awaited before the response is returned; a failure is logged and swallowed.</li>
+ *       authenticates/signs, sends the HTTP call and applies the response mapping. The resilience operator
+ *       order is defined in {@link ResilienceDecorator} only.</li>
+ *   <li>{@link HistoryRecorder} — saves the execution history for auditing and idempotency support. It is
+ *       awaited before the response is returned, so it adds to the call's latency, but a failure is logged
+ *       and swallowed: a history write problem never fails the call.</li>
  * </ol>
- *
- * <h3>Resilience operator order</h3>
- * <p>Defined in one place only: {@link ResilienceDecorator}.
- *
- * <h3>History save</h3>
- * <p>The insert is awaited, so it adds to the call's latency, but {@link #saveHistory} failures
- * are logged and swallowed: a history write failure must never surface as a gateway call
- * failure to the caller.
  */
-@Log4j2
 @Service
 @RequiredArgsConstructor
 public class GatewayServiceImpl implements GatewayService {
 
   private final SystemContextLoader contextLoader;
-  private final OutboundHistoryRepository historyRepository;
-  private final JsonHelper jsonHelper;
   private final OutboundMetricsRecorder metricsRecorder;
   private final GatewayHelper gatewayHelper;
   private final ParameterResolver parameterResolver;
   private final IdempotencyGuard idempotencyGuard;
   private final ResilienceDecorator resilienceDecorator;
   private final OutboundRequestExecutor requestExecutor;
+  private final HistoryRecorder historyRecorder;
 
   @Override
   public Mono<GatewayResponse> execute(String code, String callerService, String idempotencyKey,
@@ -131,12 +118,8 @@ public class GatewayServiceImpl implements GatewayService {
           int retryCount = Math.max(0, attempts.get() - 1);
           metricsRecorder.finalizeCall(observation, response.status(), callerService);
 
-          return saveHistory(context, callerService, idempotencyKey, request, response, durationMs, retryCount)
-              .onErrorResume(err -> {
-                log.error(AppLogMessage.message("#GATEWAY - failed to save history for {}: {}",
-                    gatewayHelper.code(context), err.getMessage()).error(err));
-                return Mono.empty();
-              })
+          return historyRecorder
+              .record(context, callerService, idempotencyKey, request, response, durationMs, retryCount)
               .thenReturn(response);
         });
   }
@@ -146,24 +129,4 @@ public class GatewayServiceImpl implements GatewayService {
         .map(OutboundHostConfiguration::getBaseUrl)
         .orElse("unknown");
   }
-
-  private Mono<Void> saveHistory(
-      OutboundSystemContext context, String callerService, String idempotencyKey,
-      GatewayRequest request, GatewayResponse response, long durationMs, int retryCount) {
-    return Mono.deferContextual(ctx -> {
-      String requestId = ctx.<ContextDTO>getOrEmpty("context")
-          .map(ContextDTO::getRequestId)
-          .orElse(null);
-      String requestPayload = request.bodyAsString(jsonHelper);
-      Map<String, Object> requestHeaders = gatewayHelper.resolveRequestHeaders(context);
-      OutboundHistory history = OutboundHistory.create(context.getSystem(),
-          context.getHostConfig().getBaseUrl(), callerService,
-          idempotencyKey, requestId, requestPayload,
-          requestHeaders, response, durationMs, retryCount
-      );
-
-      return historyRepository.saveHistory(history).then();
-    });
-  }
-
 }

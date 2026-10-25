@@ -6,17 +6,18 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
-import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
+import com.nantaaditya.example.gateway.HistoryRecorder;
 import com.nantaaditya.example.gateway.OutboundRequestExecutor;
 import com.nantaaditya.example.gateway.ResilienceDecorator;
 import com.nantaaditya.example.gateway.SystemContextLoader;
@@ -33,7 +34,6 @@ import com.nantaaditya.example.model.dto.ResolvedParameters;
 import com.nantaaditya.example.model.exception.InvalidParameterException;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
-import com.nantaaditya.example.repository.OutboundHistoryRepository;
 import com.nantaaditya.example.service.impl.GatewayServiceImpl;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
@@ -57,8 +57,6 @@ class GatewayServiceImplTest {
   @Mock
   SystemContextLoader contextLoader;
   @Mock
-  OutboundHistoryRepository historyRepository;
-  @Mock
   JsltResponseMapper jsltResponseMapper;
   @Mock
   JsonHelper jsonHelper;
@@ -70,6 +68,8 @@ class GatewayServiceImplTest {
   IdempotencyGuard idempotencyGuard;
   @Mock
   OutboundRequestExecutor requestExecutor;
+  @Mock
+  HistoryRecorder historyRecorder;
 
   GatewayServiceImpl gatewayService;
 
@@ -79,12 +79,12 @@ class GatewayServiceImplTest {
     // jsonHelper/jsltResponseMapper, both mocked above) and a real, stateless ResilienceDecorator,
     // rather than Mockito silently injecting null for unmocked constructor args.
     gatewayService = new GatewayServiceImpl(
-        contextLoader, historyRepository, jsonHelper, metricsRecorder,
-        new GatewayHelper(jsonHelper, jsltResponseMapper),
-        parameterResolver, idempotencyGuard, new ResilienceDecorator(), requestExecutor);
+        contextLoader, metricsRecorder, new GatewayHelper(jsonHelper, jsltResponseMapper),
+        parameterResolver, idempotencyGuard, new ResilienceDecorator(), requestExecutor, historyRecorder);
     lenient().when(parameterResolver.resolve(any(), any()))
         .thenReturn(Mono.just(ResolvedParameters.empty()));
-    lenient().when(historyRepository.saveHistory(any(OutboundHistory.class))).thenReturn(Mono.just(1));
+    lenient().when(historyRecorder.record(any(), any(), any(), any(), any(), anyLong(), anyInt()))
+        .thenReturn(Mono.empty());
   }
 
   @Test
@@ -104,8 +104,8 @@ class GatewayServiceImplTest {
   }
 
   @Test
-  @DisplayName("a call without an idempotency key runs the executor, saves one history row and never uses the guard")
-  void execute_noIdempotencyKey_runsExecutorAndSavesHistory() {
+  @DisplayName("a call without an idempotency key runs the executor, records the history once and never uses the guard")
+  void execute_noIdempotencyKey_runsExecutorAndRecordsHistory() {
     OutboundSystemContext context = stubContext("no-key-gw", 24, OutboundResilienceConfiguration.bypass(), null);
     executorSucceeds(context);
 
@@ -113,16 +113,14 @@ class GatewayServiceImplTest {
         .execute("no-key-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
 
     assertThat(response.status()).isEqualTo(200);
-    ArgumentCaptor<OutboundHistory> history = ArgumentCaptor.forClass(OutboundHistory.class);
-    verify(historyRepository).saveHistory(history.capture());
-    assertThat(history.getValue().getRetryCount()).isZero();
-    assertThat(history.getValue().getCallerService()).isEqualTo("svc");
+    verify(historyRecorder).record(eq(context), eq("svc"), isNull(), any(GatewayRequest.class), eq(response),
+        anyLong(), eq(0));
     verify(idempotencyGuard, never()).guard(anyLong(), anyString(), anyInt(), any());
   }
 
   @Test
-  @DisplayName("the number of executor subscriptions becomes the retry count saved in the history (attempts - 1)")
-  void execute_retriedCall_savesRetryCount() {
+  @DisplayName("the number of executor subscriptions becomes the retry count handed to the recorder (attempts - 1)")
+  void execute_retriedCall_recordsRetryCount() {
     Retry retry = Retry.of("r", RetryConfig.custom().maxAttempts(3).waitDuration(Duration.ofMillis(1)).build());
     OutboundSystemContext context = stubContext("retry-gw", 24,
         OutboundResilienceConfiguration.builder().readTimeOutMs(1000).build(), retry);
@@ -141,14 +139,12 @@ class GatewayServiceImplTest {
         .execute("retry-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
 
     assertThat(response.status()).isEqualTo(200);
-    ArgumentCaptor<OutboundHistory> history = ArgumentCaptor.forClass(OutboundHistory.class);
-    verify(historyRepository).saveHistory(history.capture());
-    assertThat(history.getValue().getRetryCount()).isEqualTo(2);
+    verify(historyRecorder).record(eq(context), eq("svc"), isNull(), any(), eq(response), anyLong(), eq(2));
   }
 
   @Test
-  @DisplayName("an error from the call is turned into an internal reject and still saved in the history")
-  void execute_executorError_becomesInternalRejectAndIsSaved() {
+  @DisplayName("an error from the call is turned into an internal reject and still recorded")
+  void execute_executorError_becomesInternalRejectAndIsRecorded() {
     OutboundSystemContext context = stubContext("fail-gw", 24, OutboundResilienceConfiguration.bypass(), null);
     when(requestExecutor.execute(eq(context), any(), any(), any()))
         .thenReturn(Mono.error(new IllegalStateException("connection refused")));
@@ -157,16 +153,16 @@ class GatewayServiceImplTest {
         .execute("fail-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
 
     assertThat(response.status()).isGreaterThanOrEqualTo(500);
-    verify(historyRepository).saveHistory(any(OutboundHistory.class));
+    ArgumentCaptor<GatewayResponse> recorded = ArgumentCaptor.forClass(GatewayResponse.class);
+    verify(historyRecorder).record(eq(context), eq("svc"), isNull(), any(), recorded.capture(), anyLong(), anyInt());
+    assertThat(recorded.getValue()).isSameAs(response);
   }
 
   @Test
-  @DisplayName("a failure to save the history is swallowed: the caller still gets the response")
-  void execute_historySaveFails_responseStillReturned() {
+  @DisplayName("the caller gets the response even though recording the history completes without storing anything")
+  void execute_recorderCompletesEmpty_responseStillReturned() {
     OutboundSystemContext context = stubContext("hist-gw", 24, OutboundResilienceConfiguration.bypass(), null);
     executorSucceeds(context);
-    when(historyRepository.saveHistory(any(OutboundHistory.class)))
-        .thenReturn(Mono.error(new IllegalStateException("db down")));
 
     GatewayResponse response = gatewayService
         .execute("hist-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
@@ -175,7 +171,7 @@ class GatewayServiceImplTest {
   }
 
   @Test
-  @DisplayName("an unresolvable injectKey is a client error: nothing is executed and no history is saved")
+  @DisplayName("an unresolvable injectKey is a client error: nothing is executed and no history is recorded")
   void execute_parameterResolutionFails_noExecutionNoHistory() {
     stubContext("param-gw", 24, OutboundResilienceConfiguration.bypass(), null);
     when(parameterResolver.resolve(any(), any()))
@@ -186,7 +182,7 @@ class GatewayServiceImplTest {
         .verify();
 
     verify(requestExecutor, never()).execute(any(), any(), any(), any());
-    verify(historyRepository, never()).saveHistory(any(OutboundHistory.class));
+    verify(historyRecorder, never()).record(any(), any(), any(), any(), any(), anyLong(), anyInt());
   }
 
   @Test
@@ -201,7 +197,7 @@ class GatewayServiceImplTest {
         .expectError(InvalidParameterException.class)
         .verify();
 
-    verify(historyRepository, never()).saveHistory(any(OutboundHistory.class));
+    verify(historyRecorder, never()).record(any(), any(), any(), any(), any(), anyLong(), anyInt());
   }
 
   @Test
