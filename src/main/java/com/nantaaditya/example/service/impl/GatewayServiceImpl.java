@@ -6,6 +6,7 @@ import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.helper.GatewayHelper;
+import com.nantaaditya.example.gateway.ResilienceDecorator;
 import com.nantaaditya.example.gateway.SystemContextLoader;
 import com.nantaaditya.example.idempotency.IdempotencyGuard;
 import com.nantaaditya.example.helper.GsonHelper;
@@ -24,10 +25,6 @@ import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
 import com.nantaaditya.example.service.GatewayService;
-import io.github.resilience4j.reactor.bulkhead.operator.BulkheadOperator;
-import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
-import io.github.resilience4j.reactor.ratelimiter.operator.RateLimiterOperator;
-import io.github.resilience4j.reactor.retry.RetryOperator;
 import io.micrometer.observation.Observation;
 import java.time.Duration;
 import java.util.HashMap;
@@ -58,11 +55,7 @@ import reactor.core.publisher.Mono;
  * </ol>
  *
  * <h3>Resilience operator order</h3>
- * <p>{@code transformDeferred} builds the chain inside-out. The order below results in Retry
- * being the outermost wrapper at execution time:
- * <pre>  RateLimiter → Bulkhead → CircuitBreaker → Retry (outermost)</pre>
- * Retry must be outermost so each retry re-evaluates CB and Bulkhead. Placing Retry inside
- * CB would bypass the circuit breaker on retries — defeating its purpose.
+ * <p>Defined in one place only: {@link ResilienceDecorator}.
  *
  * <h3>History save</h3>
  * <p>The insert is awaited, so it adds to the call's latency, but {@link #saveHistory} failures
@@ -85,6 +78,7 @@ public class GatewayServiceImpl implements GatewayService {
   private final ParameterResolver parameterResolver;
   private final ParameterInjector parameterInjector;
   private final IdempotencyGuard idempotencyGuard;
+  private final ResilienceDecorator resilienceDecorator;
 
   @Override
   public Mono<GatewayResponse> execute(String code, String callerService, String idempotencyKey,
@@ -137,7 +131,7 @@ public class GatewayServiceImpl implements GatewayService {
     // retry attempt, so doOnSubscribe fires once per attempt. retryCount = attempts - 1.
     AtomicInteger attempts = new AtomicInteger(0);
     Mono<GatewayResponse> execution = buildExecution(context, request, parameters, attempts);
-    execution = decorateResilience(context, execution);
+    execution = resilienceDecorator.decorate(context, execution);
 
     // onErrorResume converts ALL resilience/infra exceptions → GatewayResponse.internalReject(),
     // so flatMap fires for every execution path and history is always saved.
@@ -162,27 +156,6 @@ public class GatewayServiceImpl implements GatewayService {
     return Optional.ofNullable(context.getHostConfig())
         .map(OutboundHostConfiguration::getBaseUrl)
         .orElse("unknown");
-  }
-
-  private Mono<GatewayResponse> decorateResilience(OutboundSystemContext context,
-      Mono<GatewayResponse> execution) {
-    if (!context.getResilience().isBypassed()) {
-      // Operator order matters — transformDeferred builds the chain inside-out.
-      // Applied left-to-right here means right is outermost at execution time:
-      //   RateLimiter (innermost) → Bulkhead → CircuitBreaker → Retry (outermost)
-      // Retry must be outermost so each retry attempt passes through CB + Bulkhead.
-      // Swapping Retry inside CB means retries bypass the circuit breaker — defeating CB.
-      // Only apply operators for mechanisms that were explicitly enabled by the admin.
-      if (context.getRateLimiter() != null)
-        execution = execution.transformDeferred(RateLimiterOperator.of(context.getRateLimiter()));
-      if (context.getBulkhead() != null)
-        execution = execution.transformDeferred(BulkheadOperator.of(context.getBulkhead()));
-      if (context.getCircuitBreaker() != null)
-        execution = execution.transformDeferred(CircuitBreakerOperator.of(context.getCircuitBreaker()));
-      if (context.getRetry() != null)
-        execution = execution.transformDeferred(RetryOperator.of(context.getRetry()));
-    }
-    return execution;
   }
 
   private Mono<GatewayResponse> buildExecution(OutboundSystemContext context,

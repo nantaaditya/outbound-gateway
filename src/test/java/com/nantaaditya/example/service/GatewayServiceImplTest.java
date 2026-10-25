@@ -21,6 +21,7 @@ import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.factory.AuthStrategyFactory;
+import com.nantaaditya.example.gateway.ResilienceDecorator;
 import com.nantaaditya.example.gateway.SystemContextLoader;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.helper.GatewayHelper;
@@ -87,7 +88,8 @@ class GatewayServiceImplTest {
         contextLoader, historyRepository,
         authStrategyFactory, encryptionHelper, jsonHelper, metricsRecorder,
         new Gson(), new GatewayHelper(jsonHelper, jsltResponseMapper),
-        parameterResolver, new ParameterInjector(new ObjectMapper()), idempotencyGuard);
+        parameterResolver, new ParameterInjector(new ObjectMapper()), idempotencyGuard,
+        new ResilienceDecorator());
     lenient().when(parameterResolver.resolve(any(), any()))
         .thenReturn(Mono.just(ResolvedParameters.empty()));
   }

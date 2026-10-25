@@ -48,12 +48,10 @@ import reactor.netty.transport.ProxyProvider;
  * fail. All systems sharing the same {@code baseUrl} are affected.
  *
  * <h3>Resilience wiring</h3>
- * <p>{@link #buildContext} registers Resilience4j instances only when their enable flag is
- * {@code true}. The application order in {@code GatewayServiceImpl.executeWithResilience}
- * must match the registration order here:
- * <pre>  transformDeferred: RateLimiter → Bulkhead → CircuitBreaker → Retry (outermost)</pre>
- * Retry being outermost means each retry passes through CB and Bulkhead again. Swapping
- * Retry inside CB would bypass the circuit breaker on retries — defeating its purpose.
+ * <p>{@link #buildContext} attaches Resilience4j instances only when their enable flag is
+ * {@code true}. The order in which they wrap a call is defined solely by
+ * {@code com.nantaaditya.example.gateway.ResilienceDecorator}; the order they are attached here
+ * has no effect.
  */
 @Log4j2
 @Service
@@ -162,12 +160,8 @@ public class GatewayWebClientBuilder {
     );
 
     if (!resilienceConfiguration.isBypassed()) {
-      // Each mechanism is registered only when its flag is enabled.
-      // Operator application order in executeWithResilience must match:
-      // RateLimiter → Bulkhead → CircuitBreaker → Retry
-      // transformDeferred builds inside-out: Retry is the outermost wrapper and
-      // re-submits through the full pipeline (including CB + Bulkhead) on each attempt.
-      // Wrong order here = Retry bypasses CircuitBreaker, defeating its purpose.
+      // Each mechanism is attached only when its flag is enabled. The wrapping order is decided by
+      // ResilienceDecorator, not by the order of these lines.
       if (resilienceConfiguration.isCircuitBreakerEnabled())
         builder.circuitBreaker(resilienceRegistry.getOrCreateCircuitBreaker(code, resilienceConfiguration));
       if (resilienceConfiguration.isBulkheadEnabled())
