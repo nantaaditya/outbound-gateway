@@ -36,6 +36,8 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
+import org.springframework.web.server.MissingRequestValueException;
+import org.springframework.web.server.ServerWebInputException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.reactive.resource.NoResourceFoundException;
 import reactor.core.publisher.Sinks.EmissionException;
@@ -212,6 +214,34 @@ public class ApiExceptionHandler {
       BaseResponse<Object> response = responseHelper.failed(ResponseCode.BAD_REQUEST, errors);
       return Tuples.of(errors, response);
     });
+  }
+
+  /**
+   * Input the client got wrong: a missing required parameter/header, a value of the wrong type, or a body that
+   * cannot be decoded. Without this it fell into {@link Throwable} below and was reported as a 500, which
+   * monitoring counts as a server fault and clients that retry on 5xx repeat for ever.
+   */
+  @ResponseBody
+  @ResponseStatus(HttpStatus.BAD_REQUEST)
+  @ExceptionHandler(ServerWebInputException.class)
+  public BaseResponse<Object> serverWebInputException(ServerWebInputException ex) {
+    return toBaseErrorResponse(ex, error -> {
+      String reason = error instanceof MissingRequestValueException ? "NotNull" : NOT_VALID_ERROR;
+      Map<String, List<String>> errors = Map.of(inputName(error), List.of(reason));
+      BaseResponse<Object> response = responseHelper.failed(ResponseCode.INVALID_PARAMS, errors);
+      return Tuples.of(errors, response);
+    });
+  }
+
+  private String inputName(ServerWebInputException ex) {
+    if (ex instanceof MissingRequestValueException missing) {
+      return missing.getName();
+    }
+    MethodParameter parameter = ex.getMethodParameter();
+    if (parameter != null && parameter.getParameterName() != null) {
+      return parameter.getParameterName();
+    }
+    return "request";
   }
 
   @ResponseBody
