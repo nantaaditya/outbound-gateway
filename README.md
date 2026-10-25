@@ -1913,7 +1913,9 @@ To rotate the key: re-encrypt all sensitive fields in DB (`api_key`, `client_id`
 
 ### Context Cache TTL
 
-The context cache has no TTL — entries live until evicted by `POST /api/outbound/{code}/reload`. After a DB config change via the Admin API, the in-memory context is stale until reload is called. The Admin API update endpoints do **not** auto-reload.
+The context cache has no TTL — entries live until evicted by `POST /api/outbound/{code}/reload`. The Admin API evicts the context itself after a successful change (the `upsert*` endpoints always; `PUT /api/outbound/{code}` unless called with `?reload=false`, which only stores the change and leaves the running context alone until `POST /api/outbound/{code}/reload`). Use `reload=false` to batch several edits and apply them once. A change made directly in the database, or on another instance, is not seen until that instance's context is reloaded.
+
+Cache metrics (Prometheus): `cache_gets_total{cache,result}`, `cache_size{cache}`, `cache_evictions_total{cache}` for the `jslt`, `parameters`, `contexts` and `additional-data` caches, plus `gateway_context_cache_entries` and `gateway_webclient_cache_entries` for the two map caches. Cache removals are logged at INFO (`EXPIRED`, `EXPLICIT`, `REPLACED`) and at WARN only when an entry is lost to the size cap.
 
 ### Connection Pool and Host Configuration
 
