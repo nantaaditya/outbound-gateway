@@ -1,0 +1,115 @@
+package com.nantaaditya.example.gateway;
+
+import com.google.gson.Gson;
+import com.nantaaditya.example.entity.OutboundSystem;
+import com.nantaaditya.example.factory.AuthStrategyFactory;
+import com.nantaaditya.example.helper.EncryptionHelper;
+import com.nantaaditya.example.helper.GatewayHelper;
+import com.nantaaditya.example.helper.GsonHelper;
+import com.nantaaditya.example.helper.JsonHelper;
+import com.nantaaditya.example.helper.ParameterInjector;
+import com.nantaaditya.example.model.constant.TokenInjectLocation;
+import com.nantaaditya.example.model.dto.AuthCredential;
+import com.nantaaditya.example.model.dto.OutboundSystemContext;
+import com.nantaaditya.example.model.dto.ResolvedParameters;
+import com.nantaaditya.example.model.request.GatewayRequest;
+import com.nantaaditya.example.model.response.GatewayResponse;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpMethod;
+import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+/**
+ * Builds and sends one outbound HTTP call for a system: injects the resolved parameters, authenticates/signs
+ * the body, assembles URI and headers, sends the request and maps the answer. It does not apply resilience
+ * (see {@link ResilienceDecorator}) and does not record anything.
+ */
+@Component
+@RequiredArgsConstructor
+public class OutboundRequestExecutor {
+
+  private final ParameterInjector parameterInjector;
+  private final JsonHelper jsonHelper;
+  private final Gson gson;
+  private final AuthStrategyFactory authStrategyFactory;
+  private final EncryptionHelper encryptionHelper;
+  private final GatewayHelper gatewayHelper;
+
+  /**
+   * @param onAttempt invoked every time the returned {@code Mono} is subscribed. A retry re-subscribes, so
+   *                  the caller counts attempts with it (retries = attempts - 1).
+   */
+  public Mono<GatewayResponse> execute(OutboundSystemContext context, GatewayRequest request,
+      ResolvedParameters parameters, Runnable onAttempt) {
+    // Signed once here and reused verbatim for the outbound call below — HMAC/RSA must sign
+    // exactly the bytes that go on the wire, not a separately re-serialized copy of the body.
+    // BODY parameters are injected before signing so the signature covers them; the original
+    // request (without injected values) is what the history persists.
+    Object outboundBody = parameterInjector.injectBody(request.body(), parameters.bodyItems());
+    String cleanedBody = GsonHelper.cleanJson(jsonHelper.toJsonString(outboundBody), gson);
+    return authenticateRequest(context, cleanedBody)
+        .doOnSubscribe(__ -> onAttempt.run())
+        .flatMap(credential -> executeHttp(context, request, parameters, cleanedBody, credential))
+        .map(response -> gatewayHelper.applyMapping(context, response));
+  }
+
+  private Mono<AuthCredential> authenticateRequest(OutboundSystemContext context, String cleanedBody) {
+    return authStrategyFactory
+        .getStrategy(context.getAuth().getAuthType())
+        .authenticate(context.getAuth(), encryptionHelper, cleanedBody);
+  }
+
+  private Mono<GatewayResponse> executeHttp(OutboundSystemContext context, GatewayRequest request,
+      ResolvedParameters parameters, String cleanedBody, AuthCredential credential) {
+    OutboundSystem system = context.getSystem();
+    HttpMethod httpMethod = system.getHttpMethodEnum();
+
+    WebClient.RequestBodySpec requestSpec = context.getWebClient()
+        .method(httpMethod)
+        .uri(uriBuilder -> {
+          uriBuilder.path(system.getApiPath());
+          if (request.hasQueryParams()) {
+            request.queryParams().forEach(uriBuilder::queryParam);
+          }
+          // Injected values go through URI template variables so they are encoded as ONE value:
+          // a literal "{x}" is not expanded and "&" / "+" cannot smuggle extra query params.
+          Map<String, Object> uriVariables = new HashMap<>();
+          parameters.queryParams().forEach((name, value) -> {
+            String variable = "injected" + uriVariables.size();
+            uriVariables.put(variable, value);
+            uriBuilder.queryParam(name, "{" + variable + "}");
+          });
+          if (!credential.isEmpty() && credential.location() == TokenInjectLocation.QUERY_PARAM) {
+            uriBuilder.queryParam(credential.keyName(), credential.value());
+          }
+          return uriBuilder.build(uriVariables);
+        })
+        .headers(headers -> {
+          gatewayHelper.applyConfiguredHeaders(context, headers);
+          parameters.headers().forEach(headers::set);
+          gatewayHelper.applyAuthHeader(credential, headers);
+        });
+
+    // Send the same cleanedBody string that was signed above — not request.body() re-serialized
+    // independently by WebFlux's encoder, which would silently break HMAC/RSA verification.
+    Mono<GatewayResponse> httpMono = (request.hasBody()
+        ? requestSpec.bodyValue(cleanedBody)
+        : requestSpec
+    ).exchangeToMono(response ->
+        response.bodyToMono(String.class)
+            .defaultIfEmpty("")
+            .map(body -> GatewayResponse.passThrough(
+                response.statusCode().value(),
+                gatewayHelper.collectResponseHeaders(response),
+                body
+            ))
+    );
+    // Skip timeout when resilience is bypassed (readTimeOutMs == 0).
+    int readTimeoutMs = context.getResilience().getReadTimeOutMs();
+    return readTimeoutMs > 0 ? httpMono.timeout(Duration.ofMillis(readTimeoutMs)) : httpMono;
+  }
+}

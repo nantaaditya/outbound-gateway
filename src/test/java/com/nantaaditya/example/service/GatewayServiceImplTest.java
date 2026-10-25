@@ -7,42 +7,40 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.gson.Gson;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
-import com.nantaaditya.example.factory.AuthStrategyFactory;
+import com.nantaaditya.example.gateway.OutboundRequestExecutor;
 import com.nantaaditya.example.gateway.ResilienceDecorator;
 import com.nantaaditya.example.gateway.SystemContextLoader;
-import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.helper.GatewayHelper;
 import com.nantaaditya.example.helper.JsltResponseMapper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.OutboundMetricsRecorder;
-import com.nantaaditya.example.helper.ParameterInjector;
 import com.nantaaditya.example.helper.ParameterResolver;
 import com.nantaaditya.example.idempotency.IdempotencyGuard;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.ConverterType;
-import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.dto.ResolvedParameters;
+import com.nantaaditya.example.model.exception.InvalidParameterException;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
 import com.nantaaditya.example.service.impl.GatewayServiceImpl;
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryConfig;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,8 +48,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
 @ExtendWith(MockitoExtension.class)
 class GatewayServiceImplTest {
@@ -61,37 +59,32 @@ class GatewayServiceImplTest {
   @Mock
   OutboundHistoryRepository historyRepository;
   @Mock
-  AuthStrategyFactory authStrategyFactory;
-  @Mock
-  EncryptionHelper encryptionHelper;
-  @Mock
   JsltResponseMapper jsltResponseMapper;
   @Mock
   JsonHelper jsonHelper;
   @Mock
   OutboundMetricsRecorder metricsRecorder;
   @Mock
-  AuthStrategy authStrategy;
-  @Mock
   ParameterResolver parameterResolver;
   @Mock
   IdempotencyGuard idempotencyGuard;
+  @Mock
+  OutboundRequestExecutor requestExecutor;
 
   GatewayServiceImpl gatewayService;
 
   @BeforeEach
   void setUp() {
-    // Not @InjectMocks: GatewayServiceImpl needs a real Gson and a real GatewayHelper
-    // (GatewayHelper itself just delegates to jsonHelper/jsltResponseMapper, both already
-    // mocked above), rather than Mockito silently injecting null for unmocked constructor args.
+    // Not @InjectMocks: GatewayServiceImpl needs a real GatewayHelper (it just delegates to
+    // jsonHelper/jsltResponseMapper, both mocked above) and a real, stateless ResilienceDecorator,
+    // rather than Mockito silently injecting null for unmocked constructor args.
     gatewayService = new GatewayServiceImpl(
-        contextLoader, historyRepository,
-        authStrategyFactory, encryptionHelper, jsonHelper, metricsRecorder,
-        new Gson(), new GatewayHelper(jsonHelper, jsltResponseMapper),
-        parameterResolver, new ParameterInjector(new ObjectMapper()), idempotencyGuard,
-        new ResilienceDecorator());
+        contextLoader, historyRepository, jsonHelper, metricsRecorder,
+        new GatewayHelper(jsonHelper, jsltResponseMapper),
+        parameterResolver, idempotencyGuard, new ResilienceDecorator(), requestExecutor);
     lenient().when(parameterResolver.resolve(any(), any()))
         .thenReturn(Mono.just(ResolvedParameters.empty()));
+    lenient().when(historyRepository.saveHistory(any(OutboundHistory.class))).thenReturn(Mono.just(1));
   }
 
   @Test
@@ -111,51 +104,110 @@ class GatewayServiceImplTest {
   }
 
   @Test
-  @DisplayName("saveHistory uses historyRepository.saveHistory for all calls — retryCount=0 on first attempt")
-  void execute_noIdempotencyKey_historyIsSavedViaRepository() {
-    WebClient.RequestBodyUriSpec uriSpec = mock(WebClient.RequestBodyUriSpec.class);
-    WebClient.RequestBodySpec bodySpec = mock(WebClient.RequestBodySpec.class);
-    WebClient mockWebClient = mock(WebClient.class);
-    when(mockWebClient.method(any())).thenReturn(uriSpec);
-    when(uriSpec.uri(any(Function.class))).thenReturn(bodySpec);
-    when(bodySpec.headers(any())).thenReturn(bodySpec);
-    when(bodySpec.exchangeToMono(any())).thenReturn(
-        Mono.just(GatewayResponse.passThrough(200, Map.of(), "{}")));
+  @DisplayName("a call without an idempotency key runs the executor, saves one history row and never uses the guard")
+  void execute_noIdempotencyKey_runsExecutorAndSavesHistory() {
+    OutboundSystemContext context = stubContext("no-key-gw", 24, OutboundResilienceConfiguration.bypass(), null);
+    executorSucceeds(context);
 
-    OutboundSystem system = OutboundSystem.builder()
-        .id(1L).code("no-key-gw").httpMethod("POST")
-        .hostConfigurationId(1L).apiPath("/path").build();
+    GatewayResponse response = gatewayService
+        .execute("no-key-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
 
-    when(contextLoader.load("no-key-gw")).thenReturn(Mono.just(OutboundSystemContext.builder()
-        .system(system)
-        .hostConfig(OutboundHostConfiguration.builder().id(1L).baseUrl("http://host").build())
-        .resilience(OutboundResilienceConfiguration.bypass())
-        .auth(OutboundAuthConfiguration.builder().authType(AuthType.NONE).build())
-        .responseMapper(OutboundResponseMapperConfiguration.builder()
-            .converterType(ConverterType.NONE).build())
-        .headers(List.of())
-        .webClient(mockWebClient)
-        .build()));
-
-    when(jsonHelper.toJsonString(any())).thenReturn("{}");
-    when(authStrategyFactory.getStrategy(AuthType.NONE)).thenReturn(authStrategy);
-    when(authStrategy.authenticate(any(), any(), any())).thenReturn(
-        Mono.just(AuthCredential.empty()));
-    when(historyRepository.saveHistory(any(OutboundHistory.class))).thenReturn(
-        Mono.just(1));
-
-    gatewayService.execute("no-key-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
-
-    ArgumentCaptor<OutboundHistory> captor = ArgumentCaptor.forClass(OutboundHistory.class);
-    verify(historyRepository).saveHistory(captor.capture());
-    assertThat(captor.getValue().getRetryCount()).isZero();
+    assertThat(response.status()).isEqualTo(200);
+    ArgumentCaptor<OutboundHistory> history = ArgumentCaptor.forClass(OutboundHistory.class);
+    verify(historyRepository).saveHistory(history.capture());
+    assertThat(history.getValue().getRetryCount()).isZero();
+    assertThat(history.getValue().getCallerService()).isEqualTo("svc");
     verify(idempotencyGuard, never()).guard(anyLong(), anyString(), anyInt(), any());
+  }
+
+  @Test
+  @DisplayName("the number of executor subscriptions becomes the retry count saved in the history (attempts - 1)")
+  void execute_retriedCall_savesRetryCount() {
+    Retry retry = Retry.of("r", RetryConfig.custom().maxAttempts(3).waitDuration(Duration.ofMillis(1)).build());
+    OutboundSystemContext context = stubContext("retry-gw", 24,
+        OutboundResilienceConfiguration.builder().readTimeOutMs(1000).build(), retry);
+    AtomicInteger calls = new AtomicInteger();
+    when(requestExecutor.execute(eq(context), any(), any(), any())).thenAnswer(inv -> {
+      Runnable onAttempt = inv.getArgument(3);
+      return Mono.defer(() -> {
+        onAttempt.run();
+        return calls.incrementAndGet() < 3
+            ? Mono.error(new IllegalStateException("transient"))
+            : Mono.just(GatewayResponse.passThrough(200, Map.of(), "{}"));
+      });
+    });
+
+    GatewayResponse response = gatewayService
+        .execute("retry-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
+
+    assertThat(response.status()).isEqualTo(200);
+    ArgumentCaptor<OutboundHistory> history = ArgumentCaptor.forClass(OutboundHistory.class);
+    verify(historyRepository).saveHistory(history.capture());
+    assertThat(history.getValue().getRetryCount()).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("an error from the call is turned into an internal reject and still saved in the history")
+  void execute_executorError_becomesInternalRejectAndIsSaved() {
+    OutboundSystemContext context = stubContext("fail-gw", 24, OutboundResilienceConfiguration.bypass(), null);
+    when(requestExecutor.execute(eq(context), any(), any(), any()))
+        .thenReturn(Mono.error(new IllegalStateException("connection refused")));
+
+    GatewayResponse response = gatewayService
+        .execute("fail-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
+
+    assertThat(response.status()).isGreaterThanOrEqualTo(500);
+    verify(historyRepository).saveHistory(any(OutboundHistory.class));
+  }
+
+  @Test
+  @DisplayName("a failure to save the history is swallowed: the caller still gets the response")
+  void execute_historySaveFails_responseStillReturned() {
+    OutboundSystemContext context = stubContext("hist-gw", 24, OutboundResilienceConfiguration.bypass(), null);
+    executorSucceeds(context);
+    when(historyRepository.saveHistory(any(OutboundHistory.class)))
+        .thenReturn(Mono.error(new IllegalStateException("db down")));
+
+    GatewayResponse response = gatewayService
+        .execute("hist-gw", "svc", null, new GatewayRequest(Map.of(), null)).block();
+
+    assertThat(response.status()).isEqualTo(200);
+  }
+
+  @Test
+  @DisplayName("an unresolvable injectKey is a client error: nothing is executed and no history is saved")
+  void execute_parameterResolutionFails_noExecutionNoHistory() {
+    stubContext("param-gw", 24, OutboundResilienceConfiguration.bypass(), null);
+    when(parameterResolver.resolve(any(), any()))
+        .thenReturn(Mono.error(new InvalidParameterException("injectKeys", "bad")));
+
+    StepVerifier.create(gatewayService.execute("param-gw", "svc", null, new GatewayRequest(Map.of(), null)))
+        .expectError(InvalidParameterException.class)
+        .verify();
+
+    verify(requestExecutor, never()).execute(any(), any(), any(), any());
+    verify(historyRepository, never()).saveHistory(any(OutboundHistory.class));
+  }
+
+  @Test
+  @DisplayName("CURRENT BEHAVIOUR: an executor that throws while assembling the call escapes the reject conversion, no history")
+  void execute_executorThrowsEagerly_escapesWithoutHistory() {
+    OutboundSystemContext context = stubContext("eager-gw", 24, OutboundResilienceConfiguration.bypass(), null);
+    when(requestExecutor.execute(eq(context), any(), any(), any()))
+        .thenThrow(new InvalidParameterException("injectKeys", "request body is required"));
+
+    // Tracked in docs/plans/architecture-remediation.md (Phase 7): it should become a reject + history row.
+    StepVerifier.create(gatewayService.execute("eager-gw", "svc", null, new GatewayRequest(Map.of(), null)))
+        .expectError(InvalidParameterException.class)
+        .verify();
+
+    verify(historyRepository, never()).saveHistory(any(OutboundHistory.class));
   }
 
   @Test
   @DisplayName("a call with an idempotency key goes through the guard with the system's id and TTL")
   void execute_withIdempotencyKey_goesThroughGuard() {
-    stubContext("idem-gw", 12);
+    stubContext("idem-gw", 12, OutboundResilienceConfiguration.bypass(), null);
     when(idempotencyGuard.guard(eq(1L), eq("key-1"), eq(12), any()))
         .thenReturn(Mono.just(GatewayResponse.passThrough(200, Map.of(), "{}")));
 
@@ -170,7 +222,7 @@ class GatewayServiceImplTest {
   @Test
   @DisplayName("a result served from a previous execution is counted as an idempotency hit")
   void execute_guardReplays_recordsIdempotencyHit() {
-    stubContext("hit-gw", 24);
+    stubContext("hit-gw", 24, OutboundResilienceConfiguration.bypass(), null);
     when(idempotencyGuard.guard(eq(1L), eq("key-2"), eq(24), any()))
         .thenReturn(Mono.just(GatewayResponse.fromCache(200, Map.of(), "{}", 200, "{}")));
 
@@ -184,26 +236,42 @@ class GatewayServiceImplTest {
   @Test
   @DisplayName("a blank idempotency key is treated as no key")
   void execute_blankIdempotencyKey_bypassesGuard() {
-    stubContext("blank-gw", 24);
-    // the call proceeds to the HTTP pipeline and fails on the unstubbed web client, which is irrelevant here
-    gatewayService.execute("blank-gw", "svc", "  ", new GatewayRequest(Map.of(), null))
-        .onErrorResume(e -> Mono.empty()).block();
+    OutboundSystemContext context = stubContext("blank-gw", 24, OutboundResilienceConfiguration.bypass(), null);
+    executorSucceeds(context);
+
+    gatewayService.execute("blank-gw", "svc", "  ", new GatewayRequest(Map.of(), null)).block();
 
     verify(idempotencyGuard, never()).guard(anyLong(), anyString(), anyInt(), any());
   }
 
-  private void stubContext(String code, int ttlHours) {
+  // --- helpers ---
+
+  private void executorSucceeds(OutboundSystemContext context) {
+    when(requestExecutor.execute(eq(context), any(), any(), any())).thenAnswer(inv -> {
+      Runnable onAttempt = inv.getArgument(3);
+      return Mono.fromSupplier(() -> {
+        onAttempt.run();
+        return GatewayResponse.passThrough(200, Map.of(), "{}");
+      });
+    });
+  }
+
+  private OutboundSystemContext stubContext(String code, int ttlHours,
+      OutboundResilienceConfiguration resilience, Retry retry) {
     OutboundSystem system = OutboundSystem.builder()
         .id(1L).code(code).httpMethod("POST").hostConfigurationId(1L).apiPath("/path")
         .idempotencyTtlHours(ttlHours).build();
-    when(contextLoader.load(code)).thenReturn(Mono.just(OutboundSystemContext.builder()
+    OutboundSystemContext context = OutboundSystemContext.builder()
         .system(system)
         .hostConfig(OutboundHostConfiguration.builder().id(1L).baseUrl("http://host").build())
-        .resilience(OutboundResilienceConfiguration.bypass())
+        .resilience(resilience)
+        .retry(retry)
         .auth(OutboundAuthConfiguration.builder().authType(AuthType.NONE).build())
         .responseMapper(OutboundResponseMapperConfiguration.builder()
             .converterType(ConverterType.NONE).build())
         .headers(List.of())
-        .build()));
+        .build();
+    when(contextLoader.load(code)).thenReturn(Mono.just(context));
+    return context;
   }
 }
