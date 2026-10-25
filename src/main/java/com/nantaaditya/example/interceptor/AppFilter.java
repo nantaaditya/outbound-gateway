@@ -87,6 +87,8 @@ public class AppFilter implements WebFilter {
   @Value("${spring.webflux.base-path}")
   private String contextPath;
 
+  // Largest upstream response the gateway holds in memory; a bigger one is answered with 502
+  // "upstream response too large" (the upstream has already processed the request by then).
   @Value("${apps.filter.max-body-bytes:1048576}")
   private int maxBodyBytes;
 

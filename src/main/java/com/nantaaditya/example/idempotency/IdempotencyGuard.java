@@ -56,6 +56,14 @@ public class IdempotencyGuard {
 
   private final ConcurrentMap<String, Mono<GatewayResponse>> inFlight = new ConcurrentHashMap<>();
 
+  /**
+   * apps.idempotency.lease: How long one instance may hold an idempotency key while it calls the upstream. Must exceed the longest
+   * apps.idempotency.poll-interval: possible call (read timeout x retry attempts). Other instances wait up to this long, then take the key over.
+   * @param historyRepository
+   * @param reservations
+   * @param lease
+   * @param pollInterval
+   */
   @Autowired
   public IdempotencyGuard(
       OutboundHistoryRepository historyRepository,
