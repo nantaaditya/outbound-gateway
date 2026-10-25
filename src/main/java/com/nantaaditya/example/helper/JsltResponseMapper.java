@@ -8,6 +8,7 @@ import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.properties.CacheProperties;
 import com.schibsted.spt.data.jslt.Expression;
 import com.schibsted.spt.data.jslt.Parser;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -21,12 +22,14 @@ public class JsltResponseMapper {
 
   private final ObjectMapper objectMapper;
   private final CacheProperties cacheProperties;
+  private final MeterRegistry meterRegistry;
 
   private Cache<String, Expression> expressionCache;
 
   @EventListener(ApplicationReadyEvent.class)
   public void onStart() {
-    this.expressionCache = CacheHelper.create(ConstantName.JSLT_CACHE, cacheProperties.get(ConstantName.JSLT_CACHE));
+    this.expressionCache = CacheHelper.create(ConstantName.JSLT_CACHE,
+        cacheProperties.get(ConstantName.JSLT_CACHE), meterRegistry);
   }
 
   /**

@@ -203,6 +203,26 @@ class PrometheusScrapeContractTest extends BaseIntegrationTest {
     assertThat(line).contains("host=\"");
   }
 
+  @Test
+  @DisplayName("cache metrics: Caffeine series per cache name, plus entry gauges for the two map caches")
+  void scrape_cacheMetrics_present() {
+    wireMock.stubFor(post(urlEqualTo("/v1/scrape-cache"))
+        .willReturn(aResponse().withStatus(200).withBody("{\"ok\":true}")));
+    String code = "gw-scrape-cache";
+    setupSystem(code, "http://localhost:" + wireMock.port(), "/v1/scrape-cache");
+
+    gatewayService.execute(code, "test-caller", null, new GatewayRequest(Map.of(), Map.of())).block();
+
+    String body = scrapePrometheus();
+    for (String cache : new String[] {"jslt", "parameters", "contexts", "additional-data"}) {
+      assertThat(findLine(body, "cache_size", Map.of("cache", cache))).as("cache_size for %s", cache).isNotNull();
+      assertThat(findLine(body, "cache_gets_total", Map.of("cache", cache, "result", "miss")))
+          .as("cache_gets_total miss for %s", cache).isNotNull();
+    }
+    assertThat(valueOf(findLine(body, "gateway_context_cache_entries", Map.of()))).isGreaterThanOrEqualTo(1.0);
+    assertThat(valueOf(findLine(body, "gateway_webclient_cache_entries", Map.of()))).isGreaterThanOrEqualTo(1.0);
+  }
+
   private String scrapePrometheus() {
     byte[] body = WebTestClient.bindToServer()
         .baseUrl("http://localhost:" + managementPort)

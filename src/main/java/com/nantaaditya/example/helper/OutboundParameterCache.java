@@ -9,6 +9,7 @@ import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -30,13 +31,14 @@ public class OutboundParameterCache {
 
   private final OutboundParameterRepository parameterRepository;
   private final CacheProperties cacheProperties;
+  private final MeterRegistry meterRegistry;
 
   private Cache<String, OutboundParameter> cache;
 
   @PostConstruct
   void init() {
     this.cache = CacheHelper.create(ConstantName.PARAMETERS_CACHE,
-        cacheProperties.get(ConstantName.PARAMETERS_CACHE));
+        cacheProperties.get(ConstantName.PARAMETERS_CACHE), meterRegistry);
   }
 
   public Flux<OutboundParameter> findActive(long hostId, Collection<String> keys) {

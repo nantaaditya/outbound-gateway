@@ -63,6 +63,11 @@ public class SystemContextLoader {
     );
   }
 
+  /** Number of cached contexts, for the {@code gateway.context.cache.entries} gauge. */
+  public int cachedContextCount() {
+    return contextCache.size();
+  }
+
   /**
    * Evicts the cached context of {@code code}; when it was cached, its host is evicted too (see
    * {@link #evictHost}). MUST NOT perform any I/O.

@@ -28,7 +28,7 @@ class JsltResponseMapperTest {
   void setUp() {
     when(cacheProperties.get(anyString()))
         .thenReturn(new CacheConfiguration(CacheType.SIZE, 100, 0, TimeUnit.MILLISECONDS));
-    mapper = new JsltResponseMapper(new ObjectMapper(), cacheProperties);
+    mapper = new JsltResponseMapper(new ObjectMapper(), cacheProperties, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     mapper.onStart();
   }
 

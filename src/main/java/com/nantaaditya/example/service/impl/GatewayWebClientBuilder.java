@@ -74,6 +74,11 @@ public class GatewayWebClientBuilder {
   // One WebClient (= one Reactor Netty connection pool) per host (scheme+host+port).
   private final ConcurrentMap<String, PooledClient> webClientCache = new ConcurrentHashMap<>();
 
+  /** Number of live per-host clients/pools, for the {@code gateway.webclient.cache.entries} gauge. */
+  public int cachedClientCount() {
+    return webClientCache.size();
+  }
+
   public WebClient getOrCreateWebClient(OutboundHostConfiguration hostConfiguration) {
     return webClientCache.computeIfAbsent(
         hostConfiguration.getBaseUrl(),

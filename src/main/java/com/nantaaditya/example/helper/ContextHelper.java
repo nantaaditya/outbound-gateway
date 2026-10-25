@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.function.UnaryOperator;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.slf4j.MDC;
@@ -22,14 +23,17 @@ import org.springframework.stereotype.Component;
 public class ContextHelper {
 
   private final CacheProperties cacheProperties;
+  private final MeterRegistry meterRegistry;
 
   private Cache<String, ContextDTO> contexts;
   private Cache<String, String> additionalContexts;
 
   @EventListener(ApplicationReadyEvent.class)
   public void onStart() {
-    this.contexts = CacheHelper.create(ConstantName.CONTEXTS_CACHE, cacheProperties.get(ConstantName.CONTEXTS_CACHE));
-    this.additionalContexts = CacheHelper.create(ConstantName.ADDITIONAL_DATA_CACHE, cacheProperties.get(ConstantName.ADDITIONAL_DATA_CACHE));
+    this.contexts = CacheHelper.create(ConstantName.CONTEXTS_CACHE,
+        cacheProperties.get(ConstantName.CONTEXTS_CACHE), meterRegistry);
+    this.additionalContexts = CacheHelper.create(ConstantName.ADDITIONAL_DATA_CACHE,
+        cacheProperties.get(ConstantName.ADDITIONAL_DATA_CACHE), meterRegistry);
   }
 
   public void put(ContextDTO contextDTO) {

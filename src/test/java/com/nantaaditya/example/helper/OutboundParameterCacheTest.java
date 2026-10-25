@@ -40,7 +40,7 @@ class OutboundParameterCacheTest {
     CacheProperties properties = new CacheProperties(Map.of(
         ConstantName.PARAMETERS_CACHE,
         new CacheConfiguration(CacheType.TIME, 0, seconds, TimeUnit.SECONDS)));
-    OutboundParameterCache cache = new OutboundParameterCache(repository, properties);
+    OutboundParameterCache cache = new OutboundParameterCache(repository, properties, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     cache.init();
     return cache;
   }

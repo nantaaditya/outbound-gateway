@@ -28,7 +28,7 @@ class ContextHelperTest {
   void setUp() {
     when(cacheProperties.get(anyString()))
         .thenReturn(new CacheConfiguration(CacheType.TIME, 0, 10, TimeUnit.MINUTES));
-    contextHelper = new ContextHelper(cacheProperties);
+    contextHelper = new ContextHelper(cacheProperties, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     contextHelper.onStart();
   }
 
