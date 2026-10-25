@@ -82,6 +82,10 @@ apps:
     # possible call (read timeout x retry attempts). Other instances wait up to this long, then take the key over.
     lease: ${IDEMPOTENCY_LEASE:120s}
     poll-interval: ${IDEMPOTENCY_POLL_INTERVAL:200ms}
+  gateway:
+    # Largest upstream response the gateway holds in memory; a bigger one is answered with 502
+    # "upstream response too large" (the upstream has already processed the request by then).
+    max-response-bytes: ${MAX_RESPONSE_BYTES:10485760}
   log:
     enable-trace-log: ${ENABLE_TRACE_LOG:true}
     ignored-trace-log-path: ${IGNORED_TRACE_LOG_PATH:*/swagger-ui,*/swagger-ui/*,*/v3/api-docs,*/v3/api-docs/*}

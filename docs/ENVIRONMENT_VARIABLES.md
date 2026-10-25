@@ -75,7 +75,8 @@ All configuration is externalized through environment variables with sensible de
 | `ENABLE_TRACE_LOG` | No | `true` | Enable per-request HTTP trace logging |
 | `IGNORED_TRACE_LOG_PATH` | No | `*/swagger-ui,...` | Paths excluded from trace logging (comma-separated globs) |
 | `SENSITIVE_FIELDS` | No | `x-client-id,authorization,...` | Header names redacted in logs (comma-separated, case-insensitive) |
-| `MAX_PAYLOAD_SIZE` | No | `1048576` | Max request body size in bytes (1 MB) before the filter rejects |
+| `MAX_PAYLOAD_SIZE` | No | `1048576` | Max request body size in bytes (1 MB) before the filter rejects with 413. Reading stops at the limit; a rejected request is still written to the event log (empty payload). Property: `apps.filter.max-body-bytes` |
+| `MAX_RESPONSE_BYTES` | No | `10485760` | Largest upstream response the gateway holds in memory (10 MB). A bigger answer is reported as 502 "upstream response too large" even though the upstream already processed the request. Property: `apps.gateway.max-response-bytes` |
 | `IDEMPOTENCY_LEASE` | No | `120s` | How long one instance may hold an idempotency key while it calls the upstream. Must exceed the longest possible call (read timeout × retry attempts). Other instances wait up to this long for the result, then take the key over (crashed owner) or answer 409 |
 | `IDEMPOTENCY_POLL_INTERVAL` | No | `200ms` | How often an instance waiting for another instance's result checks for it |
 

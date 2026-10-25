@@ -18,6 +18,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.ClientResponse;
@@ -72,9 +73,24 @@ public class GatewayHelper {
       log.warn(AppLogMessage.message("#GATEWAY - read timeout for {}: {}", code(context), e.getMessage()).error(e));
       return GatewayResponse.internalReject(504, "gateway timeout");
     }
+    if (isCausedBy(e, DataBufferLimitException.class)) {
+      // The upstream already answered (and may have acted on the request); the answer is just larger than
+      // apps.gateway.max-response-bytes. Say so instead of reporting an opaque internal error.
+      log.warn(AppLogMessage.message("#GATEWAY - upstream response too large for {}: {}", code(context), e.getMessage()).error(e));
+      return GatewayResponse.internalReject(502, "bad gateway - upstream response too large");
+    }
 
     log.error(AppLogMessage.message("#GATEWAY - unexpected error for {}: {}", code(context), e.getMessage()).error(e));
     return GatewayResponse.internalReject(503, "internal gateway error");
+  }
+
+  private static boolean isCausedBy(Throwable error, Class<? extends Throwable> type) {
+    for (Throwable cause = error; cause != null; cause = cause.getCause() == cause ? null : cause.getCause()) {
+      if (type.isInstance(cause)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public String code(OutboundSystemContext context) {

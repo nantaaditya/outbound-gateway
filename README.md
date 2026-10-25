@@ -709,6 +709,7 @@ Retry uses `retryOnResult` — a `503` response from the upstream triggers a ret
 | `RequestNotPermitted` | 429 | Rate limit exceeded |
 | `MaxRetriesExceededException` | 502 | All retry attempts exhausted |
 | `TimeoutException` | 504 | Upstream timed out |
+| `DataBufferLimitException` | 502 | Upstream answered with more than `MAX_RESPONSE_BYTES` (default 10 MB). The upstream already processed the request, so retry only with an idempotency key |
 | Other | 503 | Unexpected internal error |
 
 ### Mechanism Combinations
@@ -1884,6 +1885,8 @@ All error responses share the same envelope:
 | `NoResourceFoundException` | 400 | `endpoint` | `["not available"]` |
 | `EmissionException` | 400 | `publisher` | Reactor sink failure reason |
 | `HandlerMethodValidationException` | 400 | parameter name | `["NotValid"]` |
+| `ServerWebInputException` (malformed JSON body, wrong parameter type) | 400 | parameter name, or `request` | `["NotValid"]` |
+| `MissingRequestValueException` (required parameter or header missing) | 400 | parameter name | `["NotNull"]` |
 | `ConstraintViolationException` | 400 | field path | validation message |
 | `OutboundSystemNotFoundException` | 400 | `code` | `["NotFound"]` |
 | `ParameterNotFoundException` | 400 | `injectKeys` | `["NotFound"]` |
