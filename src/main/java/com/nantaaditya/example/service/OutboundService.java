@@ -20,7 +20,11 @@ public interface OutboundService {
 
   Mono<OutboundSystemDetailResponse> getDetail(String code);
 
-  Mono<OutboundSystemResponse> update(String code, UpdateOutboundSystemRequest request);
+  /**
+   * @param reload {@code true} evicts the cached context after the save so the next call uses the new
+   *     settings; {@code false} only stores them (apply later via the reload endpoint)
+   */
+  Mono<OutboundSystemResponse> update(String code, UpdateOutboundSystemRequest request, boolean reload);
 
   Mono<Boolean> delete(String code);
 

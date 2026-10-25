@@ -109,11 +109,16 @@ public class OutboundServiceImpl implements OutboundService {
   }
 
   @Override
-  public Mono<OutboundSystemResponse> update(String code, UpdateOutboundSystemRequest request) {
+  public Mono<OutboundSystemResponse> update(String code, UpdateOutboundSystemRequest request, boolean reload) {
     return requireSystem(code)
         .flatMap(system -> requireHostConfig(request.hostConfigurationId())
             .flatMap(hostConfig -> systemRepository.save(system.updated(request))
-                .doOnSuccess(s -> log.info(AppLogMessage.message("#OutboundService - updated outbound system code={}", code)))
+                .doOnSuccess(s -> {
+                  if (reload) {
+                    gatewayService.evictContext(code);
+                  }
+                  log.info(AppLogMessage.message("#OutboundService - updated outbound system code={} reload={}", code, reload));
+                })
                 .map(s -> OutboundSystemResponse.from(s, hostConfig))));
   }
 

@@ -78,11 +78,14 @@ public class OutboundController {
       consumes = MediaType.APPLICATION_JSON_VALUE,
       produces = MediaType.APPLICATION_JSON_VALUE
   )
-  @Operation(summary = "update outbound system", description = "update outbound system")
+  @Operation(summary = "update outbound system",
+      description = "update outbound system; reload=true (default) applies it to the running gateway at once, "
+          + "reload=false only stores it until the reload endpoint is called")
   public Mono<BaseResponse<OutboundSystemResponse>> update(
       @PathVariable String code,
+      @RequestParam(defaultValue = "true") boolean reload,
       @RequestBody @Valid UpdateOutboundSystemRequest request) {
-    return outboundService.update(code, request)
+    return outboundService.update(code, request, reload)
         .map(responseHelper::success);
   }
 
