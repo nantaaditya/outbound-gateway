@@ -76,6 +76,8 @@ All configuration is externalized through environment variables with sensible de
 | `IGNORED_TRACE_LOG_PATH` | No | `*/swagger-ui,...` | Paths excluded from trace logging (comma-separated globs) |
 | `SENSITIVE_FIELDS` | No | `x-client-id,authorization,...` | Header names redacted in logs (comma-separated, case-insensitive) |
 | `MAX_PAYLOAD_SIZE` | No | `1048576` | Max request body size in bytes (1 MB) before the filter rejects |
+| `IDEMPOTENCY_LEASE` | No | `120s` | How long one instance may hold an idempotency key while it calls the upstream. Must exceed the longest possible call (read timeout × retry attempts). Other instances wait up to this long for the result, then take the key over (crashed owner) or answer 409 |
+| `IDEMPOTENCY_POLL_INTERVAL` | No | `200ms` | How often an instance waiting for another instance's result checks for it |
 
 ---
 

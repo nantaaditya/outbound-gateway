@@ -33,6 +33,11 @@ public record GatewayResponse(
     return new GatewayResponse(status, headers, body, convertedStatus, convertedResponse, true, false);
   }
 
+  /** The same response, flagged as served from a previous execution instead of a fresh upstream call. */
+  public GatewayResponse asReplay() {
+    return new GatewayResponse(status, headers, body, convertedStatus, convertedResponse, true, mappingFallback);
+  }
+
   public static GatewayResponse internalReject(int status, String reason) {
     return new GatewayResponse(status, Map.of(), reason, status, reason, false, false);
   }

@@ -77,6 +77,11 @@ gateway:
 apps:
   version: ${APP_VERSION:1.0.0}
   filter.max-body-bytes: ${MAX_PAYLOAD_SIZE:1048576}
+  idempotency:
+    # How long one instance may hold an idempotency key while it calls the upstream. Must exceed the longest
+    # possible call (read timeout x retry attempts). Other instances wait up to this long, then take the key over.
+    lease: ${IDEMPOTENCY_LEASE:120s}
+    poll-interval: ${IDEMPOTENCY_POLL_INTERVAL:200ms}
   log:
     enable-trace-log: ${ENABLE_TRACE_LOG:true}
     ignored-trace-log-path: ${IGNORED_TRACE_LOG_PATH:*/swagger-ui,*/swagger-ui/*,*/v3/api-docs,*/v3/api-docs/*}

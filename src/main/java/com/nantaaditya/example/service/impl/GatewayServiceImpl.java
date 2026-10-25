@@ -9,6 +9,7 @@ import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.helper.GatewayHelper;
+import com.nantaaditya.example.idempotency.IdempotencyGuard;
 import com.nantaaditya.example.helper.GsonHelper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.OutboundMetricsRecorder;
@@ -104,6 +105,7 @@ public class GatewayServiceImpl implements GatewayService {
   private final GatewayHelper gatewayHelper;
   private final ParameterResolver parameterResolver;
   private final ParameterInjector parameterInjector;
+  private final IdempotencyGuard idempotencyGuard;
 
   private final ConcurrentMap<String, OutboundSystemContext> contextCache = new ConcurrentHashMap<>();
 
@@ -122,9 +124,15 @@ public class GatewayServiceImpl implements GatewayService {
     return loadContext(code)
         .flatMap(context -> {
           if (hasIdempotencyKey(idempotencyKey)) {
-            return checkIdempotency(context, idempotencyKey)
-                .doOnNext(r -> metricsRecorder.recordIdempotencyHit(code))
-                .switchIfEmpty(Mono.defer(() -> executeResolved(context, callerService, idempotencyKey, request)));
+            OutboundSystem system = context.getSystem();
+            // replay of a stored result, merging of overlapping calls (here and across instances)
+            return idempotencyGuard.guard(system.getId(), idempotencyKey, system.getIdempotencyTtlHours(),
+                    () -> executeResolved(context, callerService, idempotencyKey, request))
+                .doOnNext(r -> {
+                  if (r.fromCache()) {
+                    metricsRecorder.recordIdempotencyHit(code);
+                  }
+                });
           }
           return executeResolved(context, callerService, idempotencyKey, request);
         });
@@ -161,21 +169,6 @@ public class GatewayServiceImpl implements GatewayService {
 
   private boolean hasIdempotencyKey(String key) {
     return key != null && !key.isBlank();
-  }
-
-  private Mono<GatewayResponse> checkIdempotency(OutboundSystemContext context,
-      String idempotencyKey) {
-    LocalDateTime cutoff = LocalDateTime.now()
-        .minusHours(context.getSystem().getIdempotencyTtlHours());
-    return historyRepository.findFirstByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfterOrderByCreatedDateDesc(
-            context.getSystem().getId(), idempotencyKey, cutoff)
-        .map(history -> GatewayResponse.fromCache(
-            history.getResponseStatus(),
-            Map.of(),
-            history.getResponsePayload(),
-            Optional.ofNullable(history.getConvertedStatus()).orElse(history.getResponseStatus()),
-            Optional.ofNullable(history.getConvertedResponse()).orElse(history.getResponsePayload())
-        ));
   }
 
   private Mono<OutboundSystemContext> loadContext(String code) {

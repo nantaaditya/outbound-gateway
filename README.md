@@ -1913,7 +1913,12 @@ Defaults when no `outbound_host_configurations` row exists: `connectTimeOutMs=50
 
 ### Idempotency Scope
 
-Idempotency keys are scoped to **outbound system + key**. The same key sent to two different system codes are independent. On retry with the same key and system, the upsert overwrites the previous failure record — a successful retry always wins.
+Idempotency keys are scoped to **outbound system + key**. The same key sent to two different system codes are independent. Send the key in the `x-idempotency-key` header.
+
+- **Replay.** Within the system's `idempotency_ttl_hours`, a request whose key already has a stored result in `outbound_histories` is answered from that result (`fromCache: true`) and the upstream is not called. The newest stored result is returned **whatever its status** — an error response that was stored is replayed too. After the TTL the same key executes again.
+- **Overlapping requests.** While the first request with a key is still running, requests with the same key do **not** call the upstream: inside one instance they share the single execution (they get its result with `fromCache: true`), and across instances the first one reserves the key in `outbound_idempotency_reservations` while the others wait for its stored result. Requests with different keys, or without a key, are never merged.
+- **Failure handling.** The reservation is released when the execution ends (success, error or client disconnect — a disconnecting client does not abort the upstream call, so its result is still stored). If an instance dies mid-call its reservation expires after `IDEMPOTENCY_LEASE` and the next request takes the key over. A request that is still waiting after a full lease gets a `409` reject (`data.status = 409`, "request with the same idempotency key is still in progress") instead of calling the upstream a second time.
+- **Limits.** `IDEMPOTENCY_LEASE` (default 120 s) must be longer than the slowest possible call (read timeout × retry attempts); an execution that outlives it can be taken over by another instance. If the instance dies after the upstream answered but before the history row was written, the next request executes again.
 
 ### OAuth Token Persistence
 
@@ -1921,7 +1926,7 @@ OAuth tokens are written back to `outbound_auth_configurations.current_token` af
 
 ### Flyway Migrations
 
-Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V12) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
+Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply migrations manually from `src/main/resources/db/migration/` (V1 through V13) in order. When enabling Flyway in production, ensure `flyway.cleanDisabled=true` to prevent data wipe.
 
 | Version | Description |
 |---|---|
@@ -1937,6 +1942,7 @@ Flyway is **disabled by default** (`FLYWAY_ENABLED=false`). Without it, apply mi
 | V10 | Create `v_outbound_system_detail` JOIN view |
 | V11 | Create `outbound_parameters` table (host-level injectable key/values, encrypted value) |
 | V12 | `UNIQUE (outbound_system_id)` on the resilience, header, auth and response-mapper tables (one config row per system) |
+| V13 | Create `outbound_idempotency_reservations` table (cross-instance "this key is executing" marker) |
 
 **V12 and existing duplicates.** Before this constraint, two simultaneous first-time upserts for the same system could each insert a row. V12 never deletes data: if any of the four tables already has more than one row for an `outbound_system_id`, the migration aborts (nothing is changed) and its error names the tables. Keep one row per `outbound_system_id` (usually the highest `id`), delete the others, and re-run. Find them with:
 

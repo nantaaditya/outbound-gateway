@@ -26,6 +26,7 @@ import com.nantaaditya.example.helper.GatewayHelper;
 import com.nantaaditya.example.helper.JsltResponseMapper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.OutboundMetricsRecorder;
+import com.nantaaditya.example.idempotency.IdempotencyGuard;
 import com.nantaaditya.example.helper.ParameterInjector;
 import com.nantaaditya.example.helper.ParameterResolver;
 import com.nantaaditya.example.model.constant.AuthType;
@@ -96,6 +97,8 @@ class GatewayServiceImplTest {
   AuthStrategy authStrategy;
   @Mock
   ParameterResolver parameterResolver;
+  @Mock
+  IdempotencyGuard idempotencyGuard;
 
   GatewayServiceImpl gatewayService;
 
@@ -109,7 +112,7 @@ class GatewayServiceImplTest {
         authRepository, mapperRepository, historyRepository, contextBuilder,
         authStrategyFactory, encryptionHelper, jsonHelper, metricsRecorder,
         new Gson(), new GatewayHelper(jsonHelper, jsltResponseMapper),
-        parameterResolver, new ParameterInjector(new ObjectMapper()));
+        parameterResolver, new ParameterInjector(new ObjectMapper()), idempotencyGuard);
     lenient().when(parameterResolver.resolve(any(), any()))
         .thenReturn(Mono.just(ResolvedParameters.empty()));
   }
