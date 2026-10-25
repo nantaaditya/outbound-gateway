@@ -186,21 +186,6 @@ class GatewayServiceImplTest {
   }
 
   @Test
-  @DisplayName("CURRENT BEHAVIOUR: an executor that throws while assembling the call escapes the reject conversion, no history")
-  void execute_executorThrowsEagerly_escapesWithoutHistory() {
-    OutboundSystemContext context = stubContext("eager-gw", 24, OutboundResilienceConfiguration.bypass(), null);
-    when(requestExecutor.execute(eq(context), any(), any(), any()))
-        .thenThrow(new InvalidParameterException("injectKeys", "request body is required"));
-
-    // Tracked in docs/plans/architecture-remediation.md (Phase 7): it should become a reject + history row.
-    StepVerifier.create(gatewayService.execute("eager-gw", "svc", null, new GatewayRequest(Map.of(), null)))
-        .expectError(InvalidParameterException.class)
-        .verify();
-
-    verify(historyRecorder, never()).record(any(), any(), any(), any(), any(), anyLong(), anyInt());
-  }
-
-  @Test
   @DisplayName("a call with an idempotency key goes through the guard with the system's id and TTL")
   void execute_withIdempotencyKey_goesThroughGuard() {
     stubContext("idem-gw", 12, OutboundResilienceConfiguration.bypass(), null);

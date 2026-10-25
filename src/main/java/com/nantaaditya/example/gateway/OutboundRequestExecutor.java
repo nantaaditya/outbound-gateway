@@ -45,16 +45,21 @@ public class OutboundRequestExecutor {
    */
   public Mono<GatewayResponse> execute(OutboundSystemContext context, GatewayRequest request,
       ResolvedParameters parameters, Runnable onAttempt) {
-    // Signed once here and reused verbatim for the outbound call below — HMAC/RSA must sign
-    // exactly the bytes that go on the wire, not a separately re-serialized copy of the body.
-    // BODY parameters are injected before signing so the signature covers them; the original
-    // request (without injected values) is what the history persists.
-    Object outboundBody = parameterInjector.injectBody(request.body(), parameters.bodyItems());
-    String cleanedBody = GsonHelper.cleanJson(jsonHelper.toJsonString(outboundBody), gson);
-    return authenticateRequest(context, cleanedBody)
-        .doOnSubscribe(__ -> onAttempt.run())
-        .flatMap(credential -> executeHttp(context, request, parameters, cleanedBody, credential))
-        .map(response -> gatewayHelper.applyMapping(context, response));
+    // Deferred: building the body can fail, and that failure must reach the caller as a Mono error. Thrown
+    // while the call is being assembled it would escape the caller's error-to-reject conversion and leave no
+    // history row.
+    return Mono.defer(() -> {
+      // Signed once here and reused verbatim for the outbound call below — HMAC/RSA must sign
+      // exactly the bytes that go on the wire, not a separately re-serialized copy of the body.
+      // BODY parameters are injected before signing so the signature covers them; the original
+      // request (without injected values) is what the history persists.
+      Object outboundBody = parameterInjector.injectBody(request.body(), parameters.bodyItems());
+      String cleanedBody = GsonHelper.cleanJson(jsonHelper.toJsonString(outboundBody), gson);
+      return authenticateRequest(context, cleanedBody)
+          .doOnSubscribe(__ -> onAttempt.run())
+          .flatMap(credential -> executeHttp(context, request, parameters, cleanedBody, credential))
+          .map(response -> gatewayHelper.applyMapping(context, response));
+    });
   }
 
   private Mono<AuthCredential> authenticateRequest(OutboundSystemContext context, String cleanedBody) {

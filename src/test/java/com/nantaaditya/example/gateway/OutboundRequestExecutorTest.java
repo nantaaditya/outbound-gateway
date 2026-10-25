@@ -6,7 +6,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -237,15 +236,17 @@ class OutboundRequestExecutorTest {
   }
 
   @Test
-  @DisplayName("CURRENT BEHAVIOUR: an invalid BODY parameter throws while the call is being assembled, not as a Mono error")
-  void execute_bodyParameterWithoutBody_throwsEagerly() {
+  @DisplayName("an invalid BODY parameter fails the returned Mono instead of throwing while the call is assembled")
+  void execute_bodyParameterWithoutBody_failsTheMono() {
     ResolvedParameters parameters = new ResolvedParameters(List.of(
         new ResolvedParameter("merchant", ParameterInjectLocation.BODY, "meta.merchantId", "M-9")));
 
-    // GatewayServiceImpl.executeWithResilience calls this outside its onErrorResume, so such an error
-    // escapes the internal-reject conversion. Tracked in docs/plans/architecture-remediation.md (Phase 7).
-    assertThatThrownBy(() -> executor.execute(context(1000), new GatewayRequest(Map.of(), null), parameters, () -> { }))
-        .isInstanceOf(InvalidParameterException.class);
+    // GatewayServiceImpl converts a Mono error into an internal reject and records it; a synchronous throw
+    // from execute(...) would have escaped that conversion and left no history row.
+    Mono<GatewayResponse> call =
+        executor.execute(context(1000), new GatewayRequest(Map.of(), null), parameters, () -> { });
+
+    StepVerifier.create(call).expectError(InvalidParameterException.class).verify();
   }
 
   // --- helpers ---
