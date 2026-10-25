@@ -1,6 +1,7 @@
 package com.nantaaditya.example.service.impl;
 
 import com.nantaaditya.example.entity.BaseEntity;
+import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.response.GatewayHistoryResponse;
@@ -46,7 +47,7 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
           long total = tuple.getT1();
           List<GatewayHistoryResponse> content = tuple.getT2()
               .stream()
-              .map(h -> GatewayHistoryResponse.from(h, jsonHelper))
+              .map(this::toResponse)
               .toList();
           int totalPages = safeSize > 0 ? (int) Math.ceil((double) total / safeSize) : 0;
           return new PageResponse<>(content, safePage, safeSize, total, totalPages);
@@ -59,9 +60,32 @@ public class GatewayHistoryServiceImpl implements GatewayHistoryService {
         .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)))
         .flatMap(system ->
             outboundHistoryRepository.findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(system.getId(), idempotencyKey)
-                .map(h -> GatewayHistoryResponse.from(h, jsonHelper))
+                .map(this::toResponse)
                 .switchIfEmpty(Mono.error(new IllegalArgumentException("History not found for code=" + code)))
         );
+  }
+
+  // Payloads are stored as text; show them as JSON when they parse and as the raw string when they do not.
+  private GatewayHistoryResponse toResponse(OutboundHistory history) {
+    return new GatewayHistoryResponse(
+        history.getId(),
+        history.getOutboundSystemId(),
+        history.getIdempotencyKey(),
+        history.getCallerService(),
+        history.getRequestId(),
+        history.getRequestMethod(),
+        history.getRequestUrl(),
+        history.getRequestHeaders(),
+        jsonHelper.parseJsonOrRaw(history.getRequestPayload()),
+        history.getResponseStatus(),
+        history.getResponseHeaders(),
+        jsonHelper.parseJsonOrRaw(history.getResponsePayload()),
+        history.getDurationMs(),
+        history.getConvertedStatus(),
+        jsonHelper.parseJsonOrRaw(history.getConvertedResponse()),
+        history.getRetryCount(),
+        history.getCreatedDate()
+    );
   }
 
   private Mono<Long> resolveSystemId(@Nullable String code) {

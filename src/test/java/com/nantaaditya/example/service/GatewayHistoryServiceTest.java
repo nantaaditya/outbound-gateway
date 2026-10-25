@@ -19,6 +19,7 @@ import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.impl.GatewayHistoryServiceImpl;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -168,6 +169,46 @@ class GatewayHistoryServiceTest {
           assertThat(resp.outboundSystemId()).isEqualTo(10L);
           assertThat(resp.idempotencyKey()).isEqualTo("order-abc");
           assertThat(resp.responseStatus()).isEqualTo(201);
+        })
+        .verifyComplete();
+  }
+
+  @Test
+  @DisplayName("findByIdempotencyKey copies every stored field and parses the three payloads through the JSON helper")
+  void findByIdempotencyKey_mapsEveryField() {
+    OutboundHistory stored = OutboundHistory.builder()
+        .id(5L).outboundSystemId(10L).idempotencyKey("order-abc").callerService("billing")
+        .requestId("req-1").requestMethod("POST").requestUrl("https://api.example.com/v1/charges")
+        .requestHeaders(Map.of("X-A", "a")).requestPayload("{\"amount\":1}")
+        .responseStatus(201).responseHeaders(Map.of("X-R", "r")).responsePayload("{\"id\":\"c1\"}")
+        .durationMs(33).convertedStatus(200).convertedResponse("not json")
+        .retryCount(1).createdDate(LocalDateTime.of(2026, 1, 2, 3, 4)).build();
+    when(systemRepository.findByCode("midtrans")).thenReturn(Mono.just(system(10L, "midtrans")));
+    when(historyRepository.findFirstByOutboundSystemIdAndIdempotencyKeyOrderByCreatedDateDesc(10L, "order-abc"))
+        .thenReturn(Mono.just(stored));
+    when(jsonHelper.parseJsonOrRaw("{\"amount\":1}")).thenReturn(Map.of("amount", 1));
+    when(jsonHelper.parseJsonOrRaw("{\"id\":\"c1\"}")).thenReturn(Map.of("id", "c1"));
+    when(jsonHelper.parseJsonOrRaw("not json")).thenReturn("not json");
+
+    StepVerifier.create(service.findByIdempotencyKey("midtrans", "order-abc"))
+        .assertNext(resp -> {
+          assertThat(resp.id()).isEqualTo(5L);
+          assertThat(resp.outboundSystemId()).isEqualTo(10L);
+          assertThat(resp.idempotencyKey()).isEqualTo("order-abc");
+          assertThat(resp.callerService()).isEqualTo("billing");
+          assertThat(resp.requestId()).isEqualTo("req-1");
+          assertThat(resp.requestMethod()).isEqualTo("POST");
+          assertThat(resp.requestUrl()).isEqualTo("https://api.example.com/v1/charges");
+          assertThat(resp.requestHeaders()).isEqualTo(Map.of("X-A", "a"));
+          assertThat(resp.requestPayload()).isEqualTo(Map.of("amount", 1));
+          assertThat(resp.responseStatus()).isEqualTo(201);
+          assertThat(resp.responseHeaders()).isEqualTo(Map.of("X-R", "r"));
+          assertThat(resp.responsePayload()).isEqualTo(Map.of("id", "c1"));
+          assertThat(resp.durationMs()).isEqualTo(33);
+          assertThat(resp.convertedStatus()).isEqualTo(200);
+          assertThat(resp.convertedResponse()).isEqualTo("not json");
+          assertThat(resp.retryCount()).isEqualTo(1);
+          assertThat(resp.createdDate()).isEqualTo(LocalDateTime.of(2026, 1, 2, 3, 4));
         })
         .verifyComplete();
   }

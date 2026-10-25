@@ -15,6 +15,17 @@ import lombok.Builder;
 import lombok.Getter;
 import org.springframework.web.reactive.function.client.WebClient;
 
+/**
+ * Everything needed to call one outbound system, resolved once and cached (see
+ * {@code gateway.SystemContextLoader}) and then shared by all concurrent calls of that system.
+ *
+ * <p><b>Treat every entity in here as read-only.</b> The entities are mutable Lombok {@code @Data} classes, but
+ * nothing may call a setter on them: the same instances are read by many threads, so a change would be visible
+ * mid-call and would never reach the database. Configuration changes go through the admin API, which writes a
+ * copy ({@code entity.updated(...)}) and evicts this context so the next call loads a fresh one. Per-call or
+ * per-token state belongs in the component that needs it (e.g. the OAuth strategy keeps its token in an
+ * immutable record), not in these entities.
+ */
 @Getter
 @Builder
 public class OutboundSystemContext {
