@@ -66,6 +66,15 @@ package "Outbound Gateway" {
     [OutboundHostController]
   }
 
+  package "Gateway pipeline" {
+    [SystemContextLoader]
+    [IdempotencyGuard]
+    [ParameterResolver]
+    [OutboundRequestExecutor]
+    [ResilienceDecorator]
+    [HistoryRecorder]
+  }
+
   package "Service Layer" {
     [GatewayServiceImpl]
     [GatewayHistoryServiceImpl]
@@ -94,11 +103,17 @@ package "Outbound Gateway" {
   [AdminOutboundController] --> [AdminOutboundServiceImpl]
   [OutboundHostController] --> [OutboundHostServiceImpl]
 
-  [GatewayServiceImpl] --> [AuthStrategyFactory]
-  [GatewayServiceImpl] --> [GatewayWebClientBuilder]
-  [GatewayServiceImpl] --> [ResilienceRegistryService]
-  [GatewayServiceImpl] --> [JsltResponseMapper]
+  [GatewayServiceImpl] --> [SystemContextLoader]
+  [GatewayServiceImpl] --> [IdempotencyGuard]
+  [GatewayServiceImpl] --> [ParameterResolver]
+  [GatewayServiceImpl] --> [OutboundRequestExecutor]
+  [GatewayServiceImpl] --> [ResilienceDecorator]
+  [GatewayServiceImpl] --> [HistoryRecorder]
   [GatewayServiceImpl] --> [OutboundMetricsRecorder]
+  [SystemContextLoader] --> [GatewayWebClientBuilder]
+  [GatewayWebClientBuilder] --> [ResilienceRegistryService]
+  [OutboundRequestExecutor] --> [AuthStrategyFactory]
+  [OutboundRequestExecutor] --> [JsltResponseMapper]
   [AdminOutboundServiceImpl] --> [OutboundSystemDetailQuery]
   [AdminOutboundServiceImpl] --> [EncryptionHelper]
   [OutboundHostServiceImpl] --> [EncryptionHelper]
@@ -122,8 +137,9 @@ database "PostgreSQL" {
 [Notification Service] --> [AppFilter]
 [Order Service] --> [AppFilter]
 
-[GatewayServiceImpl] --> [PostgreSQL] : load config (cached)
-[GatewayServiceImpl] ->> [PostgreSQL] : save history (fire-and-forget)
+[SystemContextLoader] --> [PostgreSQL] : load config (cached)
+[IdempotencyGuard] --> [PostgreSQL] : replay lookup + outbound_idempotency_reservations
+[HistoryRecorder] --> [PostgreSQL] : save history (awaited; failures logged, not propagated)
 [OutboundSystemDetailQuery] --> [PostgreSQL] : v_outbound_system_detail view
 [AppFilter] ->> [PostgreSQL] : save event_log (fire-and-forget)
 
@@ -153,11 +169,13 @@ AppFilter -> AppFilter : cache request body\nopen Micrometer observation
 AppFilter -> GatewayController : forward request
 
 GatewayController -> GatewayService : execute(code, callerService, idempotencyKey, request)
-GatewayService -> GatewayService : loadContext(code)\n[contextCache hit → return immediately\n miss → load from DB → put in cache]
+GatewayService -> SystemContextLoader : load(code)\n[contextCache hit → return immediately\n miss → load from DB → put in cache]
 
 alt idempotencyKey present
-  GatewayService -> OutboundHistories : findFirst by (system_id, key, created_date > cutoff)
-  OutboundHistories --> GatewayService : empty (not found within TTL)
+  GatewayService -> IdempotencyGuard : guard(system, key, ttl, execution)
+  IdempotencyGuard -> OutboundHistories : findFirst by (system_id, key, created_date > cutoff)
+  OutboundHistories --> IdempotencyGuard : empty (not found within TTL)
+  IdempotencyGuard -> IdempotencyGuard : merge with an overlapping call of the same key,\nreserve the key (outbound_idempotency_reservations)
 end
 
 GatewayService -> AuthStrategy : authenticate(config, encryptionHelper, body)
@@ -171,7 +189,7 @@ WebClient --> ResiliencePipeline : GatewayResponse(status, headers, body)
 ResiliencePipeline --> GatewayService : GatewayResponse
 
 GatewayService -> GatewayService : applyMapping\n(JSLT transform or pass-through)
-GatewayService ->> OutboundHistories : saveHistory (fire-and-forget)
+GatewayService -> OutboundHistories : saveHistory via HistoryRecorder\n(awaited; a failure is logged, not propagated)
 GatewayService --> GatewayController : GatewayResponse(fromCache=false)
 
 GatewayController --> AppFilter : HTTP 200 + GatewayExecuteResponse body
@@ -270,7 +288,7 @@ Only mechanisms with `enabled = true` are applied. A system with no enabled mech
 
 ### Context Cache Design
 
-`GatewayServiceImpl` maintains a two-layer cache to avoid repeated DB round-trips on the hot path:
+`SystemContextLoader` maintains a two-layer cache to avoid repeated DB round-trips on the hot path (`GatewayServiceImpl` only calls it):
 
 | Layer | Purpose |
 |---|---|
