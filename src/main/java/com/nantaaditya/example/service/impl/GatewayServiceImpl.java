@@ -1,14 +1,12 @@
 package com.nantaaditya.example.service.impl;
 
 import com.google.gson.Gson;
-import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHistory;
-import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
-import com.nantaaditya.example.entity.OutboundResponseMapperConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.factory.AuthStrategyFactory;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.helper.GatewayHelper;
+import com.nantaaditya.example.gateway.SystemContextLoader;
 import com.nantaaditya.example.idempotency.IdempotencyGuard;
 import com.nantaaditya.example.helper.GsonHelper;
 import com.nantaaditya.example.helper.JsonHelper;
@@ -21,18 +19,10 @@ import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.dto.ResolvedParameters;
-import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
-import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
-import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
-import com.nantaaditya.example.repository.OutboundHeaderConfigurationRepository;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
-import com.nantaaditya.example.repository.OutboundHostConfigurationRepository;
-import com.nantaaditya.example.repository.OutboundResilienceConfigurationRepository;
-import com.nantaaditya.example.repository.OutboundResponseMapperConfigurationRepository;
-import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.GatewayService;
 import io.github.resilience4j.reactor.bulkhead.operator.BulkheadOperator;
 import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
@@ -40,15 +30,10 @@ import io.github.resilience4j.reactor.ratelimiter.operator.RateLimiterOperator;
 import io.github.resilience4j.reactor.retry.RetryOperator;
 import io.micrometer.observation.Observation;
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.http.HttpMethod;
@@ -61,16 +46,15 @@ import reactor.core.publisher.Mono;
  *
  * <h3>Execution pipeline (per call)</h3>
  * <ol>
- *   <li>{@link #loadContext} — resolves {@link OutboundSystemContext} from the two-layer cache
- *       (hot {@code contextCache} → cold {@code contextLoadCache} with {@code Mono.cache()}
- *       thundering-herd protection).</li>
- *   <li>Idempotency check — if {@code X-Idempotency-Key} is present, queries history within
- *       the configured TTL window using the composite index
- *       {@code (outbound_system_id, idempotency_key, created_date)}.</li>
+ *   <li>{@link SystemContextLoader#load} — resolves {@link OutboundSystemContext} from the two-layer
+ *       cache (hot cache → shared database load).</li>
+ *   <li>{@link IdempotencyGuard} — if {@code x-idempotency-key} is present: replays a stored result
+ *       within the TTL window, merges overlapping calls with the same key (also across instances)
+ *       and runs the call only for the one that owns the key.</li>
  *   <li>{@link #executeWithResilience} — runs authentication, HTTP call, and the resilience pipeline.</li>
  *   <li>{@link com.nantaaditya.example.helper.GatewayHelper#applyMapping} — JSLT transform or pass-through.</li>
- *   <li>{@link #saveHistory} — fire-and-forget; saves the execution history for auditing
- *       and idempotency support.</li>
+ *   <li>{@link #saveHistory} — saves the execution history for auditing and idempotency support.
+ *       It is awaited before the response is returned; a failure is logged and swallowed.</li>
  * </ol>
  *
  * <h3>Resilience operator order</h3>
@@ -80,23 +64,18 @@ import reactor.core.publisher.Mono;
  * Retry must be outermost so each retry re-evaluates CB and Bulkhead. Placing Retry inside
  * CB would bypass the circuit breaker on retries — defeating its purpose.
  *
- * <h3>History save — fire-and-forget</h3>
- * <p>{@link #saveHistory} failures are logged and swallowed. A history write failure must
- * never surface as a gateway call failure to the caller.
+ * <h3>History save</h3>
+ * <p>The insert is awaited, so it adds to the call's latency, but {@link #saveHistory} failures
+ * are logged and swallowed: a history write failure must never surface as a gateway call
+ * failure to the caller.
  */
 @Log4j2
 @Service
 @RequiredArgsConstructor
 public class GatewayServiceImpl implements GatewayService {
 
-  private final OutboundSystemRepository systemRepository;
-  private final OutboundHostConfigurationRepository hostConfigRepository;
-  private final OutboundResilienceConfigurationRepository resilienceRepository;
-  private final OutboundHeaderConfigurationRepository headerRepository;
-  private final OutboundAuthConfigurationRepository authRepository;
-  private final OutboundResponseMapperConfigurationRepository mapperRepository;
+  private final SystemContextLoader contextLoader;
   private final OutboundHistoryRepository historyRepository;
-  private final GatewayWebClientBuilder contextBuilder;
   private final AuthStrategyFactory authStrategyFactory;
   private final EncryptionHelper encryptionHelper;
   private final JsonHelper jsonHelper;
@@ -107,21 +86,10 @@ public class GatewayServiceImpl implements GatewayService {
   private final ParameterInjector parameterInjector;
   private final IdempotencyGuard idempotencyGuard;
 
-  private final ConcurrentMap<String, OutboundSystemContext> contextCache = new ConcurrentHashMap<>();
-
-  // Bumped by every eviction. A load only populates contextCache if no eviction happened since it started,
-  // so a slow load can never resurrect a context that an admin change has just invalidated.
-  private final AtomicLong evictionEpoch = new AtomicLong();
-
-  // Thundering-herd protection: computeIfAbsent + Mono.cache() ensures only ONE DB load
-  // fires per code even when many requests arrive concurrently before the first load completes.
-  // doFinally removes the entry so the next miss after eviction triggers a fresh load.
-  private final ConcurrentMap<String, Mono<OutboundSystemContext>> contextLoadCache = new ConcurrentHashMap<>();
-
   @Override
   public Mono<GatewayResponse> execute(String code, String callerService, String idempotencyKey,
       GatewayRequest request) {
-    return loadContext(code)
+    return contextLoader.load(code)
         .flatMap(context -> {
           if (hasIdempotencyKey(idempotencyKey)) {
             OutboundSystem system = context.getSystem();
@@ -146,83 +114,18 @@ public class GatewayServiceImpl implements GatewayService {
         .flatMap(parameters -> executeWithResilience(context, callerService, idempotencyKey, request, parameters));
   }
 
+  @Override
   public void evictContext(String code) {
-    evictionEpoch.incrementAndGet();
-    OutboundSystemContext evicted = contextCache.remove(code);
-    contextLoadCache.remove(code);
-    if (evicted != null && evicted.getHostConfig() != null) {
-      evictHost(evicted.getHostConfig().getBaseUrl());
-    }
+    contextLoader.evictContext(code);
   }
 
   @Override
   public void evictHost(String baseUrl) {
-    evictionEpoch.incrementAndGet();
-    // Contexts keep a reference to the pooled WebClient; once the pool is recycled (and later disposed)
-    // every context of the host must be rebuilt, not only the one that triggered the eviction.
-    contextCache.values().removeIf(ctx ->
-        ctx.getHostConfig() != null && Objects.equals(baseUrl, ctx.getHostConfig().getBaseUrl()));
-    // in-flight loads may have read the old host row; do not let new callers join them
-    contextLoadCache.clear();
-    contextBuilder.evictWebClient(baseUrl);
+    contextLoader.evictHost(baseUrl);
   }
 
   private boolean hasIdempotencyKey(String key) {
     return key != null && !key.isBlank();
-  }
-
-  private Mono<OutboundSystemContext> loadContext(String code) {
-    OutboundSystemContext cached = contextCache.get(code);
-    if (cached != null) {
-      return Mono.just(cached);
-    }
-    return contextLoadCache.computeIfAbsent(code, k ->
-        loadFromDb(k)
-            .cache()
-            .doFinally(signal -> contextLoadCache.remove(k))
-    );
-  }
-
-  private Mono<OutboundSystemContext> loadFromDb(String code) {
-    // Captured when the load starts: any eviction after this point means what we read may already be
-    // outdated, so the result is returned to the waiting callers but must not be written to the cache.
-    return Mono.defer(() -> loadFromDb(code, evictionEpoch.get()));
-  }
-
-  private Mono<OutboundSystemContext> loadFromDb(String code, long epochAtStart) {
-    return systemRepository.findByCodeAndActiveTrue(code)
-        .flatMap(system -> {
-          long systemId = system.getId();
-          return Mono.zip(
-                  // No resilience row → bypass() synthetic sentinel; all operators skipped.
-                  // A row with all flags=false → readTimeOutMs only, no CB/BH/RL/Retry.
-                  resilienceRepository.findByOutboundSystemId(systemId)
-                      .defaultIfEmpty(OutboundResilienceConfiguration.bypass()),
-                  headerRepository.findByOutboundSystemId(systemId).collectList(),
-                  // No authentication row → treat as NONE so execution proceeds without authentication headers
-                  authRepository.findByOutboundSystemId(systemId)
-                      .defaultIfEmpty(OutboundAuthConfiguration.empty(systemId)),
-                  mapperRepository.findByOutboundSystemIdAndActiveTrue(systemId)
-                      .defaultIfEmpty(OutboundResponseMapperConfiguration.empty(systemId)),
-                  hostConfigRepository.findById(system.getHostConfigurationId())
-                      .switchIfEmpty(Mono.error(new HostConfigNotFoundException(system.getHostConfigurationId())))
-              )
-              .map(t -> contextBuilder.buildContext(
-                  system,
-                  t.getT5(),
-                  t.getT1(),
-                  t.getT2(),
-                  t.getT3(),
-                  t.getT4()
-                  )
-              );
-        })
-        .doOnNext(context -> {
-          if (evictionEpoch.get() == epochAtStart) {
-            contextCache.put(code, context);
-          }
-        })
-        .switchIfEmpty(Mono.error(new OutboundSystemNotFoundException(code)));
   }
 
   private Mono<GatewayResponse> executeWithResilience(
