@@ -10,9 +10,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.nantaaditya.example.helper.ContextHelper;
-import com.nantaaditya.example.helper.EventLogHelper;
 import com.nantaaditya.example.helper.ObservationHelper;
 import com.nantaaditya.example.helper.TracerHelper;
+import com.nantaaditya.example.logging.EventLogHelper;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;

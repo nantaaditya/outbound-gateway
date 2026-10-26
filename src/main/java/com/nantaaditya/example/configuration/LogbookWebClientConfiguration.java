@@ -2,8 +2,8 @@ package com.nantaaditya.example.configuration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
-import com.nantaaditya.example.helper.ApiLogbookFormatter;
-import com.nantaaditya.example.helper.ApiLogbookWriter;
+import com.nantaaditya.example.logging.ApiLogbookFormatter;
+import com.nantaaditya.example.logging.ApiLogbookWriter;
 import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.properties.LogProperties;

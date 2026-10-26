@@ -1,4 +1,4 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.logging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;

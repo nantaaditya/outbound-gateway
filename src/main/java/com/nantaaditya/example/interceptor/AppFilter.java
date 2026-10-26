@@ -1,8 +1,8 @@
 package com.nantaaditya.example.interceptor;
 
 import com.nantaaditya.example.helper.DateTimeHelper;
-import com.nantaaditya.example.helper.EventLogHelper;
 import com.nantaaditya.example.helper.ObservationHelper;
+import com.nantaaditya.example.logging.EventLogHelper;
 import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.ObservationConstant;

@@ -1,8 +1,9 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.logging;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.nantaaditya.example.helper.GsonHelper;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import java.util.Set;
 import lombok.extern.log4j.Log4j2;
