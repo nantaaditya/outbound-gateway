@@ -1,4 +1,4 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.observability;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

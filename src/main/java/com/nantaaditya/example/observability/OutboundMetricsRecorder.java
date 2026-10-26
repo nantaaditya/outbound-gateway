@@ -1,4 +1,4 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.observability;
 
 import static com.nantaaditya.example.model.constant.ObservationConstant.PUBLIC_API;
 

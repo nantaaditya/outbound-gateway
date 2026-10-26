@@ -1,8 +1,8 @@
 package com.nantaaditya.example.configuration;
 
-import com.nantaaditya.example.helper.TracerHelper;
 import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.HeaderConstant;
+import com.nantaaditya.example.observability.TracerHelper;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;

@@ -1,9 +1,9 @@
 package com.nantaaditya.example.interceptor;
 
-import com.nantaaditya.example.helper.TracerHelper;
 import com.nantaaditya.example.model.constant.ClientFeatureConstant;
 import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.constant.HeaderConstant;
+import com.nantaaditya.example.observability.TracerHelper;
 import io.micrometer.common.KeyValue;
 import io.micrometer.observation.Observation.Context;
 import io.micrometer.observation.ObservationFilter;

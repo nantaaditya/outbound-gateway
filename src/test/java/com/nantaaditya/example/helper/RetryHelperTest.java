@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.RetryType;
 import com.nantaaditya.example.model.request.RetryRequest;
+import com.nantaaditya.example.observability.TracerHelper;
 import com.nantaaditya.example.properties.RetryProperties;
 import com.nantaaditya.example.properties.embedded.RetryConfiguration;
 import com.nantaaditya.example.repository.DeadLetterProcessRepository;

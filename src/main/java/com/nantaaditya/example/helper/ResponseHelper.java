@@ -6,6 +6,7 @@ import com.nantaaditya.example.model.response.BaseResponse;
 import com.nantaaditya.example.model.response.BaseResponse.ErrorMetadata;
 import com.nantaaditya.example.model.response.BaseResponse.PageMetadata;
 import com.nantaaditya.example.model.response.BaseResponse.ResponseMetadata;
+import com.nantaaditya.example.observability.TracerHelper;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;

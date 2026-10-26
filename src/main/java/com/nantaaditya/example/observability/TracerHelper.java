@@ -1,4 +1,4 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.observability;
 
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.logger.AppLogMessage;

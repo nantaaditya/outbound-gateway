@@ -6,6 +6,7 @@ import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.RetryConstant;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.RetryRequest;
+import com.nantaaditya.example.observability.TracerHelper;
 import com.nantaaditya.example.properties.RetryProperties;
 import com.nantaaditya.example.properties.embedded.RetryConfiguration;
 import com.nantaaditya.example.repository.DeadLetterProcessRepository;

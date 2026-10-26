@@ -4,6 +4,7 @@ import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.constant.JobConstant;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.ReactorJobRequest;
+import com.nantaaditya.example.observability.TracerHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.springframework.stereotype.Component;

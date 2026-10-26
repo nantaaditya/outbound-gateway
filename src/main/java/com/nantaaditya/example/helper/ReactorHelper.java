@@ -1,6 +1,7 @@
 package com.nantaaditya.example.helper;
 
 import com.nantaaditya.example.model.logger.AppLogMessage;
+import com.nantaaditya.example.observability.TracerHelper;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
