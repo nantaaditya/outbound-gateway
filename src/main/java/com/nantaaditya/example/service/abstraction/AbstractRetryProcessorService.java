@@ -2,11 +2,11 @@ package com.nantaaditya.example.service.abstraction;
 
 import com.nantaaditya.example.entity.DeadLetterProcess;
 import com.nantaaditya.example.helper.ContextHelper;
-import com.nantaaditya.example.helper.CustomQueryHelper;
 import com.nantaaditya.example.helper.TracerHelper;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.logger.AppLogMessage;
+import com.nantaaditya.example.persistence.CustomQueryHelper;
 import com.nantaaditya.example.repository.DeadLetterProcessRepository;
 import java.util.List;
 import java.util.Optional;

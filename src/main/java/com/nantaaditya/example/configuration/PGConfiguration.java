@@ -1,9 +1,9 @@
 package com.nantaaditya.example.configuration;
 
 import com.nantaaditya.example.helper.JsonHelper;
-import com.nantaaditya.example.helper.PGJsonToIntegerMapConverter;
-import com.nantaaditya.example.helper.PGJsonToMapConverter;
-import com.nantaaditya.example.helper.PGMapToJsonConverter;
+import com.nantaaditya.example.persistence.PGJsonToIntegerMapConverter;
+import com.nantaaditya.example.persistence.PGJsonToMapConverter;
+import com.nantaaditya.example.persistence.PGMapToJsonConverter;
 import io.r2dbc.spi.ConnectionFactory;
 import java.util.List;
 import org.springframework.context.annotation.Bean;

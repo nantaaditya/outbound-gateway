@@ -1,6 +1,7 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.persistence;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import io.r2dbc.postgresql.codec.Json;
 import java.util.Map;
@@ -11,23 +12,24 @@ import org.springframework.util.StringUtils;
 
 @Log4j2
 @ReadingConverter
-public class PGJsonToIntegerMapConverter implements Converter<Json, Map<String, Integer>> {
+public class PGJsonToMapConverter implements Converter<Json, Map<String, Object>> {
 
   private final JsonHelper jsonHelper;
 
-  public PGJsonToIntegerMapConverter(JsonHelper jsonHelper) {
+  public PGJsonToMapConverter(JsonHelper jsonHelper) {
     this.jsonHelper = jsonHelper;
   }
 
   @Override
-  public Map<String, Integer> convert(Json source) {
+  public Map<String, Object> convert(Json source) {
     if (source == null || !StringUtils.hasLength(source.asString())) return null;
 
     try {
-      return jsonHelper.fromJson(source.asString(), new TypeReference<Map<String, Integer>>() {});
+      return jsonHelper.fromJson(source.asString(), new TypeReference<Map<String, Object>>() {});
     } catch (Exception e) {
-      log.error(AppLogMessage.message("#POSTGRES - error parsing jsonb to integer map").error(e));
+      log.error(AppLogMessage.message("#POSTGRES - error parsing jsonb to map database column").error(e));
     }
     return null;
   }
+
 }

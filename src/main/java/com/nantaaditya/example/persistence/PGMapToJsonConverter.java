@@ -1,5 +1,6 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.persistence;
 
+import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import io.r2dbc.postgresql.codec.Json;
 import java.util.Map;

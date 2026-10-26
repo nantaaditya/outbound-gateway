@@ -1,7 +1,7 @@
 package com.nantaaditya.example.repository;
 
-import com.nantaaditya.example.helper.OutboundSystemDetailRowMapper;
 import com.nantaaditya.example.model.response.OutboundSystemDetailResponse;
+import com.nantaaditya.example.persistence.OutboundSystemDetailRowMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.r2dbc.core.DatabaseClient;
 import org.springframework.stereotype.Repository;

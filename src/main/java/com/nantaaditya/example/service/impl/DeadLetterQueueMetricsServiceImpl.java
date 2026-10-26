@@ -1,8 +1,8 @@
 package com.nantaaditya.example.service.impl;
 
-import com.nantaaditya.example.helper.CustomQueryHelper;
 import com.nantaaditya.example.model.dto.DlqDepthRow;
 import com.nantaaditya.example.model.logger.AppLogMessage;
+import com.nantaaditya.example.persistence.CustomQueryHelper;
 import com.nantaaditya.example.service.DeadLetterQueueMetricsService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.MultiGauge;

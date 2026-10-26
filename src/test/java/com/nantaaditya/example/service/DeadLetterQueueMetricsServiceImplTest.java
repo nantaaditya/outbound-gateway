@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.when;
 
-import com.nantaaditya.example.helper.CustomQueryHelper;
 import com.nantaaditya.example.model.dto.DlqDepthRow;
+import com.nantaaditya.example.persistence.CustomQueryHelper;
 import com.nantaaditya.example.service.impl.DeadLetterQueueMetricsServiceImpl;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;

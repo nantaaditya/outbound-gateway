@@ -4,13 +4,13 @@ import static com.nantaaditya.example.helper.StringHelper.toLong;
 import static com.nantaaditya.example.model.constant.ObservationConstant.PUBLIC_API;
 
 import com.nantaaditya.example.entity.OutboundSystem;
-import com.nantaaditya.example.helper.CustomQueryHelper;
 import com.nantaaditya.example.helper.StringHelper;
 import com.nantaaditya.example.model.constant.ConstantName;
 import com.nantaaditya.example.model.exception.OutboundSystemNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.response.OutboundMetricsResponse;
 import com.nantaaditya.example.model.response.OutboundMetricsResponse.StatusBreakdown;
+import com.nantaaditya.example.persistence.CustomQueryHelper;
 import com.nantaaditya.example.repository.OutboundSystemRepository;
 import com.nantaaditya.example.service.OutboundMetricsService;
 import io.micrometer.core.instrument.Counter;
