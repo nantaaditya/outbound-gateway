@@ -3,7 +3,7 @@ package com.nantaaditya.example.service.impl;
 import com.nantaaditya.example.cache.OutboundParameterCache;
 import com.nantaaditya.example.crypto.EncryptionHelper;
 import com.nantaaditya.example.entity.OutboundParameter;
-import com.nantaaditya.example.helper.ParameterInjector;
+import com.nantaaditya.example.gateway.ParameterInjector;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.exception.InvalidParameterException;
 import com.nantaaditya.example.model.exception.ParameterNotFoundException;

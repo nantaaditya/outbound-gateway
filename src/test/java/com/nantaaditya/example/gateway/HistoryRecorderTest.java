@@ -11,7 +11,6 @@ import com.nantaaditya.example.cache.JsltResponseMapper;
 import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
-import com.nantaaditya.example.helper.GatewayHelper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;

@@ -2,12 +2,12 @@ package com.nantaaditya.example.service.impl;
 
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
+import com.nantaaditya.example.gateway.GatewayHelper;
 import com.nantaaditya.example.gateway.HistoryRecorder;
 import com.nantaaditya.example.gateway.OutboundRequestExecutor;
+import com.nantaaditya.example.gateway.ParameterResolver;
 import com.nantaaditya.example.gateway.ResilienceDecorator;
 import com.nantaaditya.example.gateway.SystemContextLoader;
-import com.nantaaditya.example.helper.GatewayHelper;
-import com.nantaaditya.example.helper.ParameterResolver;
 import com.nantaaditya.example.idempotency.IdempotencyGuard;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.dto.ResolvedParameters;

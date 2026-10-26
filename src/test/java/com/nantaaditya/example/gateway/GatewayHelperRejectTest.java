@@ -1,4 +1,4 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.nantaaditya.example.cache.JsltResponseMapper;
 import com.nantaaditya.example.entity.OutboundSystem;
+import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.response.GatewayResponse;
 import io.github.resilience4j.bulkhead.Bulkhead;

@@ -1,7 +1,6 @@
 package com.nantaaditya.example.gateway;
 
 import com.nantaaditya.example.entity.OutboundHistory;
-import com.nantaaditya.example.helper.GatewayHelper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
