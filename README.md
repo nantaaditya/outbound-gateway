@@ -172,7 +172,7 @@ GatewayController -> GatewayService : execute(code, callerService, idempotencyKe
 GatewayService -> SystemContextLoader : load(code)\n[contextCache hit → return immediately\n miss → load from DB → put in cache]
 
 alt idempotencyKey present
-  GatewayService -> IdempotencyGuard : guard(system, key, ttl, execution)
+  GatewayService -> IdempotencyGuard : guard(system, key, ttl, requestFingerprint, execution)
   IdempotencyGuard -> OutboundHistories : findFirst by (system_id, key, created_date > cutoff)
   OutboundHistories --> IdempotencyGuard : empty (not found within TTL)
   IdempotencyGuard -> IdempotencyGuard : merge with an overlapping call of the same key,\nreserve the key (outbound_idempotency_reservations)
@@ -732,6 +732,8 @@ Retry uses `retryOnResult` — a `503` response from the upstream triggers a ret
 | `RequestNotPermitted` | 429 | Rate limit exceeded |
 | `MaxRetriesExceededException` | 502 | All retry attempts exhausted |
 | `TimeoutException` | 504 | Upstream timed out |
+| Idempotency key reused with a different request | 422 | `data.status` is `422`; nothing was sent upstream. Use a new key for a new request |
+| Idempotency key still in progress (past the lease) | 409 | Another call holds the key; retry later with the same key |
 | `DataBufferLimitException` | 502 | Upstream answered with more than `MAX_RESPONSE_BYTES` (default 10 MB). The upstream already processed the request, so retry only with an idempotency key |
 | Other | 503 | Unexpected internal error |
 
