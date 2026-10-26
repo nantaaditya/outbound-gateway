@@ -824,7 +824,7 @@ Execute an outbound HTTP call through the configured outbound system.
 | Header | Required | Description |
 |---|---|---|
 | `X-Caller-Service` | No | Calling service name — saved to history |
-| `X-Idempotency-Key` | No | Checks history first; returns cached result if within TTL. Ignored when `idempotencyTtlHours = 0` (idempotency disabled for that system). |
+| `X-Idempotency-Key` | No | Checks history first; returns cached result if within TTL. Ignored when `idempotencyTtlHours = 0` (idempotency disabled for that system). Printable ASCII, at most 255 characters — anything else is a `400`. A key stands for **one request**: reusing it with a different request (other body, query parameters or `injectKeys`; key order inside the body does not matter) is rejected with status `422` and is not executed. |
 | `X-Request-Id` | No | Correlation ID handled by `AppFilter` — propagated to `outbound_histories.request_id` automatically |
 
 **Request body:**
