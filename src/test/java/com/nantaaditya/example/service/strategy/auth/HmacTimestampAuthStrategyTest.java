@@ -44,7 +44,7 @@ class HmacTimestampAuthStrategyTest {
   @Test
   @DisplayName("returns the timestamp header and the signature header, the signature matching the external value")
   void sign_body_returnsTimestampAndSignature() {
-    StepVerifier.create(strategy.sign(input(BODY), config(), encryption))
+    StepVerifier.create(strategy.authenticate(input(BODY), config(), encryption))
         .assertNext(credentials -> assertThat(credentials).containsExactly(
             new AuthCredential("X-Timestamp", TIMESTAMP, TokenInjectLocation.HEADER),
             new AuthCredential("X-Signature", SIGNATURE_OF_BODY, TokenInjectLocation.HEADER)))
@@ -54,7 +54,7 @@ class HmacTimestampAuthStrategyTest {
   @Test
   @DisplayName("a request without a body signs the timestamp, the separator and nothing else")
   void sign_noBody_signsTimestampAndSeparator() {
-    List<AuthCredential> credentials = strategy.sign(input(null), config(), encryption).block();
+    List<AuthCredential> credentials = strategy.authenticate(input(null), config(), encryption).block();
 
     assertThat(credentials.get(1).value()).isEqualTo(SIGNATURE_OF_EMPTY);
   }
@@ -68,7 +68,7 @@ class HmacTimestampAuthStrategyTest {
         .authSettings(Map.of("timestampHeader", "X-Partner-Time"))
         .build();
 
-    List<AuthCredential> credentials = strategy.sign(input(BODY), config, encryption).block();
+    List<AuthCredential> credentials = strategy.authenticate(input(BODY), config, encryption).block();
 
     assertThat(credentials).extracting(AuthCredential::keyName).containsExactly("X-Partner-Time", "X-Partner-Sig");
   }
@@ -81,7 +81,7 @@ class HmacTimestampAuthStrategyTest {
         .authSettings(Map.of("timestampHeader", "X-Timestamp"))
         .build();
 
-    StepVerifier.create(strategy.sign(input(BODY), config, encryption))
+    StepVerifier.create(strategy.authenticate(input(BODY), config, encryption))
         .expectError(IllegalArgumentException.class)
         .verify();
   }
@@ -94,16 +94,8 @@ class HmacTimestampAuthStrategyTest {
         .tokenKeyName("X-Signature")
         .build();
 
-    StepVerifier.create(strategy.sign(input(BODY), config, encryption))
+    StepVerifier.create(strategy.authenticate(input(BODY), config, encryption))
         .expectError(IllegalArgumentException.class)
-        .verify();
-  }
-
-  @Test
-  @DisplayName("the body-only authenticate is refused: this scheme needs the request")
-  void authenticate_refused() {
-    StepVerifier.create(strategy.authenticate(config(), encryption, BODY))
-        .expectError(UnsupportedOperationException.class)
         .verify();
   }
 

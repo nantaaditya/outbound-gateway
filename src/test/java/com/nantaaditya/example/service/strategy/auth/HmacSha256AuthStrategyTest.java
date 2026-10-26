@@ -37,7 +37,7 @@ class HmacSha256AuthStrategyTest {
   void authenticate_withBody_returnsHmacCredential() {
     OutboundAuthConfiguration config = configWith("my-secret");
 
-    StepVerifier.create(strategy.authenticate(config, encryptionHelper, "{\"amount\":100}"))
+    StepVerifier.create(AuthTestSupport.single(strategy, config, encryptionHelper, "{\"amount\":100}"))
         .assertNext(cred -> {
           assertThat(cred.keyName()).isEqualTo("X-Signature");
           assertThat(cred.location()).isEqualTo(TokenInjectLocation.HEADER);
@@ -51,7 +51,7 @@ class HmacSha256AuthStrategyTest {
   void authenticate_nullBody_signsEmptyString() {
     OutboundAuthConfiguration config = configWith("some-secret");
 
-    StepVerifier.create(strategy.authenticate(config, encryptionHelper, null))
+    StepVerifier.create(AuthTestSupport.single(strategy, config, encryptionHelper, null))
         .assertNext(cred -> assertThat(isValidBase64(cred.value())).isTrue())
         .verifyComplete();
   }
@@ -62,8 +62,8 @@ class HmacSha256AuthStrategyTest {
     OutboundAuthConfiguration config = configWith("stable-secret");
     String body = "{\"key\":\"value\"}";
 
-    var first = strategy.authenticate(config, encryptionHelper, body).block();
-    var second = strategy.authenticate(config, encryptionHelper, body).block();
+    var first = AuthTestSupport.single(strategy, config, encryptionHelper, body).block();
+    var second = AuthTestSupport.single(strategy, config, encryptionHelper, body).block();
 
     assertThat(first).isNotNull();
     assertThat(first.value()).isEqualTo(second.value());
@@ -74,8 +74,8 @@ class HmacSha256AuthStrategyTest {
   void authenticate_differentBodies_produceDifferentSignatures() {
     OutboundAuthConfiguration config = configWith("stable-secret");
 
-    var first = strategy.authenticate(config, encryptionHelper, "body-a").block();
-    var second = strategy.authenticate(config, encryptionHelper, "body-b").block();
+    var first = AuthTestSupport.single(strategy, config, encryptionHelper, "body-a").block();
+    var second = AuthTestSupport.single(strategy, config, encryptionHelper, "body-b").block();
 
     assertThat(first).isNotNull();
     assertThat(second).isNotNull();
@@ -89,8 +89,8 @@ class HmacSha256AuthStrategyTest {
     OutboundAuthConfiguration config2 = configWith("secret-b");
     String body = "common-body";
 
-    var first = strategy.authenticate(config1, encryptionHelper, body).block();
-    var second = strategy.authenticate(config2, encryptionHelper, body).block();
+    var first = AuthTestSupport.single(strategy, config1, encryptionHelper, body).block();
+    var second = AuthTestSupport.single(strategy, config2, encryptionHelper, body).block();
 
     assertThat(first).isNotNull();
     assertThat(second).isNotNull();

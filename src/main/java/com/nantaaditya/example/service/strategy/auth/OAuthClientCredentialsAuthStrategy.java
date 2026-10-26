@@ -6,11 +6,13 @@ import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.dto.AuthCredential;
+import com.nantaaditya.example.model.dto.SigningInput;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.service.AuthStrategy;
 import jakarta.annotation.PostConstruct;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -91,10 +93,10 @@ public class OAuthClientCredentialsAuthStrategy implements AuthStrategy {
   }
 
   @Override
-  public Mono<AuthCredential> authenticate(
-      OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption, String requestBody) {
+  public Mono<List<AuthCredential>> authenticate(
+      SigningInput input, OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption) {
     return resolveToken(authConfiguration, encryption)
-        .map(token -> buildCredential(authConfiguration, token));
+        .map(token -> List.of(buildCredential(authConfiguration, token)));
   }
 
   @Override

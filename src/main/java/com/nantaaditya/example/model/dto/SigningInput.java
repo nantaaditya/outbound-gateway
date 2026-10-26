@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /**
- * Everything a {@link com.nantaaditya.example.service.RequestSigner} may sign: the request as it is about to go on
+ * Everything a {@link com.nantaaditya.example.service.AuthStrategy} may sign: the request as it is about to go on
  * the wire, after configured and injected headers and query values were applied. Credentials produced by the
  * signer are not part of it (a signature cannot cover itself).
  *

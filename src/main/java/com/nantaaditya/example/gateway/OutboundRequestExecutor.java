@@ -15,8 +15,6 @@ import com.nantaaditya.example.model.dto.ResolvedParameters;
 import com.nantaaditya.example.model.dto.SigningInput;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
-import com.nantaaditya.example.service.AuthStrategy;
-import com.nantaaditya.example.service.RequestSigner;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -90,14 +88,11 @@ public class OutboundRequestExecutor {
     return new SigningInput(system.getHttpMethodEnum().name(), system.getApiPath(), query, headers, cleanedBody);
   }
 
-  // A plain AuthStrategy yields exactly one credential computed from the body alone; a RequestSigner sees the
-  // whole prepared request and may yield several.
+  // Every strategy sees the whole prepared request and returns the credentials to attach (none, one or several).
   private Mono<List<AuthCredential>> authenticateRequest(OutboundSystemContext context, SigningInput input) {
-    AuthStrategy strategy = authStrategyFactory.getStrategy(context.getAuth().getAuthType());
-    if (strategy instanceof RequestSigner signer) {
-      return signer.sign(input, context.getAuth(), encryptionHelper);
-    }
-    return strategy.authenticate(context.getAuth(), encryptionHelper, input.body()).map(List::of);
+    return authStrategyFactory
+        .getStrategy(context.getAuth().getAuthType())
+        .authenticate(input, context.getAuth(), encryptionHelper);
   }
 
   private Mono<GatewayResponse> executeHttp(OutboundSystemContext context, GatewayRequest request,

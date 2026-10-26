@@ -4,10 +4,11 @@ import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.dto.AuthCredential;
+import com.nantaaditya.example.model.dto.SigningInput;
 import com.nantaaditya.example.service.AuthStrategy;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.Optional;
+import java.util.List;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
@@ -36,16 +37,15 @@ public class HmacSha256AuthStrategy implements AuthStrategy {
   }
 
   @Override
-  public Mono<AuthCredential> authenticate(
-      OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption, String requestBody) {
+  public Mono<List<AuthCredential>> authenticate(
+      SigningInput input, OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption) {
     return Mono.fromCallable(() -> {
       String secret = encryption.decryptToString(authConfiguration.getClientSecret());
-      String body = Optional.ofNullable(requestBody).orElse("");
-      String signature = computeHmac(secret, body);
-      return new AuthCredential(
+      String signature = computeHmac(secret, input.body());
+      return List.of(new AuthCredential(
           authConfiguration.getTokenKeyName(),
           signature,
-          authConfiguration.getTokenInjectLocation());
+          authConfiguration.getTokenInjectLocation()));
     }).subscribeOn(Schedulers.boundedElastic());
   }
 

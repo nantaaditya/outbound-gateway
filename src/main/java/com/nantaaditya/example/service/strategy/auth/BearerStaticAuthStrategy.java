@@ -4,7 +4,9 @@ import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.dto.AuthCredential;
+import com.nantaaditya.example.model.dto.SigningInput;
 import com.nantaaditya.example.service.AuthStrategy;
+import java.util.List;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -31,16 +33,16 @@ public class BearerStaticAuthStrategy implements AuthStrategy {
   }
 
   @Override
-  public Mono<AuthCredential> authenticate(
-      OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption, String requestBody) {
+  public Mono<List<AuthCredential>> authenticate(
+      SigningInput input, OutboundAuthConfiguration authConfiguration, EncryptionHelper encryption) {
     return Mono.fromCallable(() -> {
       String token = encryption.decryptToString(authConfiguration.getClientSecret());
       String prefix = authConfiguration.getTokenPrefix();
       String value = authConfiguration.isPrefixNotBlank() ? prefix + " " + token : token;
-      return new AuthCredential(
+      return List.of(new AuthCredential(
           authConfiguration.getTokenKeyName(),
           value,
-          authConfiguration.getTokenInjectLocation());
+          authConfiguration.getTokenInjectLocation()));
     }).subscribeOn(Schedulers.boundedElastic());
   }
 }

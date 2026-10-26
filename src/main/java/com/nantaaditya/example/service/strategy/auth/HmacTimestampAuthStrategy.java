@@ -6,7 +6,7 @@ import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.SigningInput;
-import com.nantaaditya.example.service.RequestSigner;
+import com.nantaaditya.example.service.AuthStrategy;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
@@ -35,7 +35,7 @@ import reactor.core.scheduler.Schedulers;
  */
 @Component
 @RequiredArgsConstructor
-public class HmacTimestampAuthStrategy implements RequestSigner {
+public class HmacTimestampAuthStrategy implements AuthStrategy {
 
   static final String TIMESTAMP_HEADER_SETTING = "timestampHeader";
   private static final String HMAC_ALGORITHM = "HmacSHA256";
@@ -49,7 +49,7 @@ public class HmacTimestampAuthStrategy implements RequestSigner {
   }
 
   @Override
-  public Mono<List<AuthCredential>> sign(
+  public Mono<List<AuthCredential>> authenticate(
       SigningInput input, OutboundAuthConfiguration config, EncryptionHelper encryption) {
     return Mono.fromCallable(() -> {
       String timestampHeader = requireSetting(config);

@@ -35,7 +35,7 @@ import com.nantaaditya.example.model.dto.ResolvedParameter;
 import com.nantaaditya.example.model.dto.ResolvedParameters;
 import com.nantaaditya.example.model.dto.SigningInput;
 import com.nantaaditya.example.model.request.GatewayRequest;
-import com.nantaaditya.example.service.RequestSigner;
+import com.nantaaditya.example.service.AuthStrategy;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -51,7 +51,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 /**
- * A {@link RequestSigner} signs the prepared request (method, path, query, headers, body) and may return several
+ * An {@link AuthStrategy} sees the prepared request (method, path, query, headers, body) and may return several
  * credentials. Real WebClient against WireMock; only the factory and the signer are test doubles.
  */
 class OutboundRequestExecutorSigningTest {
@@ -149,19 +149,19 @@ class OutboundRequestExecutorSigningTest {
   // --- helpers ---
 
   private void signsWith(Function<SigningInput, Mono<List<AuthCredential>>> signer) {
-    RequestSigner requestSigner = new RequestSigner() {
+    AuthStrategy strategy = new AuthStrategy() {
       @Override
       public AuthType supports() {
         return AuthType.HMAC;
       }
 
       @Override
-      public Mono<List<AuthCredential>> sign(SigningInput input, OutboundAuthConfiguration config,
+      public Mono<List<AuthCredential>> authenticate(SigningInput input, OutboundAuthConfiguration config,
           EncryptionHelper encryption) {
         return signer.apply(input);
       }
     };
-    when(authStrategyFactory.getStrategy(any())).thenReturn(requestSigner);
+    when(authStrategyFactory.getStrategy(any())).thenReturn(strategy);
   }
 
   private LoggedRequest sent() {

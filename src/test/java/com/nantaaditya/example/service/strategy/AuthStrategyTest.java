@@ -9,6 +9,7 @@ import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.repository.OutboundAuthConfigurationRepository;
 import com.nantaaditya.example.service.strategy.auth.ApiKeyAuthStrategy;
+import com.nantaaditya.example.service.strategy.auth.AuthTestSupport;
 import com.nantaaditya.example.service.strategy.auth.BasicAuthStrategy;
 import com.nantaaditya.example.service.strategy.auth.BearerStaticAuthStrategy;
 import com.nantaaditya.example.service.strategy.auth.HmacSha256AuthStrategy;
@@ -51,14 +52,14 @@ class AuthStrategyTest {
     }
 
     @Test
-    @DisplayName("authenticate returns empty credential")
+    @DisplayName("authenticate returns no credentials")
     void authenticate_returnsEmpty() {
       OutboundAuthConfiguration config = OutboundAuthConfiguration.builder()
           .authType(AuthType.NONE)
           .build();
 
-      StepVerifier.create(new NoneAuthStrategy().authenticate(config, encryptionHelper, null))
-          .assertNext(cred -> assertThat(cred.isEmpty()).isTrue())
+      StepVerifier.create(new NoneAuthStrategy().authenticate(AuthTestSupport.bodyOnly(null), config, encryptionHelper))
+          .assertNext(credentials -> assertThat(credentials).isEmpty())
           .verifyComplete();
     }
   }
@@ -83,7 +84,7 @@ class AuthStrategyTest {
           .tokenInjectLocation(TokenInjectLocation.HEADER)
           .build();
 
-      StepVerifier.create(new ApiKeyAuthStrategy().authenticate(config, encryptionHelper, null))
+      StepVerifier.create(AuthTestSupport.single(new ApiKeyAuthStrategy(), config, encryptionHelper, null))
           .assertNext(cred -> {
             assertThat(cred.keyName()).isEqualTo("X-API-Key");
             assertThat(cred.value()).isEqualTo("my-api-key-value");
@@ -113,7 +114,7 @@ class AuthStrategyTest {
           .clientSecret(encryptedClientSecret)
           .build();
 
-      StepVerifier.create(new BasicAuthStrategy().authenticate(config, encryptionHelper, null))
+      StepVerifier.create(AuthTestSupport.single(new BasicAuthStrategy(), config, encryptionHelper, null))
           .assertNext(cred -> {
             assertThat(cred.keyName()).isEqualTo("Authorization");
             assertThat(cred.value()).startsWith("Basic ");
@@ -146,7 +147,7 @@ class AuthStrategyTest {
           .tokenKeyName("Authorization")
           .build();
 
-      StepVerifier.create(new BearerStaticAuthStrategy().authenticate(config, encryptionHelper, null))
+      StepVerifier.create(AuthTestSupport.single(new BearerStaticAuthStrategy(), config, encryptionHelper, null))
           .assertNext(cred -> {
             assertThat(cred.keyName()).isEqualTo("Authorization");
             assertThat(cred.value()).isEqualTo("Bearer static-token-abc");
@@ -177,7 +178,7 @@ class AuthStrategyTest {
           .build();
 
       StepVerifier.create(
-          new HmacSha256AuthStrategy().authenticate(config, encryptionHelper, "{\"amount\":100}"))
+          AuthTestSupport.single(new HmacSha256AuthStrategy(), config, encryptionHelper, "{\"amount\":100}"))
           .assertNext(cred -> {
             assertThat(cred.keyName()).isEqualTo("X-Signature");
             assertThat(cred.value()).isNotBlank();
@@ -223,7 +224,7 @@ class AuthStrategyTest {
           .tokenInjectLocation(TokenInjectLocation.HEADER)
           .build();
 
-      StepVerifier.create(strategy.authenticate(config, rsaEncryption, "{\"amount\":100}"))
+      StepVerifier.create(AuthTestSupport.single(strategy, config, rsaEncryption, "{\"amount\":100}"))
           .assertNext(cred -> {
             assertThat(cred.keyName()).isEqualTo("X-Signature");
             assertThat(cred.value()).isNotBlank();

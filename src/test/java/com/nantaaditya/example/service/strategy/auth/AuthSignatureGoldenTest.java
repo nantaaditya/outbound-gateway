@@ -47,7 +47,7 @@ class AuthSignatureGoldenTest {
   @Test
   @DisplayName("HMAC: the signature of a fixed body and secret is exactly the externally computed value")
   void hmac_body_matchesKnownAnswer() {
-    var credential = new HmacSha256AuthStrategy().authenticate(hmacConfig(), encryption, BODY).block();
+    var credential = AuthTestSupport.single(new HmacSha256AuthStrategy(), hmacConfig(), encryption, BODY).block();
 
     assertThat(credential.value()).isEqualTo(HMAC_OF_BODY);
     assertThat(credential.keyName()).isEqualTo("X-Signature");
@@ -57,7 +57,7 @@ class AuthSignatureGoldenTest {
   @Test
   @DisplayName("HMAC: a null body signs the empty string")
   void hmac_nullBody_matchesKnownAnswerOfEmptyString() {
-    var credential = new HmacSha256AuthStrategy().authenticate(hmacConfig(), encryption, null).block();
+    var credential = AuthTestSupport.single(new HmacSha256AuthStrategy(), hmacConfig(), encryption, null).block();
 
     assertThat(credential.value()).isEqualTo(HMAC_OF_EMPTY);
   }
@@ -65,7 +65,7 @@ class AuthSignatureGoldenTest {
   @Test
   @DisplayName("RSA: the PKCS#1 v1.5 SHA-256 signature of a fixed body is exactly the openssl value")
   void rsa_body_matchesKnownAnswer() {
-    var credential = new RsaAuthStrategy().authenticate(rsaConfig(), encryption, BODY).block();
+    var credential = AuthTestSupport.single(new RsaAuthStrategy(), rsaConfig(), encryption, BODY).block();
 
     assertThat(credential.value()).isEqualTo(RSA_OF_BODY);
     assertThat(credential.keyName()).isEqualTo("X-Signature");
@@ -75,7 +75,7 @@ class AuthSignatureGoldenTest {
   @Test
   @DisplayName("RSA: a null body signs the empty string")
   void rsa_nullBody_matchesKnownAnswerOfEmptyString() {
-    var credential = new RsaAuthStrategy().authenticate(rsaConfig(), encryption, null).block();
+    var credential = AuthTestSupport.single(new RsaAuthStrategy(), rsaConfig(), encryption, null).block();
 
     assertThat(credential.value()).isEqualTo(RSA_OF_EMPTY);
   }

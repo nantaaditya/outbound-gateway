@@ -34,6 +34,7 @@ import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.dto.ResolvedParameter;
 import com.nantaaditya.example.model.dto.ResolvedParameters;
+import com.nantaaditya.example.model.dto.SigningInput;
 import com.nantaaditya.example.model.exception.InvalidParameterException;
 import com.nantaaditya.example.model.request.GatewayRequest;
 import com.nantaaditya.example.model.response.GatewayResponse;
@@ -114,20 +115,20 @@ class OutboundRequestExecutorTest {
   @Test
   @DisplayName("the authentication strategy signs exactly the bytes that go on the wire")
   void execute_authenticatesTheExactBodySent() {
-    ArgumentCaptor<String> signedBody = ArgumentCaptor.forClass(String.class);
-    when(authStrategy.authenticate(any(), any(), signedBody.capture())).thenReturn(Mono.just(AuthCredential.empty()));
+    ArgumentCaptor<SigningInput> signedInput = ArgumentCaptor.forClass(SigningInput.class);
+    when(authStrategy.authenticate(signedInput.capture(), any(), any())).thenReturn(Mono.just(List.of()));
 
     executor.execute(context(1000), new GatewayRequest(Map.of(), Map.of("amount", 100)),
         ResolvedParameters.empty(), () -> { }).block();
 
-    assertThat(signedBody.getValue()).isEqualTo(sent().getBodyAsString());
+    assertThat(signedInput.getValue().body()).isEqualTo(sent().getBodyAsString());
   }
 
   @Test
   @DisplayName("a BODY parameter is injected before signing, so the signature covers it and it reaches the upstream")
   void execute_bodyParameter_injectedBeforeSigning() {
-    ArgumentCaptor<String> signedBody = ArgumentCaptor.forClass(String.class);
-    when(authStrategy.authenticate(any(), any(), signedBody.capture())).thenReturn(Mono.just(AuthCredential.empty()));
+    ArgumentCaptor<SigningInput> signedInput = ArgumentCaptor.forClass(SigningInput.class);
+    when(authStrategy.authenticate(signedInput.capture(), any(), any())).thenReturn(Mono.just(List.of()));
     ResolvedParameters parameters = new ResolvedParameters(List.of(
         new ResolvedParameter("merchant", ParameterInjectLocation.BODY, "meta.merchantId", "M-9")));
 
@@ -135,7 +136,7 @@ class OutboundRequestExecutorTest {
         .block();
 
     assertThat(sent().getBodyAsString()).contains("\"meta\":{\"merchantId\":\"M-9\"}").contains("\"amount\":100");
-    assertThat(signedBody.getValue()).isEqualTo(sent().getBodyAsString());
+    assertThat(signedInput.getValue().body()).isEqualTo(sent().getBodyAsString());
   }
 
   @Test
@@ -174,14 +175,14 @@ class OutboundRequestExecutorTest {
   @Test
   @DisplayName("a request without a body sends no body and signs an empty string")
   void execute_noBody_sendsNoBody() {
-    ArgumentCaptor<String> signedBody = ArgumentCaptor.forClass(String.class);
-    when(authStrategy.authenticate(any(), any(), signedBody.capture())).thenReturn(Mono.just(AuthCredential.empty()));
+    ArgumentCaptor<SigningInput> signedInput = ArgumentCaptor.forClass(SigningInput.class);
+    when(authStrategy.authenticate(signedInput.capture(), any(), any())).thenReturn(Mono.just(List.of()));
 
     executor.execute(context(1000), new GatewayRequest(Map.of(), null), ResolvedParameters.empty(), () -> { })
         .block();
 
     assertThat(sent().getBodyAsString()).isEmpty();
-    assertThat(signedBody.getValue()).isEmpty();
+    assertThat(signedInput.getValue().body()).isEmpty();
   }
 
   @Test
@@ -252,7 +253,8 @@ class OutboundRequestExecutorTest {
   // --- helpers ---
 
   private void authenticatesWith(AuthCredential credential) {
-    when(authStrategy.authenticate(any(), any(), any())).thenReturn(Mono.just(credential));
+    when(authStrategy.authenticate(any(), any(), any()))
+        .thenReturn(Mono.just(credential.isEmpty() ? List.<AuthCredential>of() : List.of(credential)));
   }
 
   private LoggedRequest sent() {

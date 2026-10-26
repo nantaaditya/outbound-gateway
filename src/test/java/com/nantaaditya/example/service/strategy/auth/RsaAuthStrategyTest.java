@@ -49,7 +49,7 @@ class RsaAuthStrategyTest {
     OutboundAuthConfiguration config = configWithKey(1L, keyPair.getPrivate().getEncoded());
     String body = "{\"amount\":500}";
 
-    var cred = strategy.authenticate(config, encryptionHelper, body).block();
+    var cred = AuthTestSupport.single(strategy, config, encryptionHelper, body).block();
 
     assertThat(cred).isNotNull();
     assertThat(cred.keyName()).isEqualTo("X-Signature");
@@ -66,7 +66,7 @@ class RsaAuthStrategyTest {
   void authenticate_nullBody_signsEmptyString() throws Exception {
     OutboundAuthConfiguration config = configWithKey(2L, keyPair.getPrivate().getEncoded());
 
-    var cred = strategy.authenticate(config, encryptionHelper, null).block();
+    var cred = AuthTestSupport.single(strategy, config, encryptionHelper, null).block();
 
     assertThat(cred).isNotNull();
     Signature verifier = Signature.getInstance("SHA256withRSA");
@@ -80,8 +80,8 @@ class RsaAuthStrategyTest {
   void authenticate_secondCall_reusesCachedKey() {
     OutboundAuthConfiguration config = configWithKey(3L, keyPair.getPrivate().getEncoded());
 
-    var first = strategy.authenticate(config, encryptionHelper, "body").block();
-    var second = strategy.authenticate(config, encryptionHelper, "body").block();
+    var first = AuthTestSupport.single(strategy, config, encryptionHelper, "body").block();
+    var second = AuthTestSupport.single(strategy, config, encryptionHelper, "body").block();
 
     assertThat(first).isNotNull();
     assertThat(second).isNotNull();
@@ -93,10 +93,10 @@ class RsaAuthStrategyTest {
   void evictTokenState_removesCache_nextCallReloads() {
     OutboundAuthConfiguration config = configWithKey(4L, keyPair.getPrivate().getEncoded());
 
-    strategy.authenticate(config, encryptionHelper, "seed").block();
+    AuthTestSupport.single(strategy, config, encryptionHelper, "seed").block();
     strategy.evictTokenState(4L);
 
-    var cred = strategy.authenticate(config, encryptionHelper, "after-evict").block();
+    var cred = AuthTestSupport.single(strategy, config, encryptionHelper, "after-evict").block();
     assertThat(cred).isNotNull();
   }
 
@@ -106,7 +106,7 @@ class RsaAuthStrategyTest {
     byte[] badKeyDer = new byte[]{1, 2, 3, 4};
     OutboundAuthConfiguration config = configWithKey(5L, badKeyDer);
 
-    StepVerifier.create(strategy.authenticate(config, encryptionHelper, "body"))
+    StepVerifier.create(AuthTestSupport.single(strategy, config, encryptionHelper, "body"))
         .expectErrorMatches(e -> e instanceof IllegalArgumentException
             && e.getMessage().contains("RSA private key"))
         .verify();
