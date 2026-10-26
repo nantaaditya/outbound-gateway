@@ -68,8 +68,8 @@ public class GatewayWebClientBuilder {
   private static final Duration DEFAULT_DISPOSE_GRACE_PERIOD = Duration.ofSeconds(30);
 
   // The WebClient and the pool behind it are kept together: the pool can only be disposed if we still
-  // hold it when the entry is evicted.
-  private record PooledClient(WebClient webClient, ConnectionProvider provider) {}
+  // hold it when the entry is evicted. hostVersion is the version of the host row the pool was built from.
+  private record PooledClient(WebClient webClient, ConnectionProvider provider, long hostVersion) {}
 
   // One WebClient (= one Reactor Netty connection pool) per host (scheme+host+port).
   private final ConcurrentMap<String, PooledClient> webClientCache = new ConcurrentHashMap<>();
@@ -79,14 +79,28 @@ public class GatewayWebClientBuilder {
     return webClientCache.size();
   }
 
+  /**
+   * Returns the client of the host, building it from {@code hostConfiguration} when there is none.
+   *
+   * <p>A context load reads the host row and builds its client some time later; an admin edit (which evicts the host)
+   * can land in between, so the row may be outdated by then. The row's version settles it: a row newer than the one the
+   * cached pool was built from replaces that pool, and a row older than it is served by the pool already there instead
+   * of overwriting it. Either way the pool that stays cached is the one built from the newest row seen.
+   */
   public WebClient getOrCreateWebClient(OutboundHostConfiguration hostConfiguration) {
-    return webClientCache.computeIfAbsent(
-        hostConfiguration.getBaseUrl(),
-        url -> {
-          log.info(AppLogMessage.message("#WEBCLIENT - created for {}", url));
-          return buildWebClient(hostConfiguration);
-        }
-    ).webClient();
+    return webClientCache.compute(hostConfiguration.getBaseUrl(), (url, existing) -> {
+      if (existing == null) {
+        log.info(AppLogMessage.message("#WEBCLIENT - created for {}", url));
+        return buildWebClient(hostConfiguration);
+      }
+      if (hostConfiguration.getVersion() > existing.hostVersion()) {
+        log.info(AppLogMessage.message("#WEBCLIENT - replacing outdated pool of {} (host version {} -> {})",
+            url, existing.hostVersion(), hostConfiguration.getVersion()));
+        disposeAfterGracePeriod(existing, url);
+        return buildWebClient(hostConfiguration);
+      }
+      return existing;
+    }).webClient();
   }
 
   /**
@@ -101,8 +115,12 @@ public class GatewayWebClientBuilder {
     if (removed == null) {
       return;
     }
+    disposeAfterGracePeriod(removed, baseUrl);
+  }
+
+  private void disposeAfterGracePeriod(PooledClient pooled, String baseUrl) {
     // defer: disposeLater() must run after the delay, not when the Mono is assembled
-    Mono.defer(removed.provider()::disposeLater)
+    Mono.defer(pooled.provider()::disposeLater)
         .delaySubscription(disposeGracePeriod())
         .subscribe(
             unused -> { },
@@ -216,7 +234,7 @@ public class GatewayWebClientBuilder {
         .baseUrl(hostConfig.getBaseUrl())
         .clientConnector(new ReactorClientHttpConnector(httpClient))
         .build();
-    return new PooledClient(webClient, connectionProvider);
+    return new PooledClient(webClient, connectionProvider, hostConfig.getVersion());
   }
 
   private static String uriTagValue(String uri) {
