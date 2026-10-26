@@ -581,7 +581,7 @@ String result = om.writeValueAsString(output);
 
 `Parser.compileString` is expensive — it parses and compiles the script into an AST. **Never call it per request.** Cache the compiled `Expression` keyed on the script text.
 
-The project already does this in `JsltResponseMapper` (`src/main/java/com/nantaaditya/example/helper/JsltResponseMapper.java`):
+The project already does this in `JsltResponseMapper` (`src/main/java/com/nantaaditya/example/cache/JsltResponseMapper.java`):
 
 ```java
 private final Cache<String, Expression> expressionCache = Caffeine.newBuilder()
@@ -1044,7 +1044,7 @@ ns:funcName(args)          call imported function
 | JSLT GitHub (source, changelog) | https://github.com/schibsted/jslt |
 | JSLT built-in function reference | https://github.com/schibsted/jslt/blob/master/functions.md |
 | JSLT tutorial | https://github.com/schibsted/jslt/blob/master/tutorial.md |
-| This project's `JsltResponseMapper` | `src/main/java/com/nantaaditya/example/helper/JsltResponseMapper.java` |
+| This project's `JsltResponseMapper` | `src/main/java/com/nantaaditya/example/cache/JsltResponseMapper.java` |
 | Response mapper config entity | `src/main/java/com/nantaaditya/example/entity/OutboundResponseMapperConfiguration.java` |
 | Converter type enum | `src/main/java/com/nantaaditya/example/model/constant/ConverterType.java` |
 
