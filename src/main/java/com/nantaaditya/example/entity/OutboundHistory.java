@@ -36,6 +36,8 @@ public class OutboundHistory implements Persistable<Long> {
   private Integer convertedStatus;
   private String convertedResponse;
   private int retryCount;
+  /** SHA-256 of the client's request for rows stored under an idempotency key; null otherwise or for older rows. */
+  private String requestFingerprint;
   @CreatedDate
   private LocalDateTime createdDate;
 
@@ -55,7 +57,7 @@ public class OutboundHistory implements Persistable<Long> {
   public static OutboundHistory create(OutboundSystem system, String baseUrl, String callerService,
       String idempotencyKey, String requestId, String requestPayload,
       Map<String, Object> requestHeaders, GatewayResponse response,
-      long durationMs, int retryCount) {
+      long durationMs, int retryCount, String requestFingerprint) {
     @SuppressWarnings("unchecked")
     Map<String, Object> responseHeaders = response.headers().isEmpty() ? null
         : (Map<String, Object>) (Map<?, ?>) response.headers();
@@ -75,6 +77,7 @@ public class OutboundHistory implements Persistable<Long> {
         .convertedStatus(response.convertedStatus())
         .convertedResponse(response.convertedResponse())
         .retryCount(retryCount)
+        .requestFingerprint(requestFingerprint)
         .build();
   }
 }

@@ -38,6 +38,7 @@ class IdempotencyGuardTest {
   private static final long SYSTEM_ID = 1L;
   private static final String KEY = "k-1";
   private static final int TTL_HOURS = 24;
+  private static final String FINGERPRINT = "fp-1";
 
   @Mock private OutboundHistoryRepository historyRepository;
   @Mock private IdempotencyReservationRepository reservations;
@@ -57,7 +58,7 @@ class IdempotencyGuardTest {
   void guard_historyHit_replaysWithoutExecuting() {
     history(row());
 
-    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::execution))
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
         .assertNext(r -> {
           assertThat(r.fromCache()).isTrue();
           assertThat(r.status()).isEqualTo(200);
@@ -75,7 +76,7 @@ class IdempotencyGuardTest {
     history(row());
     ArgumentCaptor<LocalDateTime> cutoff = ArgumentCaptor.forClass(LocalDateTime.class);
 
-    guard.guard(SYSTEM_ID, KEY, 2, this::execution).block();
+    guard.guard(SYSTEM_ID, KEY, 2, FINGERPRINT, this::execution).block();
 
     verify(historyRepository).findFirstByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfterOrderByCreatedDateDesc(
         eq(SYSTEM_ID), eq(KEY), cutoff.capture());
@@ -89,7 +90,7 @@ class IdempotencyGuardTest {
     history((OutboundHistory) null);
     acquire(true);
 
-    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::execution))
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
         .assertNext(r -> assertThat(r.fromCache()).isFalse())
         .verifyComplete();
 
@@ -105,7 +106,7 @@ class IdempotencyGuardTest {
     history(null, row());
     acquire(true);
 
-    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::execution))
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
         .assertNext(r -> assertThat(r.fromCache()).isTrue())
         .verifyComplete();
 
@@ -120,9 +121,9 @@ class IdempotencyGuardTest {
     acquire(true);
 
     List<GatewayResponse> results = Mono.zip(
-            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::slowExecution),
-            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::slowExecution),
-            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::slowExecution))
+            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::slowExecution),
+            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::slowExecution),
+            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::slowExecution))
         .map(t -> List.of(t.getT1(), t.getT2(), t.getT3()))
         .block(Duration.ofSeconds(5));
 
@@ -140,8 +141,8 @@ class IdempotencyGuardTest {
     lenient().when(reservations.tryAcquire(anyLong(), anyString(), anyString(), any(Duration.class)))
         .thenReturn(Mono.just(true));
 
-    Mono.zip(guard.guard(SYSTEM_ID, "a", TTL_HOURS, this::slowExecution),
-            guard.guard(SYSTEM_ID, "b", TTL_HOURS, this::slowExecution))
+    Mono.zip(guard.guard(SYSTEM_ID, "a", TTL_HOURS, FINGERPRINT, this::slowExecution),
+            guard.guard(SYSTEM_ID, "b", TTL_HOURS, FINGERPRINT, this::slowExecution))
         .block(Duration.ofSeconds(5));
 
     assertThat(executions).hasValue(2);
@@ -153,8 +154,8 @@ class IdempotencyGuardTest {
     history((OutboundHistory) null);
     acquire(true);
 
-    guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::execution).block();
-    guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::execution).block();
+    guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution).block();
+    guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution).block();
 
     assertThat(executions).hasValue(2);
   }
@@ -166,9 +167,9 @@ class IdempotencyGuardTest {
     acquire(true);
 
     StepVerifier.create(Mono.zip(
-            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, () -> Mono.delay(Duration.ofMillis(50))
+            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, () -> Mono.delay(Duration.ofMillis(50))
                 .then(Mono.<GatewayResponse>error(new IllegalStateException("boom")))),
-            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::slowExecution)))
+            guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::slowExecution)))
         .expectError(IllegalStateException.class)
         .verify(Duration.ofSeconds(5));
 
@@ -181,7 +182,7 @@ class IdempotencyGuardTest {
     history(null, null, row());
     acquire(false);
 
-    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::execution))
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
         .assertNext(r -> assertThat(r.fromCache()).isTrue())
         .verifyComplete();
 
@@ -196,7 +197,7 @@ class IdempotencyGuardTest {
     when(reservations.tryAcquire(eq(SYSTEM_ID), eq(KEY), anyString(), any(Duration.class)))
         .thenReturn(Mono.just(false), Mono.just(false), Mono.just(true));
 
-    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::execution))
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
         .assertNext(r -> assertThat(r.fromCache()).isFalse())
         .verifyComplete();
 
@@ -210,7 +211,7 @@ class IdempotencyGuardTest {
     history((OutboundHistory) null);
     acquire(false);
 
-    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, this::execution))
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
         .assertNext(r -> {
           assertThat(r.status()).isEqualTo(409);
           assertThat(r.fromCache()).isFalse();
@@ -227,7 +228,7 @@ class IdempotencyGuardTest {
     acquire(true);
     AtomicBoolean finished = new AtomicBoolean();
 
-    Disposable subscription = guard.guard(SYSTEM_ID, KEY, TTL_HOURS, () ->
+    Disposable subscription = guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, () ->
         Mono.delay(Duration.ofMillis(200)).map(t -> {
           finished.set(true);
           return response();
@@ -239,7 +240,98 @@ class IdempotencyGuardTest {
     assertThat(finished).isTrue();
   }
 
+  @Test
+  @DisplayName("a stored result of the same request (same fingerprint) is replayed")
+  void guard_sameFingerprint_replays() {
+    history(rowFor(FINGERPRINT));
+
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
+        .assertNext(r -> {
+          assertThat(r.fromCache()).isTrue();
+          assertThat(r.body()).isEqualTo("{\"stored\":true}");
+        })
+        .verifyComplete();
+
+    assertThat(executions).hasValue(0);
+  }
+
+  @Test
+  @DisplayName("a stored result of a DIFFERENT request is never returned: the key is rejected with 422 and nothing runs")
+  void guard_differentFingerprint_rejected() {
+    history(rowFor("some-other-fingerprint"));
+
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
+        .assertNext(r -> {
+          assertThat(r.status()).isEqualTo(422);
+          assertThat(r.fromCache()).isFalse();
+          assertThat(r.body()).contains("different request");
+        })
+        .verifyComplete();
+
+    assertThat(executions).hasValue(0);
+    verify(reservations, never()).tryAcquire(anyLong(), anyString(), anyString(), any());
+  }
+
+  @Test
+  @DisplayName("a row stored before fingerprints existed (no fingerprint) is replayed as before")
+  void guard_storedWithoutFingerprint_replays() {
+    history(row());
+
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
+        .assertNext(r -> assertThat(r.fromCache()).isTrue())
+        .verifyComplete();
+  }
+
+  @Test
+  @DisplayName("a result stored by another instance between the lookup and the reservation is checked too")
+  void guard_differentFingerprintAppearsAfterAcquire_rejectedAndReleased() {
+    history(null, rowFor("some-other-fingerprint"));
+    acquire(true);
+
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
+        .assertNext(r -> assertThat(r.status()).isEqualTo(422))
+        .verifyComplete();
+
+    assertThat(executions).hasValue(0);
+    verify(reservations).release(eq(SYSTEM_ID), eq(KEY), anyString());
+  }
+
+  @Test
+  @DisplayName("waiting for another instance, a result of a different request is rejected, not replayed")
+  void guard_heldByOtherInstance_differentFingerprint_rejected() {
+    history(null, null, rowFor("some-other-fingerprint"));
+    acquire(false);
+
+    StepVerifier.create(guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::execution))
+        .assertNext(r -> assertThat(r.status()).isEqualTo(422))
+        .verifyComplete();
+
+    assertThat(executions).hasValue(0);
+  }
+
+  @Test
+  @DisplayName("while a request runs, a call with the same key but a different request is rejected at once, not merged")
+  void guard_overlappingDifferentRequest_rejectedWithoutMerging() {
+    history((OutboundHistory) null);
+    acquire(true);
+
+    Disposable leader = guard.guard(SYSTEM_ID, KEY, TTL_HOURS, FINGERPRINT, this::slowExecution).subscribe();
+    GatewayResponse other = guard.guard(SYSTEM_ID, KEY, TTL_HOURS, "some-other-fingerprint", this::execution)
+        .block(Duration.ofSeconds(5));
+
+    assertThat(other.status()).isEqualTo(422);
+    verify(reservations, timeout(2000)).release(eq(SYSTEM_ID), eq(KEY), anyString());   // the leader still completes
+    assertThat(executions).hasValue(1);   // only the leader's execution ran
+    leader.dispose();
+  }
+
   // --- helpers ---
+
+  private static OutboundHistory rowFor(String fingerprint) {
+    OutboundHistory row = row();
+    row.setRequestFingerprint(fingerprint);
+    return row;
+  }
 
   private Mono<GatewayResponse> execution() {
     return Mono.fromSupplier(() -> {

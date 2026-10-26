@@ -2,6 +2,7 @@ package com.nantaaditya.example.gateway;
 
 import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.helper.JsonHelper;
+import com.nantaaditya.example.idempotency.RequestFingerprint;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.logger.AppLogMessage;
@@ -27,6 +28,7 @@ public class HistoryRecorder {
   private final OutboundHistoryRepository historyRepository;
   private final JsonHelper jsonHelper;
   private final GatewayHelper gatewayHelper;
+  private final RequestFingerprint requestFingerprint;
 
   /**
    * @return a Mono that completes once the row is stored, or once the attempt failed (logged, not propagated)
@@ -40,10 +42,12 @@ public class HistoryRecorder {
           // the ORIGINAL request: parameters injected into the outbound body are deliberately not stored
           String requestPayload = request.bodyAsString(jsonHelper);
           Map<String, Object> requestHeaders = gatewayHelper.resolveRequestHeaders(context);
+          // only a row stored under a key can be replayed, so only it needs to remember which request it answered
+          String fingerprint = idempotencyKey == null || idempotencyKey.isBlank() ? null : requestFingerprint.of(request);
           OutboundHistory history = OutboundHistory.create(context.getSystem(),
               context.getHostConfig().getBaseUrl(), callerService,
               idempotencyKey, requestId, requestPayload,
-              requestHeaders, response, durationMs, retryCount
+              requestHeaders, response, durationMs, retryCount, fingerprint
           );
 
           return historyRepository.saveHistory(history).then();

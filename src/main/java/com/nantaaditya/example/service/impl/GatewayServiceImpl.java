@@ -9,6 +9,7 @@ import com.nantaaditya.example.gateway.ParameterResolver;
 import com.nantaaditya.example.gateway.ResilienceDecorator;
 import com.nantaaditya.example.gateway.SystemContextLoader;
 import com.nantaaditya.example.idempotency.IdempotencyGuard;
+import com.nantaaditya.example.idempotency.RequestFingerprint;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.dto.ResolvedParameters;
 import com.nantaaditya.example.model.request.GatewayRequest;
@@ -51,6 +52,7 @@ public class GatewayServiceImpl implements GatewayService {
   private final GatewayHelper gatewayHelper;
   private final ParameterResolver parameterResolver;
   private final IdempotencyGuard idempotencyGuard;
+  private final RequestFingerprint requestFingerprint;
   private final ResilienceDecorator resilienceDecorator;
   private final OutboundRequestExecutor requestExecutor;
   private final HistoryRecorder historyRecorder;
@@ -64,6 +66,7 @@ public class GatewayServiceImpl implements GatewayService {
             OutboundSystem system = context.getSystem();
             // replay of a stored result, merging of overlapping calls (here and across instances)
             return idempotencyGuard.guard(system.getId(), idempotencyKey, system.getIdempotencyTtlHours(),
+                    requestFingerprint.of(request),
                     () -> executeResolved(context, callerService, idempotencyKey, request))
                 .doOnNext(r -> {
                   if (r.fromCache()) {

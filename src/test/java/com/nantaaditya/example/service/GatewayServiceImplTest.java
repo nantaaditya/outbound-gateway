@@ -26,6 +26,7 @@ import com.nantaaditya.example.gateway.ResilienceDecorator;
 import com.nantaaditya.example.gateway.SystemContextLoader;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.idempotency.IdempotencyGuard;
+import com.nantaaditya.example.idempotency.RequestFingerprint;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.ConverterType;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
@@ -67,6 +68,8 @@ class GatewayServiceImplTest {
   @Mock
   IdempotencyGuard idempotencyGuard;
   @Mock
+  RequestFingerprint requestFingerprint;
+  @Mock
   OutboundRequestExecutor requestExecutor;
   @Mock
   HistoryRecorder historyRecorder;
@@ -80,7 +83,8 @@ class GatewayServiceImplTest {
     // rather than Mockito silently injecting null for unmocked constructor args.
     gatewayService = new GatewayServiceImpl(
         contextLoader, metricsRecorder, new GatewayHelper(jsonHelper, jsltResponseMapper),
-        parameterResolver, idempotencyGuard, new ResilienceDecorator(), requestExecutor, historyRecorder);
+        parameterResolver, idempotencyGuard, requestFingerprint, new ResilienceDecorator(), requestExecutor, historyRecorder);
+    lenient().when(requestFingerprint.of(any())).thenReturn("fp-1");
     lenient().when(parameterResolver.resolve(any(), any()))
         .thenReturn(Mono.just(ResolvedParameters.empty()));
     lenient().when(historyRecorder.record(any(), any(), any(), any(), any(), anyLong(), anyInt()))
@@ -115,7 +119,7 @@ class GatewayServiceImplTest {
     assertThat(response.status()).isEqualTo(200);
     verify(historyRecorder).record(eq(context), eq("svc"), isNull(), any(GatewayRequest.class), eq(response),
         anyLong(), eq(0));
-    verify(idempotencyGuard, never()).guard(anyLong(), anyString(), anyInt(), any());
+    verify(idempotencyGuard, never()).guard(anyLong(), anyString(), anyInt(), anyString(), any());
   }
 
   @Test
@@ -189,14 +193,14 @@ class GatewayServiceImplTest {
   @DisplayName("a call with an idempotency key goes through the guard with the system's id and TTL")
   void execute_withIdempotencyKey_goesThroughGuard() {
     stubContext("idem-gw", 12, OutboundResilienceConfiguration.bypass(), null);
-    when(idempotencyGuard.guard(eq(1L), eq("key-1"), eq(12), any()))
+    when(idempotencyGuard.guard(eq(1L), eq("key-1"), eq(12), eq("fp-1"), any()))
         .thenReturn(Mono.just(GatewayResponse.passThrough(200, Map.of(), "{}")));
 
     GatewayResponse response = gatewayService
         .execute("idem-gw", "svc", "key-1", new GatewayRequest(Map.of(), null)).block();
 
     assertThat(response.fromCache()).isFalse();
-    verify(idempotencyGuard).guard(eq(1L), eq("key-1"), eq(12), any());
+    verify(idempotencyGuard).guard(eq(1L), eq("key-1"), eq(12), eq("fp-1"), any());
     verify(metricsRecorder, never()).recordIdempotencyHit("idem-gw");
   }
 
@@ -204,7 +208,7 @@ class GatewayServiceImplTest {
   @DisplayName("a result served from a previous execution is counted as an idempotency hit")
   void execute_guardReplays_recordsIdempotencyHit() {
     stubContext("hit-gw", 24, OutboundResilienceConfiguration.bypass(), null);
-    when(idempotencyGuard.guard(eq(1L), eq("key-2"), eq(24), any()))
+    when(idempotencyGuard.guard(eq(1L), eq("key-2"), eq(24), eq("fp-1"), any()))
         .thenReturn(Mono.just(GatewayResponse.fromCache(200, Map.of(), "{}", 200, "{}")));
 
     GatewayResponse response = gatewayService
@@ -222,7 +226,7 @@ class GatewayServiceImplTest {
 
     gatewayService.execute("blank-gw", "svc", "  ", new GatewayRequest(Map.of(), null)).block();
 
-    verify(idempotencyGuard, never()).guard(anyLong(), anyString(), anyInt(), any());
+    verify(idempotencyGuard, never()).guard(anyLong(), anyString(), anyInt(), anyString(), any());
   }
 
   // --- helpers ---

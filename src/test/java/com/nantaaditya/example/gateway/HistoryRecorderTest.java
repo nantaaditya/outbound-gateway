@@ -7,11 +7,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nantaaditya.example.cache.JsltResponseMapper;
 import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.helper.JsonHelper;
+import com.nantaaditya.example.idempotency.RequestFingerprint;
 import com.nantaaditya.example.model.dto.ContextDTO;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.request.GatewayRequest;
@@ -31,13 +33,14 @@ class HistoryRecorderTest {
 
   private final OutboundHistoryRepository historyRepository = mock(OutboundHistoryRepository.class);
   private final JsonHelper jsonHelper = mock(JsonHelper.class);
+  private final RequestFingerprint fingerprint = new RequestFingerprint(new ObjectMapper());
 
   private HistoryRecorder recorder;
 
   @BeforeEach
   void setUp() {
     recorder = new HistoryRecorder(historyRepository, jsonHelper,
-        new GatewayHelper(jsonHelper, mock(JsltResponseMapper.class)));
+        new GatewayHelper(jsonHelper, mock(JsltResponseMapper.class)), fingerprint);
     when(historyRepository.saveHistory(any(OutboundHistory.class))).thenReturn(Mono.just(1));
   }
 
@@ -111,6 +114,31 @@ class HistoryRecorderTest {
         .verifyComplete();
 
     verify(historyRepository, never()).saveHistory(any(OutboundHistory.class));
+  }
+
+  @Test
+  @DisplayName("a row stored under an idempotency key remembers which request it answered")
+  void record_withKey_storesRequestFingerprint() {
+    GatewayRequest request = new GatewayRequest(Map.of(), Map.of("amount", 100));
+    when(jsonHelper.toJsonString(any())).thenReturn("{\"amount\":100}");
+
+    StepVerifier.create(recorder.record(context(), "svc", "key-1", request,
+            GatewayResponse.passThrough(200, Map.of(), "{}"), 10, 0))
+        .verifyComplete();
+
+    assertThat(savedHistory().getRequestFingerprint()).isEqualTo(fingerprint.of(request));
+  }
+
+  @Test
+  @DisplayName("a row without an idempotency key (or a blank one) stores no fingerprint")
+  void record_withoutKey_storesNoFingerprint() {
+    when(jsonHelper.toJsonString(any())).thenReturn("{\"amount\":100}");
+
+    StepVerifier.create(recorder.record(context(), "svc", " ", new GatewayRequest(Map.of(), Map.of("amount", 100)),
+            GatewayResponse.passThrough(200, Map.of(), "{}"), 10, 0))
+        .verifyComplete();
+
+    assertThat(savedHistory().getRequestFingerprint()).isNull();
   }
 
   // --- helpers ---

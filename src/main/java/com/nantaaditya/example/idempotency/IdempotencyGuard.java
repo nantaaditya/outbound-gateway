@@ -1,5 +1,6 @@
 package com.nantaaditya.example.idempotency;
 
+import com.nantaaditya.example.entity.OutboundHistory;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.response.GatewayResponse;
 import com.nantaaditya.example.repository.OutboundHistoryRepository;
@@ -7,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,13 +50,18 @@ import reactor.core.publisher.Sinks;
 public class IdempotencyGuard {
 
   static final String IN_PROGRESS_REASON = "request with the same idempotency key is still in progress";
+  static final String DIFFERENT_REQUEST_REASON = "idempotency key was already used with a different request";
+
+  // The request a flow is running, so an overlapping call with the same key but another request is told apart
+  // from a retry instead of being handed the first request's result.
+  private record Flow(String fingerprint, Mono<GatewayResponse> result) {}
 
   private final OutboundHistoryRepository historyRepository;
   private final IdempotencyReservationRepository reservations;
   private final Duration lease;
   private final Duration pollInterval;
 
-  private final ConcurrentMap<String, Mono<GatewayResponse>> inFlight = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, Flow> inFlight = new ConcurrentHashMap<>();
 
   /**
    * apps.idempotency.lease: How long one instance may hold an idempotency key while it calls the upstream. Must exceed the longest
@@ -76,60 +83,67 @@ public class IdempotencyGuard {
     this.pollInterval = pollInterval;
   }
 
-  public Mono<GatewayResponse> guard(long systemId, String idempotencyKey, int ttlHours,
+  /**
+   * @param requestFingerprint what the request is (see {@link RequestFingerprint}); a stored result or a running
+   *     call under the same key that answers a different request is not reused but rejected with 422
+   */
+  public Mono<GatewayResponse> guard(long systemId, String idempotencyKey, int ttlHours, String requestFingerprint,
       Supplier<Mono<GatewayResponse>> execution) {
-    return replay(systemId, idempotencyKey, ttlHours)
-        .switchIfEmpty(Mono.defer(() -> shared(systemId, idempotencyKey, ttlHours, execution)));
+    return replay(systemId, idempotencyKey, ttlHours, requestFingerprint)
+        .switchIfEmpty(Mono.defer(() -> shared(systemId, idempotencyKey, ttlHours, requestFingerprint, execution)));
   }
 
-  private Mono<GatewayResponse> shared(long systemId, String key, int ttlHours,
+  private Mono<GatewayResponse> shared(long systemId, String key, int ttlHours, String fingerprint,
       Supplier<Mono<GatewayResponse>> execution) {
     return Mono.deferContextual(ctx -> {
       String flowKey = systemId + ":" + key;
       Sinks.One<GatewayResponse> outcome = Sinks.one();
-      Mono<GatewayResponse> result = outcome.asMono();
+      Flow flow = new Flow(fingerprint, outcome.asMono());
 
-      Mono<GatewayResponse> running = inFlight.putIfAbsent(flowKey, result);
+      Flow running = inFlight.putIfAbsent(flowKey, flow);
       if (running != null) {
-        return running.map(IdempotencyGuard::asFollowerResult);
+        if (!Objects.equals(running.fingerprint(), fingerprint)) {
+          return Mono.just(differentRequestReject());
+        }
+        return running.result().map(IdempotencyGuard::asFollowerResult);
       }
 
       // Leader. Subscribed here, not by the caller, so a disconnecting caller cannot cancel it; the
       // caller's Reactor context (tracing, request id) is carried over explicitly.
       Instant giveUpAt = Instant.now().plus(lease);
-      acquireOrWait(systemId, key, ttlHours, execution, giveUpAt)
+      acquireOrWait(systemId, key, ttlHours, fingerprint, execution, giveUpAt)
           .contextWrite(ctx)
-          .doFinally(signal -> inFlight.remove(flowKey, result))
+          .doFinally(signal -> inFlight.remove(flowKey, flow))
           .subscribe(outcome::tryEmitValue, outcome::tryEmitError, outcome::tryEmitEmpty);
-      return result;
+      return flow.result();
     });
   }
 
-  private Mono<GatewayResponse> acquireOrWait(long systemId, String key, int ttlHours,
+  private Mono<GatewayResponse> acquireOrWait(long systemId, String key, int ttlHours, String fingerprint,
       Supplier<Mono<GatewayResponse>> execution, Instant giveUpAt) {
     String owner = UUID.randomUUID().toString();
     return reservations.tryAcquire(systemId, key, owner, lease).flatMap(acquired -> {
       if (acquired) {
-        return runOwned(systemId, key, ttlHours, owner, execution);
+        return runOwned(systemId, key, ttlHours, fingerprint, owner, execution);
       }
-      return replay(systemId, key, ttlHours).switchIfEmpty(Mono.defer(() -> {
+      return replay(systemId, key, ttlHours, fingerprint).switchIfEmpty(Mono.defer(() -> {
         if (Instant.now().isAfter(giveUpAt)) {
           log.warn(AppLogMessage.message(
               "#IDEMPOTENCY - key still reserved after {}, rejecting systemId={} key={}", lease, systemId, key));
           return Mono.just(GatewayResponse.internalReject(409, IN_PROGRESS_REASON));
         }
         return Mono.delay(pollInterval)
-            .then(Mono.defer(() -> acquireOrWait(systemId, key, ttlHours, execution, giveUpAt)));
+            .then(Mono.defer(() -> acquireOrWait(systemId, key, ttlHours, fingerprint, execution, giveUpAt)));
       }));
     });
   }
 
-  private Mono<GatewayResponse> runOwned(long systemId, String key, int ttlHours, String owner,
+  private Mono<GatewayResponse> runOwned(long systemId, String key, int ttlHours, String fingerprint, String owner,
       Supplier<Mono<GatewayResponse>> execution) {
     return Mono.usingWhen(
         Mono.just(owner),
         // another instance may have stored its result between our first lookup and the reservation
-        o -> replay(systemId, key, ttlHours).switchIfEmpty(Mono.defer(execution)),
+        o -> replay(systemId, key, ttlHours, fingerprint).switchIfEmpty(Mono.defer(execution)),
         o -> reservations.release(systemId, key, o)
             .onErrorResume(error -> {
               log.warn(AppLogMessage.message("#IDEMPOTENCY - failed to release reservation systemId={} key={}: {}",
@@ -138,21 +152,36 @@ public class IdempotencyGuard {
             }));
   }
 
-  private Mono<GatewayResponse> replay(long systemId, String key, int ttlHours) {
+  // A row stored without a fingerprint (written before fingerprints existed) is replayed as before.
+  private Mono<GatewayResponse> replay(long systemId, String key, int ttlHours, String fingerprint) {
     return Mono.defer(() -> historyRepository
         .findFirstByOutboundSystemIdAndIdempotencyKeyAndCreatedDateAfterOrderByCreatedDateDesc(
             systemId, key, LocalDateTime.now().minusHours(ttlHours))
-        .map(history -> GatewayResponse.fromCache(
-            history.getResponseStatus(),
-            Map.of(),
-            history.getResponsePayload(),
-            Optional.ofNullable(history.getConvertedStatus()).orElse(history.getResponseStatus()),
-            Optional.ofNullable(history.getConvertedResponse()).orElse(history.getResponsePayload()))));
+        .map(history -> isAnswerTo(history, fingerprint)
+            ? GatewayResponse.fromCache(
+                history.getResponseStatus(),
+                Map.of(),
+                history.getResponsePayload(),
+                Optional.ofNullable(history.getConvertedStatus()).orElse(history.getResponseStatus()),
+                Optional.ofNullable(history.getConvertedResponse()).orElse(history.getResponsePayload()))
+            : differentRequestReject()));
   }
 
-  /** The leader's own result is returned as is; callers that merely waited for it get it as a replay. */
+  private static boolean isAnswerTo(OutboundHistory history, String fingerprint) {
+    return history.getRequestFingerprint() == null || history.getRequestFingerprint().equals(fingerprint);
+  }
+
+  private static GatewayResponse differentRequestReject() {
+    return GatewayResponse.internalReject(422, DIFFERENT_REQUEST_REASON);
+  }
+
+  /**
+   * The leader's own result is returned as is; callers that merely waited for it get it as a replay, except when
+   * that result is itself a rejection by this guard, which is not a stored answer.
+   */
   private static GatewayResponse asFollowerResult(GatewayResponse leaderResult) {
     boolean inProgressReject = leaderResult.status() == 409 && IN_PROGRESS_REASON.equals(leaderResult.body());
-    return inProgressReject ? leaderResult : leaderResult.asReplay();
+    boolean differentRequestReject = leaderResult.status() == 422 && DIFFERENT_REQUEST_REASON.equals(leaderResult.body());
+    return inProgressReject || differentRequestReject ? leaderResult : leaderResult.asReplay();
   }
 }
