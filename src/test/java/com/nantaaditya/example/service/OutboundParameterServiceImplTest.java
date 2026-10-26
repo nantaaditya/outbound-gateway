@@ -11,8 +11,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.nantaaditya.example.crypto.EncryptionHelper;
 import com.nantaaditya.example.entity.OutboundParameter;
-import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.helper.OutboundParameterCache;
 import com.nantaaditya.example.model.constant.ParameterInjectLocation;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;

@@ -1,7 +1,7 @@
 package com.nantaaditya.example.service.impl;
 
+import com.nantaaditya.example.crypto.EncryptionHelper;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
-import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.logger.AppLogMessage;
 import com.nantaaditya.example.model.request.admin.CreateHostConfigRequest;

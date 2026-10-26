@@ -2,8 +2,8 @@ package com.nantaaditya.example.service.strategy.auth;
 
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.PathNotFoundException;
+import com.nantaaditya.example.crypto.EncryptionHelper;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
-import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.dto.AuthCredential;
 import com.nantaaditya.example.model.dto.SigningInput;

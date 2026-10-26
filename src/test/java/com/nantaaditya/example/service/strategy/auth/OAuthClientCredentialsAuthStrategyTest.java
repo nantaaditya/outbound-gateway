@@ -16,8 +16,8 @@ import static org.mockito.Mockito.when;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.nantaaditya.example.crypto.EncryptionHelper;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
-import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.constant.AuthType;
 import com.nantaaditya.example.model.constant.TokenInjectLocation;
 import com.nantaaditya.example.model.dto.AuthCredential;

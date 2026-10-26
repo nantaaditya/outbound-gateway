@@ -6,9 +6,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.nantaaditya.example.crypto.EncryptionHelper;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
-import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.model.exception.HostConfigNotFoundException;
 import com.nantaaditya.example.model.request.admin.CreateHostConfigRequest;
 import com.nantaaditya.example.model.request.admin.UpdateHostConfigRequest;

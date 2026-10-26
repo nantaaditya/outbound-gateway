@@ -2,10 +2,10 @@ package com.nantaaditya.example.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.nantaaditya.example.crypto.EncryptionHelper;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
 import com.nantaaditya.example.entity.OutboundSystem;
-import com.nantaaditya.example.helper.EncryptionHelper;
 import com.nantaaditya.example.service.impl.GatewayWebClientBuilder;
 import com.nantaaditya.example.service.impl.ResilienceRegistryService;
 import static org.mockito.Mockito.after;
@@ -15,12 +15,12 @@ import static org.mockito.Mockito.verify;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
-import reactor.netty.resources.ConnectionProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.zalando.logbook.Logbook;
+import reactor.netty.resources.ConnectionProvider;
 
 class GatewayWebClientBuilderTest {
 

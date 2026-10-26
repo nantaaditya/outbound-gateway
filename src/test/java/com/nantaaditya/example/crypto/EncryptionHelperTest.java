@@ -1,4 +1,4 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.crypto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
