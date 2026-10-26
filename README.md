@@ -513,7 +513,7 @@ sys ||--o{  hist  : "outbound_system_id"
 
 | Feature | Detail |
 |---|---|
-| **Auth strategies** | None, API Key, Basic, Bearer Static, HMAC-SHA256, RSA, OAuth2 Client Credentials |
+| **Auth strategies** | None, API Key, Basic, Bearer Static, HMAC-SHA256, HMAC-SHA256 with timestamp, RSA, OAuth2 Client Credentials |
 | **Resilience** | Circuit Breaker, Bulkhead, Rate Limiter, Retry — per system, independently opt-in |
 | **Response mapping** | JSLT transform with status remap — pass-through when not configured |
 | **Parameter injection** | Store key/values per host; client sends `injectKeys` and the gateway injects the values into header / query param / JSON body — see [docs/OUTBOUND_PARAMETERS.md](docs/OUTBOUND_PARAMETERS.md) |
@@ -599,6 +599,29 @@ Signs the request body with HMAC-SHA256 using `clientSecret` as the signing key.
 | `tokenKeyName` | Yes | Header name to inject the signature (e.g. `"X-Signature"`) |
 
 The signature is `Base64(HMAC-SHA256(clientSecret, requestBody))` — no key ID prefix. `clientId` is not used by this strategy and is not required for `HMAC`.
+
+> **Replay:** this signature covers the body only — no timestamp, no nonce. A captured request can be sent again at any time and still verifies. Use `HMAC_TIMESTAMP` when the receiving side can check a timestamp.
+
+---
+
+### HMAC_TIMESTAMP
+
+Signs `timestamp + "." + body` with HMAC-SHA256 and sends two headers: the timestamp and the signature.
+
+| Field | Required | Description |
+|---|---|---|
+| `authType` | Yes | `"HMAC_TIMESTAMP"` |
+| `clientSecret` | Yes | HMAC signing key — gateway encrypts on write |
+| `tokenKeyName` | Yes | Header name of the signature (e.g. `"X-Signature"`) |
+| `authSettings.timestampHeader` | Yes | Header name of the timestamp (e.g. `"X-Timestamp"`) |
+
+- `timestamp` is an ISO-8601 UTC instant in whole seconds, e.g. `2026-10-26T08:00:00Z`.
+- `signature` is `Base64(HMAC-SHA256(clientSecret, timestamp + "." + body))`, where `body` is the exact string sent as the request body (empty string when there is none).
+- Both are always sent as headers; `tokenInjectLocation` is not used.
+- Only the body is signed, not method, path or query. The receiving side should reject a timestamp that is too old (that is what stops replay) and compare signatures in constant time.
+- Non-secret settings live in `outbound_auth_configurations.auth_settings` (JSONB, migration V14); the secret stays encrypted in `client_secret`.
+
+Verifying on the receiving side (any language): read `X-Timestamp` and the raw body, recompute `Base64(HMAC-SHA256(secret, X-Timestamp + "." + rawBody))`, compare with `X-Signature`, and check `X-Timestamp` is within your tolerance of the current time.
 
 ---
 
@@ -1363,6 +1386,16 @@ Create or replace the auth configuration. Send raw plaintext values — the gate
   "authType": "HMAC",
   "clientSecret": "my-hmac-signing-key",
   "tokenKeyName": "X-Signature"
+}
+```
+
+**HMAC_TIMESTAMP:**
+```json
+{
+  "authType": "HMAC_TIMESTAMP",
+  "clientSecret": "my-hmac-signing-key",
+  "tokenKeyName": "X-Signature",
+  "authSettings": { "timestampHeader": "X-Timestamp" }
 }
 ```
 
