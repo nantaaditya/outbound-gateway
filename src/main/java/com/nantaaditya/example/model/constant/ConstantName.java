@@ -4,6 +4,10 @@ public interface ConstantName {
 
   String CALLER_SERVICE_HEADER = "x-caller-service";
   String IDEMPOTENT_HEADER = "x-idempotency-key";
+  // outbound_histories.idempotency_key and outbound_idempotency_reservations.idempotency_key are VARCHAR(255)
+  int IDEMPOTENCY_KEY_MAX_LENGTH = 255;
+  // printable ASCII only: the key is stored, compared and logged as-is
+  String IDEMPOTENCY_KEY_PATTERN = "[\\x20-\\x7E]*";
 
   String REQUEST_ID_MDC = "reqId";
 

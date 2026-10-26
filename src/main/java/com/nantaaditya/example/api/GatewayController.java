@@ -9,6 +9,8 @@ import com.nantaaditya.example.model.response.GatewayExecuteResponse;
 import com.nantaaditya.example.service.GatewayService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,7 +40,9 @@ public class GatewayController {
   public Mono<BaseResponse<GatewayExecuteResponse>> execute(
       @PathVariable String code,
       @RequestHeader(value = ConstantName.CALLER_SERVICE_HEADER, required = false) String callerService,
-      @RequestHeader(value = ConstantName.IDEMPOTENT_HEADER, required = false) String idempotencyKey,
+      @RequestHeader(value = ConstantName.IDEMPOTENT_HEADER, required = false)
+      @Size(max = ConstantName.IDEMPOTENCY_KEY_MAX_LENGTH, message = "NotValid")
+      @Pattern(regexp = ConstantName.IDEMPOTENCY_KEY_PATTERN, message = "NotValid") String idempotencyKey,
       @RequestBody GatewayRequest request
   ) {
     return gatewayService.execute(code, callerService, idempotencyKey, request)
