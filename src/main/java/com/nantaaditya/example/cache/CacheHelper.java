@@ -1,4 +1,4 @@
-package com.nantaaditya.example.helper;
+package com.nantaaditya.example.cache;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;

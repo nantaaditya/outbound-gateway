@@ -1,7 +1,7 @@
 package com.nantaaditya.example.configuration;
 
 
-import com.nantaaditya.example.helper.ContextHelper;
+import com.nantaaditya.example.cache.ContextHelper;
 import com.nantaaditya.example.logging.MaskingHelper;
 import com.nantaaditya.example.model.constant.HeaderConstant;
 import com.nantaaditya.example.model.logger.AppLogMessage;

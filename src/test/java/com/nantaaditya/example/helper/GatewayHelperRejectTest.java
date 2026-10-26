@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.nantaaditya.example.cache.JsltResponseMapper;
 import com.nantaaditya.example.entity.OutboundSystem;
 import com.nantaaditya.example.model.dto.OutboundSystemContext;
 import com.nantaaditya.example.model.response.GatewayResponse;

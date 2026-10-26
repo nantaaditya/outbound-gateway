@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.nantaaditya.example.cache.JsltResponseMapper;
 import com.nantaaditya.example.entity.OutboundAuthConfiguration;
 import com.nantaaditya.example.entity.OutboundHostConfiguration;
 import com.nantaaditya.example.entity.OutboundResilienceConfiguration;
@@ -22,7 +23,6 @@ import com.nantaaditya.example.gateway.OutboundRequestExecutor;
 import com.nantaaditya.example.gateway.ResilienceDecorator;
 import com.nantaaditya.example.gateway.SystemContextLoader;
 import com.nantaaditya.example.helper.GatewayHelper;
-import com.nantaaditya.example.helper.JsltResponseMapper;
 import com.nantaaditya.example.helper.JsonHelper;
 import com.nantaaditya.example.helper.ParameterResolver;
 import com.nantaaditya.example.idempotency.IdempotencyGuard;
