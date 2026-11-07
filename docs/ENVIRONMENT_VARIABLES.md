@@ -103,17 +103,6 @@ All configuration is externalized through environment variables with sensible de
 
 ---
 
-## Auth Scheduler
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `AUTH_SCHEDULER_NAME` | No | `auth-scheduler` | Scheduler name for OAuth token refresh |
-| `AUTH_SCHEDULER_CORE_SIZE` | No | `10` | Core thread pool size |
-| `AUTH_SCHEDULER_QUEUE_SIZE` | No | `25` | Task queue capacity |
-| `AUTH_SCHEDULER_TTL` | No | `30` | Idle thread TTL in seconds |
-
----
-
 ## Caches
 
 ### JSLT Template Cache
@@ -146,7 +135,7 @@ All configuration is externalized through environment variables with sensible de
 
 ## Summary
 
-- **Total variables:** 48
+- **Total variables:** 52
 - **Required (production):** `DB_USERNAME`, `DB_PASSWORD`, `GATEWAY_ENCRYPTION_KEY`
 - **All others:** Optional with local-development defaults
 

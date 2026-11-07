@@ -102,13 +102,6 @@ apps:
         core-pool-size: 5
         queue-size: 10
         ttl-in-seconds: 60
-    auth-scheduler:
-      scheduler-type: BOUNDED_ELASTIC
-      bounded-elastic:
-        name: ${AUTH_SCHEDULER_NAME:auth-scheduler}
-        core-pool-size: ${AUTH_SCHEDULER_CORE_SIZE:10}
-        queue-size: ${AUTH_SCHEDULER_QUEUE_SIZE:25}
-        ttl-in-seconds: ${AUTH_SCHEDULER_TTL:30}
     retry-listener:
       scheduler-type: BOUNDED_ELASTIC
       bounded-elastic:
