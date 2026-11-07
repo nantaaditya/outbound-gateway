@@ -9,3 +9,6 @@ SEQUENTIAL_INTEGRATION_TEST_PLAN.md
 .claude/**
 docs/plans/*
 CLAUDE.md
+# Local environment files (keep the example)
+.env/*
+!.env/*.example

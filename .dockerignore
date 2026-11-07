@@ -1,0 +1,5 @@
+# Only what the Dockerfile COPYs goes into the build context
+*
+!target/*.jar
+!src/main/resources
+!pom.xml

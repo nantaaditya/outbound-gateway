@@ -317,22 +317,22 @@ webClientCache (one pool per host)
 
 | Layer | Library / Version |
 |---|---|
-| **Runtime** | Java 21, Spring Boot 3.5.0 |
+| **Runtime** | Java 25, Spring Boot 4.1.2 (Spring Framework 7) |
 | **Web** | Spring WebFlux (Reactor Netty) |
 | **Database (reactive)** | Spring Data R2DBC, r2dbc-postgresql |
-| **Database (migrations)** | Flyway Core + flyway-database-postgresql |
+| **Database (migrations)** | Flyway (`spring-boot-starter-flyway`) + flyway-database-postgresql |
 | **Database (JDBC)** | PostgreSQL JDBC (Flyway only) |
-| **Resilience** | Resilience4j 2.4.0 (spring-boot3, reactor, micrometer) |
-| **HTTP logging** | Zalando Logbook 3.12.3 (spring-webflux, netty, json) |
+| **Resilience** | Resilience4j 2.4.0 (circuitbreaker, bulkhead, ratelimiter, retry, reactor, micrometer) |
+| **HTTP logging** | Zalando Logbook 4.2.0 (spring-webflux, netty, json) |
 | **Tracing** | Micrometer Tracing (Brave bridge), Zipkin Brave SLF4J |
 | **Metrics** | Micrometer Prometheus registry |
 | **JSON transform** | JSLT 0.1.14 |
 | **JSONPath** | Jayway JsonPath (Spring Boot BOM managed) |
 | **ID generation** | TSID Creator 5.2.6 |
-| **Serialization** | Jackson (via Spring Boot), Gson 2.13.2 |
+| **Serialization** | Jackson 2 (`spring-boot-jackson2`, kept for JSLT and the app code; Spring Boot 4 defaults to Jackson 3), Gson 2.14.0 |
 | **Caching** | Caffeine (via Spring Boot Cache) |
-| **Logging** | Log4j2 async via LMAX Disruptor 3.4.4 |
-| **Testing** | JUnit 5, Reactor Test, Testcontainers 1.21.0 (postgres:16-alpine), WireMock 3.13.1, Awaitility 4.3.0 |
+| **Logging** | Log4j2 async via LMAX Disruptor 4.0.0 |
+| **Testing** | JUnit 5, Reactor Test, Testcontainers 2.x (postgres:16-alpine), WireMock 3.13.1, Awaitility 4.3.0 |
 
 ---
 
@@ -2049,7 +2049,7 @@ The admin upserts (`resilience`, `headers`, `authentication`, `response-mapper`)
 
 ### Prerequisites
 
-- Java 21+
+- Java 25 (JDK 25)
 - PostgreSQL 14+
 - Maven 3.9+
 - **Docker Engine ≥26** (Docker Desktop ≥4.29, or any compatible daemon) — required to run integration tests; API version 1.52 is used by Testcontainers and is not available on Docker 24/25
@@ -2088,6 +2088,20 @@ mvn spring-boot:run -DGATEWAY_ENCRYPTION_KEY=<your-base64-key>
 
 Application: `http://localhost:8080/app`
 Actuator: `http://localhost:1000/actuator/health`
+
+### Run with Docker
+
+The image is built from the jar, with a minimal JRE produced by `jlink` (Java 25 runtime, non-root user).
+
+```bash
+.script/build_jar.sh                 # mvn clean install -> target/*.jar (add -DskipTests to skip the tests)
+.script/build_docker.sh              # docker build -f .docker/Dockerfile -> outbound-gateway:0.0.1-SNAPSHOT
+cp .env/dev.env.example .env/dev.env # then fill in the database and GATEWAY_ENCRYPTION_KEY
+.script/docker_run.sh                # 0.5 CPU / 768 MB, ports 8080 (API) and 1000 (actuator)
+```
+
+`.env/dev.env` is git-ignored. Inside the container `localhost` is the container itself, so the example points the
+database URLs at `host.docker.internal` (the machine running Docker).
 
 ---
 
