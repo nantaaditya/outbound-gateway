@@ -23,6 +23,7 @@ All configuration is stored in the database — no restart is needed to add, upd
     - [Prerequisites](#prerequisites)
     - [Running Tests](#running-tests)
     - [Step-by-Step Walkthrough](#step-by-step-walkthrough)
+14. [License](#14-license)
 
 ---
 
@@ -2300,3 +2301,14 @@ GET http://localhost:1000/actuator/prometheus
 ```
 
 Look for `api_public_seconds_count{feature="xendit-charge"}` and `resilience4j_circuitbreaker_state{name="xendit-charge"}`.
+
+---
+
+## 14. License
+
+Copyright (C) 2026 nantaaditya
+
+This project is dual-licensed:
+
+- **Open source — GNU AGPL-3.0.** Free to use and modify, including commercially, as long as any modified version you distribute or run as a network service is released with its full source under the AGPL-3.0.
+- **Commercial license.** Companies and for-profit users who want to keep their modifications private (closed source) need a paid license. Pricing is per agreement — see [COMMERCIAL.md](COMMERCIAL.md) for how to request a quote.
