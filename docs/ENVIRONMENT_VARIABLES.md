@@ -99,7 +99,7 @@ All configuration is externalized through environment variables with sensible de
 | `DEFAULT_TASK_QUEUE` | No | `100` | Task queue capacity before rejecting |
 | `DEFAULT_TASK_KEEP_ALIVE` | No | `60` | Idle thread keep-alive in seconds |
 | `DEFAULT_TASK_THREAD_NAME` | No | `default-task-` | Thread name prefix |
-| `DEFAULT_TASK_VIRTUAL_THREAD_ENABLE` | No | `true` | Use Java 21 virtual threads for async tasks |
+| `DEFAULT_TASK_VIRTUAL_THREAD_ENABLE` | No | `true` | Use virtual threads (Java 21+) for async tasks |
 
 ---
 
@@ -146,5 +146,5 @@ All configuration is externalized through environment variables with sensible de
 export DB_USERNAME=postgres
 export DB_PASSWORD=postgres
 export GATEWAY_ENCRYPTION_KEY=<generated-key>
-./mvnw spring-boot:run
+mvn spring-boot:run
 ```
