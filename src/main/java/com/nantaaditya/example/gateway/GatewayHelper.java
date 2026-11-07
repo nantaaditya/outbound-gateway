@@ -158,7 +158,7 @@ public class GatewayHelper {
   public Map<String, List<String>> collectResponseHeaders(ClientResponse response) {
     return response.headers()
         .asHttpHeaders()
-        .entrySet()
+        .headerSet()
         .stream()
         .collect(Collectors.toMap(
             Map.Entry::getKey,

@@ -83,7 +83,8 @@ public class OutboundRequestExecutor {
     }
     parameters.queryParams().forEach((name, value) -> query.computeIfAbsent(name, n -> new ArrayList<>()).add(value));
     OutboundSystem system = context.getSystem();
-    return new SigningInput(system.getHttpMethodEnum().name(), system.getApiPath(), query, headers, cleanedBody);
+    return new SigningInput(system.getHttpMethodEnum().name(), system.getApiPath(), query, headers.asMultiValueMap(),
+        cleanedBody);
   }
 
   // Every strategy sees the whole prepared request and returns the credentials to attach (none, one or several).
